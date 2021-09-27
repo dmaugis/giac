@@ -25,6 +25,9 @@ using namespace std;
 #else
 #include <strstream>
 #endif
+#if !defined GIAC_HAS_STO_38 && !defined NSPIRE && !defined FXCG 
+#include <fstream>
+#endif
 #include "global.h"
 // #include <time.h>
 #if !defined BESTA_OS && !defined FXCG
@@ -72,13 +75,15 @@ using namespace std;
 #ifndef VISUALC
 #if !defined(GNUWINCE) && !defined(__MINGW_H)
 #include <sys/cygwin.h>
+#endif
+#if !defined(GNUWINCE) 
 #include <windows.h>
 #endif // ndef gnuwince
 #endif // ndef visualc
 #endif // win32
 #endif // ndef bestaos
 
-#if defined VISUALC && !defined BESTA_OS && !defined RTOS_THREADX && !defined FREERTOS
+#if defined VISUALC && !defined BESTA_OS && !defined RTOS_THREADX && !defined FREERTOS 
 #include <Windows.h>
 #endif 
 
@@ -88,6 +93,54 @@ using namespace std;
 
 #include <stdio.h>
 #include <stdarg.h>
+#ifdef QUICKJS
+#include "qjsgiac.h"
+string js_vars;
+void update_js_vars(){
+  const char VARS[]="function update_js_vars(){let res=''; for(var b in globalThis) { let prop=globalThis[b]; if (globalThis.hasOwnProperty(b)) res+=b+' ';} return res;}; update_js_vars()";
+  char * names=js_ck_eval(VARS,&global_js_context);
+  if (names){
+    js_vars=names;
+    free(names);
+  }
+}
+int js_token(const char * buf){
+  return js_token(js_vars.c_str(),buf);
+}
+#else // QUICKJS
+void update_js_vars(){}
+int js_token(const char * buf){
+  return 0;
+}
+#endif
+int js_token(const char * list,const char * buf){
+  int bufl=strlen(buf);
+  for (const char * p=list;*p;){
+    if (p[0]=='\'')
+      ++p;
+    if (strncmp(p,buf,bufl)==0 && 
+	(p[bufl]==0 || p[bufl]==' ' || p[bufl]=='\'')){
+      return (p[bufl]=='\'')?3:2;
+    }
+    // skip to next keyword in p
+    for (;*p;++p){
+      if (*p==' '){
+	++p; break;
+      }
+    }
+  }
+  return 0;
+}
+
+#ifdef HAVE_LIBMICROPYTHON
+std::string & python_console(){
+  static std::string * ptr=0;
+  if (!ptr)
+    ptr=new string;
+  return *ptr;
+}
+#endif
+bool freezeturtle=false;
 
 #if defined(FIR)
 extern "C" int firvsprintf(char*,const char*, va_list);
@@ -96,6 +149,22 @@ extern "C" int firvsprintf(char*,const char*, va_list);
 #ifdef FXCG
 extern "C" int KeyPressed( void );
 #endif
+
+#ifdef KHICAS
+#include "kdisplay.h"
+#endif
+
+#ifdef NSPIRE_NEWLIB
+#include <libndls.h>
+#endif
+
+#ifdef NUMWORKS
+size_t pythonjs_stack_size=30*1024,pythonjs_heap_size=40*1024;
+#else
+  size_t pythonjs_stack_size=128*1024,pythonjs_heap_size=(2*1024-256-64)*1024;
+#endif
+void * bf_ctx_ptr=0;
+size_t bf_global_prec=128; // global precision for BF
 
 int my_sprintf(char * s, const char * format, ...){
     int z;
@@ -110,9 +179,634 @@ int my_sprintf(char * s, const char * format, ...){
     return z;
 }
 
+int ctrl_c_interrupted(int exception){
+  if (!giac::ctrl_c && !giac::interrupted)
+    return 0;
+  giac::ctrl_c=giac::interrupted=0;
+#ifndef NO_STD_EXCEPT
+  if (exception)
+    giac::setsizeerr("Interrupted");
+#endif
+  return 1;
+}
+
+void console_print(const char * s){
+  *logptr(giac::python_contextptr) << s;
+}
+
+const char * console_prompt(const char * s){
+  static string S;
+  giac::gen g=giac::_input(giac::string2gen(s?s:"?",false),giac::python_contextptr);
+  S=g.print(giac::python_contextptr);
+  return S.c_str();
+}
+
+#ifdef HAVE_LIBDFU
+extern "C" { 
+#include "dfu_lib.h"
+}
+#endif
+
+// Numworks calculator
+int dfu_exec(const char * s_){
+  CERR << s_ << "\n";
+#if 0 // def HAVE_LIBDFU
+  std::istringstream ss(s_);
+  std::string arg;
+  std::vector<std::string> ls;
+  std::vector<char*> v;
+  while (ss >> arg)
+    {
+      ls.push_back(arg); 
+      v.push_back(const_cast<char*>(ls.back().c_str()));
+    }
+  v.push_back(0);  // need terminating null pointer
+  int res=dfu_main(v.size()-1,&v[0]);
+  return res;
+#else
+#ifdef WIN32 
+  string s(s_);
+#ifdef __MINGW_H
+  if (giac::is_file_available("c:\\xcaswin\\dfu-util.exe"))
+    s="c:\\xcaswin\\"+s;
+  // otherwise dfu-util should be in the path
+#else
+  s="./"+s;
+#endif
+  return system(s.c_str());
+#else // WIN32
+#ifdef __APPLE__
+  string s(s_);
+  s="/Applications/usr/bin/"+s;
+  return giac::system_no_deprecation(s.c_str());
+#else
+  return system(s_);
+#endif
+#endif // WIN32
+#endif 
+}
+
+bool dfu_get_scriptstore_addr(size_t & start,size_t & taille){
+  unlink("__platf");
+  if (dfu_exec("dfu-util -i0 -a0 -s 0x080001c4:0x20 -U __platf"))
+    return false;
+  FILE * f=fopen("__platf","r");
+  if (!f){ return false; }
+  unsigned char r[32];
+  int i=fread(r,1,32,f);
+  start=((r[23]*256U+r[22])*256+r[21])*256+r[20];
+  taille=((r[27]*256U+r[26])*256+r[25])*256+r[24];
+  // taille=(taille/32768)*32768; // do not care of end of scriptstore
+  fclose(f);
+  return i==32;
+}
+
+bool dfu_get_scriptstore(const char * fname){
+  unlink(fname);
+  size_t start,taille;
+  if (!dfu_get_scriptstore_addr(start,taille)) return false;
+  string s="dfu-util -U "+string(fname)+" -i0 -a0 -s "+ giac::print_INT_(start)+":"+giac::print_INT_(taille)+":force";
+  return !dfu_exec(s.c_str());
+}
+
+bool dfu_send_scriptstore(const char * fname){
+  size_t start,taille;
+  if (!dfu_get_scriptstore_addr(start,taille)) return false;
+  string s="dfu-util -D "+string(fname)+" -i0 -a0 -s "+ giac::print_INT_(start)+":"+giac::print_INT_(taille)+":force";
+  return !dfu_exec(s.c_str());
+} 
+
+bool dfu_send_rescue(const char * fname){
+  string s=string("dfu-util -i0 -a0 -s 0x20030000:force:leave -D ")+ fname;
+  return !dfu_exec(s.c_str());
+}
+
+bool dfu_send_firmware(const char * fname){
+  string s=string("dfu-util -i0 -a0 -D ")+ fname;
+  return !dfu_exec(s.c_str());
+}
+
+bool dfu_send_apps(const char * fname){
+  string s=string("dfu-util -i 0 -a 0 -s 0x90200000 -D ")+ fname;
+  return !dfu_exec(s.c_str());
+}
+
+bool dfu_get_epsilon_internal(const char * fname){
+  unlink(fname);
+  string s=string("dfu-util -i 0 -a 0 -s 0x08000000:0x8000 -U ")+ fname;
+  return !dfu_exec(s.c_str());
+}
+
+bool dfu_get_epsilon(const char * fname){
+  unlink(fname);
+  string s=string("dfu-util -i 0 -a 0 -s 0x90000000:0x120000 -U ")+ fname;
+  return !dfu_exec(s.c_str());
+}
+
+// check that we can really read/write on the Numworks at 0x90120000
+// and get the same
+bool dfu_check_epsilon2(const char * fname){
+  FILE * f=fopen(fname,"w");
+  int n=0xe0000;
+  char * ptr=(char *) malloc(n);
+  srand(time(NULL));
+  int i;
+  for (i=0;i<n;++i){
+    int j=(rand()/(1.0+RAND_MAX))*n;
+    ptr[j]=rand();
+  }
+  for (i=0;i<n;++i){
+    fputc(ptr[i],f);
+  }
+  fclose(f);
+  // write to the device something that can not be guessed 
+  // without really storing to flash
+  string s=string("dfu-util -i 0 -a 0 -s 0x90120000:0xe0000 -D ")+ fname;
+  if (dfu_exec(s.c_str()))
+    return false;
+  // retrieve it and compare
+  unlink(fname);
+  s=string("dfu-util -i 0 -a 0 -s 0x90120000:0xe0000 -U ")+ fname;
+  if (dfu_exec(s.c_str()))
+    return false;
+  f=fopen(fname,"r");
+  for (i=0;i<n;++i){
+    char ch=fgetc(f);
+    if (ch!=ptr[i])
+      break;
+  }
+  fclose(f);
+  return i==n;
+}
+
+bool dfu_get_apps(const char * fname){
+  unlink(fname);
+  string s=string("dfu-util -i 0 -a 0 -s 0x90200000:0x600000 -U ")+ fname;
+  return !dfu_exec(s.c_str());
+}
+
 #ifndef NO_NAMESPACE_GIAC
 namespace giac {
 #endif // ndef NO_NAMESPACE_GIAC
+
+  bool scriptstore2map(const char * fname,nws_map & m){
+    FILE * f=fopen(fname,"r");
+    if (!f)
+      return false;
+    unsigned char buf[nwstoresize1];
+    fread(buf,1,nwstoresize1,f);
+    fclose(f);
+    unsigned char * ptr=buf;
+    // Numworks script store archive
+    // record format: length on 2 bytes
+    // if not zero length
+    // record name 
+    // 00
+    // type 
+    // record data
+    int pos=4; ptr+=4;
+    for (;pos<nwstoresize1;){
+      size_t L=ptr[1]*256+ptr[0]; 
+      ptr+=2; pos+=2;
+      if (L==0) break;
+      L-=2;
+      char buf_[L+1];
+      memcpy(buf_,(const char *)ptr,L); ptr+=L; pos+=L;
+      string name(buf_);
+      const char * buf_mode=buf_+name.size()+2;
+      nwsrec r;
+      r.type=buf_mode[-1];
+      r.data.resize(L-name.size()-3);
+      memcpy(&r.data[0],buf_mode,r.data.size());
+      m[name]=r;
+    }
+    if (pos>=nwstoresize1)
+      return false;
+    return true;
+  }
+
+  bool map2scriptstore(const nws_map & m,const char * fname){
+    unsigned char buf[nwstoresize1];
+    for (int i=0;i<nwstoresize1;++i)
+      buf[i]=0;
+    unsigned char * ptr=buf;
+    *(unsigned *) ptr= 0xee0bddba;
+    ptr += 4;
+    nws_map::const_iterator it=m.begin(),itend=m.end();
+    int total=0;
+    for (;it!=itend;++it){
+      const string & s=it->first;
+      unsigned l1=s.size();
+      unsigned l2=it->second.data.size();
+      short unsigned L=2+l1+1+1+l2+1;
+      total += L;
+      if (total>=nwstoresize1)
+	return false;
+      *ptr=L % 256; ++ptr; *ptr=L/256; ++ptr;
+      memcpy(ptr,s.c_str(),l1+1); ptr += l1+1;
+      *ptr=it->second.type; ++ptr;
+      memcpy(ptr,&it->second.data[0],l2); ptr+=l2;
+      *ptr=0; ++ptr; 
+    }
+    FILE * f=fopen(fname,"w");
+    if (!f)
+      return false;
+    fwrite(buf,1,nwstoresize1,f);
+    fclose(f);
+    return true;
+  }
+
+  const unsigned char rsa_n_tab[]=
+    {
+      0xf2,0x0e,0xd4,0x9d,0x44,0x04,0xc4,0xc8,0x6a,0x5b,0xc6,0x9a,0xd6,0xdf,
+      0x9c,0xf5,0x56,0xf2,0x0d,0xad,0x6c,0x34,0xb4,0x48,0xf7,0xa7,0xa8,0x27,0xa0,
+      0xc8,0xbe,0x36,0xb1,0xc0,0x95,0xf8,0xc2,0x72,0xfb,0x78,0x0f,0x3f,0x15,0x22,
+      0xaf,0x51,0x96,0xe3,0xdc,0x39,0xb4,0xc6,0x40,0x6d,0x58,0x56,0x1f,0xad,0x55,
+      0x55,0x08,0xf1,0xde,0x5a,0xbc,0xd3,0xcc,0x16,0x3d,0x33,0xee,0x83,0x3f,0x32,
+      0xa7,0xa7,0xb8,0x95,0x2f,0x35,0xeb,0xf6,0x32,0x4d,0x22,0xd9,0x60,0xb7,0x5e,
+      0xbd,0xea,0xa5,0xcb,0x9c,0x69,0xeb,0xfd,0x9f,0x2b,0x5f,0x3d,0x38,0x5a,0xe1,
+      0x2b,0x63,0xf8,0x92,0x35,0x91,0xea,0x77,0x07,0xcc,0x4b,0x7a,0xbc,0xe0,0xa0,
+      0x8b,0x82,0x98,0xa2,0x87,0x10,0x2c,0xe2,0x23,0x53,0x2f,0x70,0x03,0xec,0x2d,
+      0x22,0x34,0x72,0x57,0x4d,0x24,0x2e,0x97,0xc9,0xfb,0x23,0xb0,0x05,0xff,0x87,
+      0x6e,0xbf,0x94,0x2d,0xf0,0x36,0xed,0xd7,0x9a,0xac,0x0c,0x21,0x94,0xa2,0x75,
+      0xfc,0x39,0x9b,0xba,0xf2,0xc6,0xc9,0x34,0xa0,0xb2,0x66,0x5a,0xcc,0xc9,0x5c,
+      0xc7,0xdb,0xce,0xfb,0x3a,0x10,0xee,0xc1,0x82,0x9a,0x43,0xef,0xed,0x87,0xbd,
+      0x6c,0xe4,0xc1,0x36,0xd0,0x0a,0x85,0x6e,0xca,0xcd,0x13,0x29,0x65,0xb5,0xd4,
+      0x13,0x4a,0x14,0xaa,0x65,0xac,0x0e,0x6f,0x19,0xb0,0x62,0x47,0x65,0x0e,0x40,
+      0x82,0x37,0xd6,0xf0,0x17,0x48,0xaa,0x8c,0x7b,0xc4,0x5e,0x4a,0x72,0x26,0xa6,
+      0x08,0x2e,0xff,0x2d,0x9d,0x0e,0x2e,0x19,0xe9,0x6a,0x4c,0x7c,0x3e,0xe9,0xbc,
+      0x78,0x95
+    };
+
+  gen tabunsignedchar2gen(const unsigned char tab[],int len){
+    gen res=0;
+    for (int i=0;i<len;++i){
+      res=256*res;
+      res+=tab[i];
+    }
+    return res;
+  }
+
+  /*********************************************************************
+   * Filename:   sha256.c/.h
+   * Author:     Brad Conte (brad AT bradconte.com)
+   * Copyright:
+   * Disclaimer: This code is presented "as is" without any guarantees.
+   * Details:    Implementation of the SHA-256 hashing algorithm.
+              SHA-256 is one of the three algorithms in the SHA2
+              specification. The others, SHA-384 and SHA-512, are not
+              offered in this implementation.
+              Algorithm specification can be found here:
+	      * http://csrc.nist.gov/publications/fips/fips180-2/fips180-2withchangenotice.pdf
+              This implementation uses little endian byte order.
+  *********************************************************************/
+#define SHA256_BLOCK_SIZE 32            // SHA256 outputs a 32 byte digest
+  
+  /**************************** DATA TYPES ****************************/
+  typedef unsigned char BYTE;             // 8-bit byte
+  typedef unsigned int  WORD;             // 32-bit word, change to "long" for 16-bit machines
+  
+  typedef struct {
+    BYTE data[64];
+    WORD datalen;
+    unsigned long long bitlen;
+    WORD state[8];
+  } SHA256_CTX;
+  
+  
+  /****************************** MACROS ******************************/
+#define ROTLEFT(a,b) (((a) << (b)) | ((a) >> (32-(b))))
+#define ROTRIGHT(a,b) (((a) >> (b)) | ((a) << (32-(b))))
+
+#define CH(x,y,z) (((x) & (y)) ^ (~(x) & (z)))
+#define MAJ(x,y,z) (((x) & (y)) ^ ((x) & (z)) ^ ((y) & (z)))
+#define EP0(x) (ROTRIGHT(x,2) ^ ROTRIGHT(x,13) ^ ROTRIGHT(x,22))
+#define EP1(x) (ROTRIGHT(x,6) ^ ROTRIGHT(x,11) ^ ROTRIGHT(x,25))
+#define SIG0(x) (ROTRIGHT(x,7) ^ ROTRIGHT(x,18) ^ ((x) >> 3))
+#define SIG1(x) (ROTRIGHT(x,17) ^ ROTRIGHT(x,19) ^ ((x) >> 10))
+
+  /**************************** VARIABLES *****************************/
+  static const WORD k[64] = {
+    0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+  };
+
+  /*********************** FUNCTION DEFINITIONS ***********************/
+  void giac_sha256_transform(SHA256_CTX *ctx, const BYTE data[])
+  {
+    WORD a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];
+
+    for (i = 0, j = 0; i < 16; ++i, j += 4)
+      m[i] = (data[j] << 24) | (data[j + 1] << 16) | (data[j + 2] << 8) | (data[j + 3]);
+    for ( ; i < 64; ++i)
+      m[i] = SIG1(m[i - 2]) + m[i - 7] + SIG0(m[i - 15]) + m[i - 16];
+
+    a = ctx->state[0];
+    b = ctx->state[1];
+    c = ctx->state[2];
+    d = ctx->state[3];
+    e = ctx->state[4];
+    f = ctx->state[5];
+    g = ctx->state[6];
+    h = ctx->state[7];
+
+    for (i = 0; i < 64; ++i) {
+      t1 = h + EP1(e) + CH(e,f,g) + k[i] + m[i];
+      t2 = EP0(a) + MAJ(a,b,c);
+      h = g;
+      g = f;
+      f = e;
+      e = d + t1;
+      d = c;
+      c = b;
+      b = a;
+      a = t1 + t2;
+    }
+
+    ctx->state[0] += a;
+    ctx->state[1] += b;
+    ctx->state[2] += c;
+    ctx->state[3] += d;
+    ctx->state[4] += e;
+    ctx->state[5] += f;
+    ctx->state[6] += g;
+    ctx->state[7] += h;
+  }
+
+  void giac_sha256_init(SHA256_CTX *ctx)
+  {
+    ctx->datalen = 0;
+    ctx->bitlen = 0;
+    ctx->state[0] = 0x6a09e667;
+    ctx->state[1] = 0xbb67ae85;
+    ctx->state[2] = 0x3c6ef372;
+    ctx->state[3] = 0xa54ff53a;
+    ctx->state[4] = 0x510e527f;
+    ctx->state[5] = 0x9b05688c;
+    ctx->state[6] = 0x1f83d9ab;
+    ctx->state[7] = 0x5be0cd19;
+  }
+
+  void giac_sha256_update(SHA256_CTX *ctx, const BYTE data[], size_t len)
+  {
+    WORD i;
+
+    for (i = 0; i < len; ++i) {
+      ctx->data[ctx->datalen] = data[i];
+      ctx->datalen++;
+      if (ctx->datalen == 64) {
+	giac_sha256_transform(ctx, ctx->data);
+	ctx->bitlen += 512;
+	ctx->datalen = 0;
+      }
+    }
+  }
+
+  void giac_sha256_final(SHA256_CTX *ctx, BYTE hash[])
+  {
+    WORD i;
+
+    i = ctx->datalen;
+
+    // Pad whatever data is left in the buffer.
+    if (ctx->datalen < 56) {
+      ctx->data[i++] = 0x80;
+      while (i < 56)
+	ctx->data[i++] = 0x00;
+    }
+    else {
+      ctx->data[i++] = 0x80;
+      while (i < 64)
+	ctx->data[i++] = 0x00;
+      giac_sha256_transform(ctx, ctx->data);
+      memset(ctx->data, 0, 56);
+    }
+
+    // Append to the padding the total message's length in bits and transform.
+    ctx->bitlen += ctx->datalen * 8;
+    ctx->data[63] = ctx->bitlen;
+    ctx->data[62] = ctx->bitlen >> 8;
+    ctx->data[61] = ctx->bitlen >> 16;
+    ctx->data[60] = ctx->bitlen >> 24;
+    ctx->data[59] = ctx->bitlen >> 32;
+    ctx->data[58] = ctx->bitlen >> 40;
+    ctx->data[57] = ctx->bitlen >> 48;
+    ctx->data[56] = ctx->bitlen >> 56;
+    giac_sha256_transform(ctx, ctx->data);
+
+    // Since this implementation uses little endian byte ordering and SHA uses big endian,
+    // reverse all the bytes when copying the final state to the output hash.
+    for (i = 0; i < 4; ++i) {
+      hash[i]      = (ctx->state[0] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 4]  = (ctx->state[1] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 8]  = (ctx->state[2] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 12] = (ctx->state[3] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 16] = (ctx->state[4] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 20] = (ctx->state[5] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 24] = (ctx->state[6] >> (24 - i * 8)) & 0x000000ff;
+      hash[i + 28] = (ctx->state[7] >> (24 - i * 8)) & 0x000000ff;
+    }
+  }
+  /* END OF SHA256 */
+
+  int rsa_check(const char * sigfilename,int maxkeys,BYTE hash[][SHA256_BLOCK_SIZE],int * tailles,vector<string> & fnames){
+    gen rsa_n(tabunsignedchar2gen(rsa_n_tab,sizeof(rsa_n_tab)));
+    gen N=pow(gen(2),768),q;
+    // read by blocks of 2048 bits=256 bytes
+    FILE * f=fopen(sigfilename,"r");
+    if (!f)
+      return 0;
+    char firmwarename[256];
+    int i=0;
+    for (;i<maxkeys;++i){
+      gen key=0;
+      // skip firmware filename and size
+      fscanf(f,"%i %s",&tailles[i],firmwarename);
+      fnames.push_back(firmwarename);
+      // skip 0x prefix
+      for (;;){
+	unsigned char c=fgetc(f);
+	if (feof(f))
+	  break;
+	if (c=='\n' || c==' ' || c=='0')
+	  continue;
+	if (c=='x')
+	  break;
+	// invalid char
+	return 0;
+      }
+      if (feof(f)){
+	fclose(f);
+	return i;
+      }
+      for (int j=0;j<256;++j){
+	key = 256*key;
+	unsigned char c=fgetc(f);
+	if (feof(f)){
+	  fclose(f);
+	  if (j!=0){ return 0; }
+	  return i;
+	}
+	if (c==' ' || c=='\n')
+	  break;
+	if (c>='0' && c<='9')
+	  c=c-'0';
+	else {
+	  if (c>='a' && c<='f')
+	    c=10+c-'a';
+	  else {
+	    fclose(f);
+	    return 0;
+	  }
+	}
+	unsigned char d=fgetc(f);
+	if (feof(f)){
+	  fclose(f);
+	  return 0;
+	}
+	if (d==' ' || d=='\n'){
+	  key = key/16+int(c);
+	  break;
+	}
+	if (d>='0' && d<='9')
+	  d=d-'0';
+	else {
+	  if (d>='a' && d<='f')
+	    d=10+d-'a';
+	  else {
+	    fclose(f);
+	    return 0;
+	  }
+	}
+	key += int(c)*16+int(d);
+      }
+      // public key decrypt and keep only 768 low bits
+      key=powmod(key,65537,rsa_n);
+      key=irem(key,N,q); 
+      if (q!=12345){
+	fclose(f);
+	return 0;
+      }
+      // check that key is valid and write in hash[i]
+      for (int j=0;j<32;++j){
+	// divide 3 times by 256, remainder must be in '0'..'9'
+	int o=0;
+	int tab[]={1,10,100};
+	for (int k=0;k<3;++k){
+	  gen r=irem(key,256,q);
+	  key=q;
+	  if (r.type!=_INT_ || r.val>'9' || r.val<'0'){
+	    fclose(f);
+	    return 0;
+	  }
+	  o+=(r.val-'0')*tab[k];
+	}
+	if (o<0 || o>255){
+	  fclose(f);
+	  return 0;
+	}
+	if (i<maxkeys)
+	  hash[i][31-j]=o;
+      }
+    }
+    fclose(f);
+    return i;
+  }
+
+  const int MAXKEYS=64;
+  // Numworks firmwares signature file is in doc/shakeys
+  bool sha256_check(const char * sigfilename,const char * filename,const char *firmwarename){
+    BYTE hash[MAXKEYS][SHA256_BLOCK_SIZE];
+    int tailles[MAXKEYS];
+    vector<string> fnames;
+    int nkeys=rsa_check(sigfilename,MAXKEYS,hash,tailles,fnames);
+    if (nkeys==0) return false;
+    BYTE buf[SHA256_BLOCK_SIZE];
+    SHA256_CTX ctx;
+    string text;
+    FILE * f=fopen(filename,"r");
+    if (!f)
+      return false;
+    int taille=0;
+    for (;;++taille){
+      unsigned char c=fgetc(f);
+      if (feof(f))
+	break;
+      text += c;
+    }
+    fclose(f);
+    unsigned char * ptr=(unsigned char *)text.c_str();
+    for (int i=0;i<nkeys;++i){
+      if (debug_infolevel)
+	CERR << i << " " << firmwarename << " " << taille << " " << fnames[i] << " " << tailles[i] << '\n';
+      if (firmwarename!=fnames[i] || taille<tailles[i])
+	continue;
+      // now try for all compatible sizes
+      // we do not know the firmware size, we extract 2M or 6M
+      // the part after the end is not known
+      giac_sha256_init(&ctx);
+      giac_sha256_update(&ctx, ptr, tailles[i]);
+      giac_sha256_final(&ctx, buf);
+      if (!memcmp(hash[i], buf, SHA256_BLOCK_SIZE))
+	return true;
+    }
+    return false;
+  }
+  
+  bool nws_certify_firmware(bool withoverwrite,GIAC_CONTEXT){
+    string sig(giac::giac_aide_dir()+"shakeys");
+    if (!is_file_available(sig.c_str())){
+#ifdef __APPLE__
+      sig="/Applications/usr/share/giac/doc/shakeys";
+#else
+#ifdef WIN32
+#ifdef __MINGW_H
+      sig="c:\\xcaswin\\doc\\shakeys";
+#else
+      sig="/cygwin/c/xcas64/shakeys";
+#endif
+#else // WIN32
+      sig="/usr/share/giac/doc/shakeys";
+#endif // WIN32
+#endif // APPLE
+      if (!is_file_available(sig.c_str())){
+	sig="shakeys";
+	if (!is_file_available(sig.c_str())){
+	  *logptr(contextptr) << "Fichier de signature introuvable\n" ;
+	  return false;
+	}
+      }
+    }
+    char epsilon[]="epsilon__",apps[]="apps__";
+    *logptr(contextptr) << "Extraction du firmware interne epsilon\n" ;
+    if (!dfu_get_epsilon_internal(epsilon)) return false;
+    *logptr(contextptr) << "Verification de signature interne epsilon\n" ;
+    if (!sha256_check(sig.c_str(),epsilon,"delta.internal.bin")) return false;
+    *logptr(contextptr) << "Extraction du firmware externe epsilon\n" ;
+    if (!dfu_get_epsilon(epsilon)) return false;
+    *logptr(contextptr) << "Verification de signature externe epsilon\n" ;
+    if (!sha256_check(sig.c_str(),epsilon,"delta.external.bin")) return false;
+    *logptr(contextptr) << "Signature firmware conforme\nExtraction des applications\n" ;
+    if (!dfu_get_apps(apps)) return false;
+    *logptr(contextptr) << "Verification de signature applications externes\n" ;
+    if (!sha256_check(sig.c_str(),apps,"apps.tar")) return false;
+    const char eps2name[]="eps2__";
+    if (withoverwrite && !dfu_check_epsilon2(eps2name)){
+      *logptr(contextptr) << "Le test d'ecriture et relecture a echoue. Le firwmare n'est peut-etre pas conforme.\n";
+      return false;
+    }
+    *logptr(contextptr) << "Signature applications conforme\nCalculatrice conforme à la reglementation\nCertification par le logiciel Xcas\nInstitut Fourier\nUniversité de Grenoble\nAssurez-vous d'avoir téléchargé Xcas sur\nwww-fourier.ujf-grenoble.fr/~parisse/install_fr.html\n" ;
+    return true;
+  }
+
+  const context * python_contextptr=0;
+
   void opaque_double_copy(void * source,void * target){
     *((double *) target) = * ((double *) source);
   }
@@ -125,7 +819,7 @@ namespace giac {
 
   // FIXME: make the replacement call for APPLE
   int system_no_deprecation(const char *command) {
-#if defined _IOS_FIX_ || defined FXCG
+#if defined _IOS_FIX_ || defined FXCG || defined OSXIOS
     return 0;
 #else
     return system(command);
@@ -142,7 +836,7 @@ namespace giac {
 #endif
 
 #ifdef TIMEOUT
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
   double time(int ){
     return double(CLOCK())/1000000; // CLOCKS_PER_SEC;
   }
@@ -150,9 +844,19 @@ namespace giac {
   time_t caseval_begin,caseval_current;
   double caseval_maxtime=15; // max 15 seconds
   int caseval_n=0,caseval_mod=0,caseval_unitialized=-123454321;
+#if !defined POCKETCAS
   void control_c(){
-#ifdef NSPIRE
-    if (on_key_pressed()){ ctrl_c=true; interrupted=true; }
+#if defined NSPIRE || defined KHICAS
+    if (
+#if defined NSPIRE || defined NSPIRE_NEWLIB
+	on_key_enabled && on_key_pressed()
+#else
+	back_key_pressed()
+#endif
+	){ 
+      kbd_interrupted=true;
+      ctrl_c=interrupted=true; 
+    }
 #else
     if (caseval_unitialized!=-123454321){
       caseval_unitialized=-123454321;
@@ -165,24 +869,33 @@ namespace giac {
       if (caseval_n >=caseval_mod){
 	caseval_n=0; 
 	caseval_current=time(0); 
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 	if (difftime(caseval_current,caseval_begin)>caseval_maxtime)
 #else
 	if (caseval_current>caseval_maxtime+caseval_begin)
 #endif
 	  { 
-	    CERR << "Timeout" << endl; ctrl_c=true; interrupted=true; 
+	    CERR << "Timeout" << '\n'; ctrl_c=true; interrupted=true; 
 	    caseval_begin=caseval_current;
 	  } 
       } 
     }
 #endif // NSPIRE
   }
+#endif // POCKETCAS
 #endif // TIMEOUT
 
+#if defined KHICAS
+  void usleep(int t){
+    os_wait_1ms(t/1000);
+  }
+#else
 #ifdef NSPIRE_NEWLIB
   void usleep(int t){
+    msleep(t/1000);
   }
+#endif
+  
 #endif
 
 #if defined VISUALC || defined BESTA_OS
@@ -251,17 +964,12 @@ extern "C" void Sleep(unsigned int miliSecond);
       return _last_evaled_function_name_;
   }
 
-  string & _currently_scanned(){
-    static string * ans=0;
-    if (!ans) ans=new string;
-    return *ans;
-  }
-
-  string & currently_scanned(GIAC_CONTEXT){
+  const char * _currently_scanned=0;
+  const char * & currently_scanned(GIAC_CONTEXT){
     if (contextptr && contextptr->globalptr )
       return contextptr->globalptr->_currently_scanned_;
     else
-      return _currently_scanned();
+      return _currently_scanned;
   }
 
   const gen * _last_evaled_argptr_=0;
@@ -282,7 +990,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   void language(int b,GIAC_CONTEXT){
     if (contextptr && contextptr->globalptr )
       contextptr->globalptr->_language_=b;
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
     else
 #endif
       _language_=b;
@@ -582,7 +1290,17 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
   bool python_color=false;
+#ifdef NSPIRE_NEWLIB
+  bool os_shell=false;
+#else
+  bool os_shell=true;
+#endif
+
+#ifdef KHICAS
+  static int _python_compat_=true;
+#else
   static int _python_compat_=false;
+#endif
   int & python_compat(GIAC_CONTEXT){
     if (contextptr && contextptr->globalptr )
       return contextptr->globalptr->_python_compat_;
@@ -591,7 +1309,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
   void python_compat(int b,GIAC_CONTEXT){
-    python_color=b; //cout << "python_color " << b << endl;
+    python_color=b; //cout << "python_color " << b << '\n';
     if (contextptr && contextptr->globalptr )
       contextptr->globalptr->_python_compat_=b;
     else
@@ -763,6 +1481,51 @@ extern "C" void Sleep(unsigned int miliSecond);
       _keep_algext_=b;
   }
 
+  static bool _auto_assume_=false; 
+  bool & auto_assume(GIAC_CONTEXT){
+    if (contextptr && contextptr->globalptr )
+      return contextptr->globalptr->_auto_assume_;
+    else
+      return _auto_assume_;
+  }
+
+  void auto_assume(bool b,GIAC_CONTEXT){
+    if (contextptr && contextptr->globalptr )
+      contextptr->globalptr->_auto_assume_=b;
+    else
+      _auto_assume_=b;
+  }
+
+  static bool _parse_e_=false; 
+  bool & parse_e(GIAC_CONTEXT){
+    if (contextptr && contextptr->globalptr )
+      return contextptr->globalptr->_parse_e_;
+    else
+      return _parse_e_;
+  }
+
+  void parse_e(bool b,GIAC_CONTEXT){
+    if (contextptr && contextptr->globalptr )
+      contextptr->globalptr->_parse_e_=b;
+    else
+      _parse_e_=b;
+  }
+
+  static bool _convert_rootof_=true; 
+  bool & convert_rootof(GIAC_CONTEXT){
+    if (contextptr && contextptr->globalptr )
+      return contextptr->globalptr->_convert_rootof_;
+    else
+      return _convert_rootof_;
+  }
+
+  void convert_rootof(bool b,GIAC_CONTEXT){
+    if (contextptr && contextptr->globalptr )
+      contextptr->globalptr->_convert_rootof_=b;
+    else
+      _convert_rootof_=b;
+  }
+
   static bool _lexer_close_parenthesis_=true; 
   bool & lexer_close_parenthesis(GIAC_CONTEXT){
     if (contextptr && contextptr->globalptr )
@@ -793,7 +1556,12 @@ extern "C" void Sleep(unsigned int miliSecond);
       _rpn_mode_=b;
   }
 
+#ifdef __MINGW_H
+  static bool _ntl_on_=false; 
+#else
   static bool _ntl_on_=true; 
+#endif
+
   bool & ntl_on(GIAC_CONTEXT){
     if (contextptr && contextptr->globalptr )
       return contextptr->globalptr->_ntl_on_;
@@ -964,8 +1732,12 @@ extern "C" void Sleep(unsigned int miliSecond);
 
   void angle_mode(int b, GIAC_CONTEXT)
   {
-    if(contextptr && contextptr->globalptr)
+    if(contextptr && contextptr->globalptr){
+#ifdef POCKETCAS
+      _angle_mode_ = b;
+#endif
       contextptr->globalptr->_angle_mode_ = b;
+    }
     else
       _angle_mode_ = b;
   }
@@ -1136,21 +1908,30 @@ extern "C" void Sleep(unsigned int miliSecond);
 #ifdef FXCG
   static ostream * _logptr_=0;
 #else
-  static ostream * _logptr_=&CERR;
+#ifdef KHICAS
+  stdostream os_cerr;
+  static my_ostream * _logptr_=&os_cerr;
+#else
+  static my_ostream * _logptr_=&CERR;
 #endif
-  ostream * logptr(GIAC_CONTEXT){
-    ostream * res;
+#endif
+  my_ostream * logptr(GIAC_CONTEXT){
+    my_ostream * res;
     if (contextptr && contextptr->globalptr )
       res=contextptr->globalptr->_logptr_;
     else
       res= _logptr_;
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
     return res?res:&COUT;
 #else
 #ifdef FXCG
     return 0;
 #else
+#ifdef KHICAS
+    return res?res:&os_cerr;
+#else
     return res?res:&CERR;
+#endif
 #endif
 #endif
   }
@@ -1645,7 +2426,7 @@ extern "C" void Sleep(unsigned int miliSecond);
     if (!first_error_line(contextptr))
       alert(b,contextptr);
     else
-      *logptr(contextptr) << b << endl;
+      *logptr(contextptr) << b << '\n';
 #endif
     if (contextptr && contextptr->globalptr )
       contextptr->globalptr->_pl._parser_error_=b;
@@ -1714,6 +2495,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       return _turtle_();
   }
 
+#ifndef KHICAS
   // protect turtle access by a lock
   // turtle changes are mutually exclusive even in different contexts
 #ifdef HAVE_LIBPTHREAD
@@ -1742,6 +2524,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 #endif
     return *ans;
   }
+#endif
 
   // Other global variables
 #ifdef NSPIRE
@@ -1762,14 +2545,33 @@ extern "C" void Sleep(unsigned int miliSecond);
   int debug_infolevel=0;
 #endif
   int printprog=0;
-#if defined __APPLE__ || defined VISUALC || defined __MINGW_H || defined BESTA_OS || defined NSPIRE || defined FXCG || defined NSPIRE_NEWLIB
+#if defined __APPLE__ || defined VISUALC || defined __MINGW_H || defined BESTA_OS || defined NSPIRE || defined FXCG || defined NSPIRE_NEWLIB || defined KHICAS
+#ifdef _WIN32
+  int threads=atoi(getenv("NUMBER_OF_PROCESSORS"));
+#else
   int threads=1;
+#endif
 #else
   int threads=sysconf (_SC_NPROCESSORS_ONLN);
 #endif
+  unsigned max_pairs_by_iteration=32768; 
+  // gbasis max number of pairs by F4 iteration
+  // setting to 2000 accelerates cyclic9mod but cyclic9 would be slower
+  // 32768 is enough for cyclic10mod without truncation and not too large for yang1
+  unsigned simult_primes=16,simult_primes2=16,simult_primes3=16,simult_primes_seuil2=-1,simult_primes_seuil3=-1; 
+  // gbasis modular algorithm on Q: simultaneous primes (more primes means more parallel threads but also more memory required)
+  double gbasis_reinject_ratio=0.2;
+  // gbasis modular algo on Q: if new basis element exceed this ratio, new elements are reinjected in the ideal generators for the remaining computations
+  double gbasis_reinject_speed_ratio=1/6.;
+  // gbasis modular algo on Q: new basis elements are reinjected if the 2nd run with learning CPU speed / 1st run without learning CPU speed is >=
+  int gbasis_logz_age_sort=0,gbasis_stop=0;
+  // rur_do_gbasis==-1 no gbasis Q recon for rur, ==0 always gbasis Q recon, >0 size limit in monomials of the gbasis for gbasis Q recon
+  // rur_do_certify==-1 do not certify, ==0 full certify, >0 certify equation if total degree is <= rur_do_certify. Beware of the 1 shift with the user command.
+  int rur_do_gbasis=-1,rur_do_certify=0,rur_certify_maxthreads=6;
   unsigned short int GIAC_PADIC=50;
   const char cas_suffixe[]=".cas";
-#if defined RTOS_THREADX || defined BESTA_OS
+  int MAX_PROD_EXPAND_SIZE=4096;
+#if defined RTOS_THREADX || defined BESTA_OS || defined(KHICAS)
 #ifdef BESTA_OS
   int LIST_SIZE_LIMIT = 100000 ;
   int FACTORIAL_SIZE_LIMIT = 1000 ;
@@ -1777,6 +2579,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 #else
   int LIST_SIZE_LIMIT = 1000 ;
   int FACTORIAL_SIZE_LIMIT = 254 ;
+  int CALL_LAPACK = 1111;
 #endif
   int GAMMA_LIMIT = 100 ;
   int NEWTON_DEFAULT_ITERATION=40;
@@ -1785,7 +2588,10 @@ extern "C" void Sleep(unsigned int miliSecond);
   int GCDHEU_DEGREE=100;
   int DEFAULT_EVAL_LEVEL=5;
   int MODFACTOR_PRIMES =5;
-  int NTL_MODGCD=50;
+  int NTL_MODGCD=1<<30; // default: ntl gcd disabled
+  int NTL_RESULTANT=382; 
+  int NTL_XGCD=50;
+  int HGCD=128;//16384;
   int HENSEL_QUADRATIC_POWER=25;
   int KARAMUL_SIZE=13;
   int INT_KARAMUL_SIZE=300;
@@ -1804,7 +2610,11 @@ extern "C" void Sleep(unsigned int miliSecond);
   const int BUFFER_SIZE=512;
 #else
   int CALL_LAPACK=1111;
-  int LIST_SIZE_LIMIT = 100000000 ;
+#if defined(EMCC) || defined(EMCC2)
+  int LIST_SIZE_LIMIT = 10000000 ;
+#else
+  int LIST_SIZE_LIMIT = 500000000 ;
+#endif
 #ifdef USE_GMP_REPLACEMENTS
   int FACTORIAL_SIZE_LIMIT = 10000 ;
 #else
@@ -1817,7 +2627,10 @@ extern "C" void Sleep(unsigned int miliSecond);
   int GCDHEU_DEGREE=100;
   int DEFAULT_EVAL_LEVEL=25;
   int MODFACTOR_PRIMES =5;
-  int NTL_MODGCD=50;
+  int NTL_MODGCD=1<<30; // default: ntl gcd disabled
+  int NTL_RESULTANT=382; 
+  int NTL_XGCD=50;
+  int HGCD=128;//16384;
   int HENSEL_QUADRATIC_POWER=25;
   int KARAMUL_SIZE=13;
   int INT_KARAMUL_SIZE=300;
@@ -1828,7 +2641,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 #else
   int MAX_ALG_EXT_ORDER_SIZE = 6;
 #endif
-#if defined EMCC || defined NO_TEMPLATE_MULTGCD
+#if defined EMCC || defined NO_TEMPLATE_MULTGCD || defined GIAC_HAS_STO_38
   int MAX_COMMON_ALG_EXT_ORDER_SIZE = 16;
 #else
   int MAX_COMMON_ALG_EXT_ORDER_SIZE = 64;
@@ -1843,7 +2656,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   // int GBASISF4_BUCHBERGER=5;
   const int BUFFER_SIZE=16384;
 #endif
-  volatile bool ctrl_c=false,interrupted=false;
+  volatile bool ctrl_c=false,interrupted=false,kbd_interrupted=false;
 #ifdef GIAC_HAS_STO_38
   double powlog2float=1e4;
   int MPZ_MAXLOG2=8600; // max 2^8600 about 1K
@@ -1856,6 +2669,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 #else
   int PROOT_FACTOR_MAXDEG=30;
 #endif
+  int MODRESULTANT=20;
   int ABS_NBITS_EVALF=1000;
 
   // used by WIN32 for the path to the xcas directory
@@ -1885,17 +2699,17 @@ extern "C" void Sleep(unsigned int miliSecond);
 
   void ctrl_c_signal_handler(int signum){
     ctrl_c=true;
-#if !defined NSPIRE_NEWLIB && !defined WIN32 && !defined BESTA_OS && !defined NSPIRE && !defined FXCG
+#if !defined KHICAS && !defined NSPIRE_NEWLIB && !defined WIN32 && !defined BESTA_OS && !defined NSPIRE && !defined FXCG && !defined POCKETCAS
     if (child_id)
       kill(child_id,SIGINT);
 #endif
 #if defined HAVE_SIGNAL_H && !defined HAVE_NO_SIGNAL_H
-    cerr << "Ctrl-C pressed (pid " << getpid() << ")" << endl;
+    cerr << "Ctrl-C pressed (pid " << getpid() << ")" << '\n';
 #endif
   }
 #if !defined NSPIRE && !defined FXCG
   gen catch_err(const std::runtime_error & error){
-    cerr << error.what() << endl;
+    cerr << error.what() << '\n';
     debug_ptr(0)->sst_at_stack.clear();
     debug_ptr(0)->current_instruction_stack.clear();
     debug_ptr(0)->args_stack.clear();
@@ -1944,7 +2758,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   volatile bool child_busy=false,data_ready=false;
   // child sends a SIGUSR1
   void data_signal_handler(int signum){
-          // cerr << "Parent called" << endl;
+          // cerr << "Parent called" << '\n';
     signal_plot_parent=false;
     child_busy=false;
     data_ready=true;
@@ -1955,7 +2769,7 @@ extern "C" void Sleep(unsigned int miliSecond);
     if (ctrl_c){
       ctrl_c=false;
       interrupted=true;
-      cerr << "Throwing exception" << endl;
+      cerr << "Throwing exception" << '\n';
       throw(std::runtime_error("Stopped by Ctrl-C"));
     }
   }
@@ -1963,14 +2777,14 @@ extern "C" void Sleep(unsigned int miliSecond);
 
   // child sends a SIGUSR2 (intermediate data)
   void plot_signal_handler(int signum){
-          // cerr << "Plot_signal_handler Parent called" << endl;
+          // cerr << "Plot_signal_handler Parent called" << '\n';
     signal_plot_parent=true;
     child_busy=false;
     data_ready=true;
   }
 
   void child_signal_handler(int signum){
-    // cerr << "Child called" << endl;
+    // cerr << "Child called" << '\n';
     signal_child=true;
   }
   
@@ -1988,7 +2802,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 #ifndef WIN32
     kill(parent_id,SIGUSR2);
 #endif
-    // cerr << "Child ready" << endl;
+    // cerr << "Child ready" << '\n';
 #ifndef WIN32
     while (!signal_plot_child)
       sigsuspend (&oldmask);
@@ -2041,7 +2855,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       sigprocmask (SIG_BLOCK, &mask, &oldmask);
       signal_child=false;
       for (;;){
-	// cerr << "Child ready" << endl;
+	// cerr << "Child ready" << '\n';
 #ifndef WIN32
 	while (!signal_child)
 	  sigsuspend (&oldmask);
@@ -2056,17 +2870,17 @@ extern "C" void Sleep(unsigned int miliSecond);
 	// Unarchive step
 	try {
 	  child_in >> rpn_mode(context0) >> global_window_ymin >> history_begin_level ;
-	  // cerr << args << endl;
+	  // cerr << args << '\n';
 	  if (history_begin_level<0){
 	    child_in >> synchronize_history;
 	    args=unarchive(child_in,context0);
 	    if (!synchronize_history){
-	      // cerr << "No sync " << endl;
+	      // cerr << "No sync " << '\n';
 	      history_in(0)[-history_begin_level-1]=args;
 	      history_out(0)=subvect(history_out(0),-history_begin_level-1);
 	    }
 	    else {
-	      // cerr << " Sync " << endl;
+	      // cerr << " Sync " << '\n';
 	      history_in(0)=*args._VECTptr;
 	      args=unarchive(child_in,context0);
 	      history_out(0)=*args._VECTptr;
@@ -2074,15 +2888,15 @@ extern "C" void Sleep(unsigned int miliSecond);
 	  }
 	  else {
 	    args=unarchive(child_in,context0);
-	    // cerr << "Lu1 " << args << endl;
+	    // cerr << "Lu1 " << args << '\n';
 	    if (history_begin_level>signed(history_in(context0).size()))
 	      history_begin_level=history_in(context0).size();
 	    history_in(0)=mergevecteur(subvect(history_in(context0),history_begin_level),*args._VECTptr);
 	    args=unarchive(child_in,context0);
-	    // cerr << "Lu2 " << args << endl;
+	    // cerr << "Lu2 " << args << '\n';
 	    history_out(0)=mergevecteur(subvect(history_out(context0),history_begin_level),*args._VECTptr);
 	    args=unarchive(child_in,context0);
-	    // cerr << "Lu3 " << args << endl;
+	    // cerr << "Lu3 " << args << '\n';
 	    history_in(0).push_back(args);
 	  }
 	}
@@ -2091,7 +2905,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	  args = string2gen("Child unarchive error:"+string(error.what()),false);
 	}
 	child_in.close();
-	// cerr << args << endl;
+	// cerr << args << '\n';
 	// output result of evaluation to child_out
 	gen args_evaled;
 	{ // BEGIN of old try block
@@ -2117,7 +2931,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	  else {
 	    if ( (args.type!=_VECT) || (args.subtype!=_RUNFILE__VECT) ){
 	      if (debug_infolevel>10)
-		cerr << "Child eval " << args << endl;
+		cerr << "Child eval " << args << '\n';
 	      try {
 		args_evaled=args.eval(1,context0);
 	      }
@@ -2127,7 +2941,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	      }
 	      history_out(context0).push_back(args_evaled);
 	      if (debug_infolevel>10)
-		cerr << "Child result " << args_evaled << endl;
+		cerr << "Child result " << args_evaled << '\n';
 	    }
 	    else {
 	      vecteur v;
@@ -2147,7 +2961,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 		  last_evaled_argptr(contextptr)=NULL;
 		  args_evaled=catch_err(error);
 		}
-		// cerr << args_evaled << endl;
+		// cerr << args_evaled << '\n';
 		history_out(context0).push_back(args_evaled);
 		v.push_back(args_evaled);
 		ofstream child_out(cas_sortie_name().c_str());
@@ -2155,7 +2969,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 		archive(child_out,args_evaled,context0);
 		child_out << messages_to_print << "ÿ" ;
 		child_out.close();
-		// cerr << "Signal reads " << res << endl;
+		// cerr << "Signal reads " << res << '\n';
 		kill_and_wait_sigusr2();
 	      }
 	      // args_evaled=gen(v,args.subtype);
@@ -2173,10 +2987,10 @@ extern "C" void Sleep(unsigned int miliSecond);
 	child_out << messages_to_print ;
 	int mm=messages_to_print.size();
 	if (mm && (messages_to_print[mm-1]!='\n'))
-	  child_out << endl;
+	  child_out << '\n';
 	child_out << "Time: " << elapsed << "ÿ" ;
 	child_out.close();
-	// cerr << "Child sending signal to " << parent_id << endl;
+	// cerr << "Child sending signal to " << parent_id << '\n';
 	/* Wait for a signal to arrive. */
 	sigprocmask (SIG_BLOCK, &mask, &oldmask);
 	signal_child=false;
@@ -2185,13 +2999,13 @@ extern "C" void Sleep(unsigned int miliSecond);
 #endif
       }
     }
-    // cerr << "Forking " << parent_id << " " << child_id << endl;
+    // cerr << "Forking " << parent_id << " " << child_id << '\n';
     return child_id;
 #endif // HAVE_NO_SIGNAL_H
   }
 
   static void archive_write_error(){
-    cerr << "Archive error on " << cas_entree_name() << endl;
+    cerr << "Archive error on " << cas_entree_name() << '\n';
   }
   
   // return true if entree has been sent to evalation by child process
@@ -2214,7 +3028,7 @@ extern "C" void Sleep(unsigned int miliSecond);
     try {
       ofstream parent_out(cas_entree_name().c_str());
       if (!signal_plot_parent){
-	parent_out << rpn_mode(context0) << " " << global_window_ymin << " " << history_begin_level << endl;
+	parent_out << rpn_mode(context0) << " " << global_window_ymin << " " << history_begin_level << '\n';
 	archive(parent_out,vecteur(history_in(context0).begin()+history_begin_level,history_in(context0).end()),context0);
 	archive(parent_out,vecteur(history_out(context0).begin()+history_begin_level,history_out(context0).end()),context0);
       }
@@ -2250,20 +3064,20 @@ extern "C" void Sleep(unsigned int miliSecond);
     }
     child_busy=true;
     if (signal_plot_parent){
-      // cerr << "child_eval: Sending SIGUSR2 to child" << endl;
+      // cerr << "child_eval: Sending SIGUSR2 to child" << '\n';
       signal_plot_parent=false;
 #ifndef WIN32
       kill(child_id,SIGUSR2);
 #endif
       return true;
     }
-    // cerr << "Sending SIGUSR1 to " << child_id << endl;
+    // cerr << "Sending SIGUSR1 to " << child_id << '\n';
 #ifndef WIN32
     kill(child_id,SIGUSR1);
 #endif
     running_file=is_run_file;
     end = CLOCK();
-    // cerr << "# Save time" << double(end-start)/CLOCKS_PER_SEC << endl;
+    // cerr << "# Save time" << double(end-start)/CLOCKS_PER_SEC << '\n';
     return true;
 #endif /// HAVE_NO_SIGNAL_H
   }
@@ -2281,7 +3095,7 @@ extern "C" void Sleep(unsigned int miliSecond);
     messages_to_print="";
     try {
       ofstream parent_out(cas_entree_name().c_str());
-      parent_out << rpn_mode(context0) << " " << global_window_ymin << " " << -1-history_begin_level << " " << synchronize_history << endl;
+      parent_out << rpn_mode(context0) << " " << global_window_ymin << " " << -1-history_begin_level << " " << synchronize_history << '\n';
       if (synchronize_history){
 	archive(parent_out,history_in(context0),context0);
 	archive(parent_out,vecteur(history_out(context0).begin(),history_out(context0).begin()+history_begin_level),context0);
@@ -2319,7 +3133,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       sortie=*it;
       if (sortie.type==_POINTER_ && sortie.subtype==_FL_WIDGET_POINTER && fl_widget_updatepict_function){
 	sortie = fl_widget_updatepict_function(sortie);
-	// cerr << "updatepict" << sortie << endl;
+	// cerr << "updatepict" << sortie << '\n';
       }
       if ( (sortie.type==_SYMB) && equalposcomp(plot_sommets,sortie._SYMBptr->sommet)){
 #ifdef WITH_GNUPLOT
@@ -2386,29 +3200,29 @@ extern "C" void Sleep(unsigned int miliSecond);
     // are overwritten
     debug_ptr(contextptr)->debug_mode=false;
     if (signal_plot_parent){
-      // cerr << "Child signaled " << entree << " " << sortie << endl;
+      // cerr << "Child signaled " << entree << " " << sortie << '\n';
       if ( entree.type==_SYMB ){
 	if ( (entree._SYMBptr->sommet==at_click && entree._SYMBptr->feuille.type==_VECT && entree._SYMBptr->feuille._VECTptr->empty() ) 
 	     || (entree._SYMBptr->sommet==at_debug) 
 	     ) {
 	  debug_ptr(contextptr)->debug_mode=(entree._SYMBptr->sommet==at_debug);
-	  // cerr << "Child waiting" << endl;
+	  // cerr << "Child waiting" << '\n';
 	  data_ready=false;
 	  *debug_ptr(contextptr)->debug_info_ptr=entree._SYMBptr->feuille;
 	  debug_ptr(contextptr)->debug_refresh=true;
 	  return true;
 	}
 	if ( entree._SYMBptr->sommet==at_click || entree._SYMBptr->sommet==at_inputform || entree._SYMBptr->sommet==at_interactive ){
-	  // cerr << entree << endl;
+	  // cerr << entree << '\n';
 	  gen res=entree.eval(1,contextptr);
-	  // cerr << res << endl;
+	  // cerr << res << '\n';
 	  ofstream parent_out(cas_entree_name().c_str());
 	  archive(parent_out,res,contextptr);
 	  parent_out.close();
 	  signal_child_ok();
 	  return true;
 	}
-	// cerr << "Child signaled " << entree << " " << sortie << endl;
+	// cerr << "Child signaled " << entree << " " << sortie << '\n';
       }
       if (sortie.type==_SYMB){
 	if (sortie._SYMBptr->sommet==at_SetFold){
@@ -2418,7 +3232,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	}
 	if (sortie._SYMBptr->sommet==at_sto && sortie._SYMBptr->feuille.type==_VECT){
 	  vecteur & v=*sortie._SYMBptr->feuille._VECTptr;
-	  // cerr << v << endl;
+	  // cerr << v << '\n';
 	  if ((v.size()==2) && (v[1].type==_IDNT)){
 	    if (v[1]._IDNTptr->value)
 	      delete v[1]._IDNTptr->value;
@@ -2475,7 +3289,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	return false;
       }
     } // end signal_plot_parent
-    // cerr << "# Parse time" << double(end-start)/CLOCKS_PER_SEC << endl;
+    // cerr << "# Parse time" << double(end-start)/CLOCKS_PER_SEC << '\n';
     // see if it's a PICT update
     vecteur args;
     // update history
@@ -2541,7 +3355,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	// for PICT update
 	int i=erase_pos(contextptr);
 	args=vecteur(history_out(contextptr).begin()+i,history_out(contextptr).end());
-	// CERR << "PICT clear" << endl;
+	// CERR << "PICT clear" << '\n';
 #ifdef WITH_GNUPLOT
 	plot_instructions.clear();
 #endif
@@ -2557,7 +3371,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
   static void archive_read_error(){
-    CERR << "Read error on " << cas_sortie_name() << endl;
+    CERR << "Read error on " << cas_sortie_name() << '\n';
     data_ready=false;
 #ifndef WIN32
     if (child_id)
@@ -2617,7 +3431,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       return "";
     uid_t u=getuid();
     passwd * p=getpwuid(u);
-    s=p->pw_dir;
+    if (p) s=p->pw_dir;
     return s+"/";
 #endif
 #endif
@@ -2646,11 +3460,11 @@ extern "C" void Sleep(unsigned int miliSecond);
 #endif
   
   void read_config(const string & name,GIAC_CONTEXT,bool verbose){
-#if !defined NSPIRE && !defined FXCG
+#if !defined NSPIRE && !defined FXCG && !defined GIAC_HAS_STO_38
 #if !defined __MINGW_H 
     if (access(name.c_str(),R_OK)) {
       if (verbose)
-	CERR << "// Unable to find config file " << name << endl;
+	CERR << "// Unable to find config file " << name << '\n';
       return;
     }
 #endif
@@ -2659,23 +3473,23 @@ extern "C" void Sleep(unsigned int miliSecond);
       return;
     vecteur args;
     if (verbose)
-      CERR << "// Reading config file " << name << endl;
+      CERR << "// Reading config file " << name << '\n';
     readargs_from_stream(inf,args,contextptr);
     gen g(args);
     if (debug_infolevel || verbose)    
-      CERR << g << endl;
+      CERR << g << '\n';
     g.eval(1,contextptr);
     if (verbose){
-      CERR << "// User configuration done" << endl;
-      CERR << "// Maximum number of parallel threads " << threads << endl;
-      CERR << "Threads allowed " << threads_allowed << endl;
+      CERR << "// User configuration done" << '\n';
+      CERR << "// Maximum number of parallel threads " << threads << '\n';
+      CERR << "Threads allowed " << threads_allowed << '\n';
     }
     if (debug_infolevel){
 #ifdef HASH_MAP_NAMESPACE
-      CERR << "Using hash_map_namespace"<< endl;
+      CERR << "Using hash_map_namespace"<< '\n';
 #endif
-      CERR << "Mpz_class allowed " << mpzclass_allowed << endl;
-      // CERR << "Heap multiplication " << heap_mult << endl;
+      CERR << "Mpz_class allowed " << mpzclass_allowed << '\n';
+      // CERR << "Heap multiplication " << heap_mult << '\n';
     }
 #endif
   }
@@ -2697,7 +3511,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       if (s.size()<2 && getenv("XCAS_ROOT")){
 	s=getenv("XCAS_ROOT");
 	if (debug_infolevel || verbose)
-	  CERR << "Found XCAS_ROOT " << s << endl;
+	  CERR << "Found XCAS_ROOT " << s << '\n';
       }
 #endif // GNUWINCE
 #else
@@ -2714,17 +3528,21 @@ extern "C" void Sleep(unsigned int miliSecond);
     }
     catch (std::runtime_error & e){
       last_evaled_argptr(contextptr)=NULL;
-      CERR << "Error in config file " << xcasrc() << " " << e.what() << endl;
+      CERR << "Error in config file " << xcasrc() << " " << e.what() << '\n';
     }
 #endif
   }
 
   string giac_aide_dir(){
-#if defined __MINGW_H || defined NSPIRE || defined FXCG
+#if defined NSPIRE || defined FXCG || defined MINGW32
     return xcasroot();
 #else
     if (!access((xcasroot()+"aide_cas").c_str(),R_OK)){
       return xcasroot();
+    }
+    if (getenv("XCAS_ROOT")){
+      string s=getenv("XCAS_ROOT");
+      return s;
     }
     if (xcasroot().size()>4 && xcasroot().substr(xcasroot().size()-4,4)=="bin/"){
       string s(xcasroot().substr(0,xcasroot().size()-4));
@@ -2736,20 +3554,16 @@ extern "C" void Sleep(unsigned int miliSecond);
 #ifdef __APPLE__
     if (!access("/Applications/usr/share/giac/",R_OK))
       return "/Applications/usr/share/giac/";
-    if (getenv("XCAS_ROOT")){
-      string s=getenv("XCAS_ROOT");
-      return s;
-    }
     return "/Applications/usr/share/giac/";
 #endif
-#ifdef WIN32
+#if defined WIN32 && !defined MINGW
     return "/cygdrive/c/xcas/";
 #endif
     string s(giac_aide_location); // ".../aide_cas"
     // test if aide_cas is there, if not test at xcasroot() return ""
     if (!access(s.c_str(),R_OK)){
       s=s.substr(0,s.size()-8);
-      CERR << "// Giac share root-directory:" << s << endl;
+      CERR << "// Giac share root-directory:" << s << '\n';
       return s;
     }
     return "";
@@ -2834,7 +3648,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   bool is_file_available(const char * ch){
     if (!ch)
       return false;
-#if !defined __MINGW_H && !defined NSPIRE && !defined FXCG
+#if !defined NSPIRE && !defined FXCG && !defined MINGW32
     if (access(ch,R_OK))
       return false;
 #endif
@@ -2888,7 +3702,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
   string browser_command(const string & orig_file){
-#if defined __MINGW_H || defined NSPIRE || defined FXCG
+#if defined NSPIRE || defined FXCG || defined MINGW32
     return "";
 #else
     string file=orig_file;
@@ -2909,7 +3723,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       s="file:"+s+file;
     }
     if (debug_infolevel)
-      CERR << s << endl;
+      CERR << s << '\n';
 #ifdef WIN32
     bool with_firefox=false;
     /*
@@ -2937,7 +3751,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	  s1="c:/xcas/";
 	s1 += s.substr(5,s.size()-5);
       }
-      CERR << "s1=" << s1 << endl;
+      CERR << "s1=" << s1 << '\n';
       string s2;
       if (with_firefox)
 	s2=s1;
@@ -2950,7 +3764,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	    s2+=s1[i];
 	}
       }
-      CERR << "s2=" << s2 << endl;
+      CERR << "s2=" << s2 << '\n';
       s=s2;
       // s="file:"+s2;
       // s = s.substr(0,5)+"C:\\\\xcas\\\\"+s2;
@@ -3019,13 +3833,13 @@ extern "C" void Sleep(unsigned int miliSecond);
       s=browser+" "+s+" &";
 #endif
     //if (debug_infolevel)
-      CERR << "// Running command:"+ s<<endl;
+      CERR << "// Running command:"+ s<<'\n';
     return s;
 #endif // __MINGW_H
   }
 
   bool system_browser_command(const string & file){
-#ifdef BESTA_OS
+#if defined BESTA_OS || defined POCKETCAS
     return false;
 #else
 #ifdef WIN32
@@ -3041,7 +3855,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       }
       if (ss && res[ss]!='.')
 	res=res.substr(0,ss);
-      CERR << res << endl;
+      CERR << res << '\n';
 #if !defined VISUALC && !defined __MINGW_H && !defined NSPIRE && !defined FXCG
       /* If we have a POSIX path list, convert to win32 path list */
       const char *_epath;
@@ -3061,11 +3875,22 @@ extern "C" void Sleep(unsigned int miliSecond);
       }
 #endif
     }
-    CERR << res << endl;
-#if !defined VISUALC && !defined __MINGW_H && !defined NSPIRE && !defined FXCG
+    CERR << res << '\n';
+#if !defined VISUALC && !defined NSPIRE && !defined FXCG
+#ifdef __MINGW_H
+    while (res.size()>=2 && res.substr(0,2)=="./")
+      res=res.substr(2,res.size()-2);
+    if (res.size()<4 || res.substr(0,4)!="http")
+      res = "file:///c:/xcaswin/"+res;
+    CERR << "running open on " << res << '\n';
+    //ShellExecute(NULL,"open","file:///c:/xcaswin/doc/fr/cascmd_fr/index.html",\
+NULL,NULL,SW_SHOWNORMAL);
+    ShellExecute(NULL,"open",res.c_str(),NULL,NULL,SW_SHOWNORMAL);
+#else
     // FIXME: works under visualc but not using /UNICODE flag
     // find correct flag
     ShellExecute(NULL,NULL,res.c_str(),NULL,NULL,1);
+#endif
 #endif
     return true;
 #else
@@ -3189,7 +4014,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       int n=int(vector_aide_ptr()->size());
       for (int k=0;k<n;++k){
 	if (debug_infolevel>10)
-	  CERR << "+ " << (*vector_aide_ptr())[k].cmd_name  << endl;
+	  CERR << "+ " << (*vector_aide_ptr())[k].cmd_name  << '\n';
 	vector_completions_ptr()->push_back((*vector_aide_ptr())[k].cmd_name);
       }
     }
@@ -3202,12 +4027,12 @@ extern "C" void Sleep(unsigned int miliSecond);
     if (!equalposcomp(lexer_localization_vector(),i)){
       lexer_localization_vector().push_back(i);
       update_lexer_localization(lexer_localization_vector(),lexer_localization_map(),back_lexer_localization_map(),contextptr);
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
       if (vector_aide_ptr()){
 	// add locale command description
 	int count;
 	string filename=giac_aide_dir()+find_doc_prefix(i)+"aide_cas";
-	readhelp(*vector_aide_ptr(),filename.c_str(),count,true);
+	readhelp(*vector_aide_ptr(),filename.c_str(),count,false);
 	// add synonyms
 	multimap<string,localized_string>::iterator it,backend=back_lexer_localization_map().end(),itend;
 	vector<aide>::iterator jt = vector_aide_ptr()->begin(),jtend=vector_aide_ptr()->end();
@@ -3236,7 +4061,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	    }
 	  }
 	}
-	CERR << "Added " << vector_aide_ptr()->size()-s << " synonyms" << endl;
+	CERR << "Added " << vector_aide_ptr()->size()-s << " synonyms" << '\n';
 	sort(vector_aide_ptr()->begin(),vector_aide_ptr()->end(),alpha_order);
 	update_completions();
       }
@@ -3300,7 +4125,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
   std::string set_language(int i,GIAC_CONTEXT){
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
     if (language(contextptr)!=i){
       language(i,contextptr);
       add_language(i,contextptr);
@@ -3308,6 +4133,9 @@ extern "C" void Sleep(unsigned int miliSecond);
 #else
     language(i,contextptr);
     add_language(i,contextptr);
+#endif
+#ifdef KHICAS
+    lang=i;
 #endif
     return find_doc_prefix(i);
   }
@@ -3318,69 +4146,69 @@ extern "C" void Sleep(unsigned int miliSecond);
     if (getenv("GIAC_LAPACK")){
       CALL_LAPACK=atoi(getenv("GIAC_LAPACK"));
       if (verbose)
-	CERR << "// Will call lapack if dimension is >=" << CALL_LAPACK << endl;
+	CERR << "// Will call lapack if dimension is >=" << CALL_LAPACK << '\n';
     }
     if (getenv("GIAC_PADIC")){
       GIAC_PADIC=atoi(getenv("GIAC_PADIC"));
       if (verbose)
-	CERR << "// Will use p-adic algorithm if dimension is >=" << GIAC_PADIC << endl;
+	CERR << "// Will use p-adic algorithm if dimension is >=" << GIAC_PADIC << '\n';
     }
 #endif
 #endif
     if (getenv("XCAS_RPN")){
       if (verbose)
-	CERR << "// Setting RPN mode" << endl;
+	CERR << "// Setting RPN mode" << '\n';
       rpn_mode(contextptr)=true;
     }
     if (getenv("GIAC_XCAS_MODE")){
       xcas_mode(contextptr)=atoi(getenv("GIAC_XCAS_MODE"));
       if (verbose)
-	CERR << "// Setting maple mode " << xcas_mode(contextptr) << endl;
+	CERR << "// Setting maple mode " << xcas_mode(contextptr) << '\n';
     }
     if (getenv("GIAC_C")){
       xcas_mode(contextptr)=0;
       if (verbose)
-	CERR << "// Setting giac C mode" << endl;
+	CERR << "// Setting giac C mode" << '\n';
     }
     if (getenv("GIAC_MAPLE")){
       xcas_mode(contextptr)=1;
       if (verbose)
-	CERR << "// Setting giac maple mode" << endl;
+	CERR << "// Setting giac maple mode" << '\n';
     }
     if (getenv("GIAC_MUPAD")){
       xcas_mode(contextptr)=2;
       if (verbose)
-	CERR << "// Setting giac mupad mode" << endl;
+	CERR << "// Setting giac mupad mode" << '\n';
     }
     if (getenv("GIAC_TI")){
       xcas_mode(contextptr)=3;
       if (verbose)
-	CERR << "// Setting giac TI mode" << endl;
+	CERR << "// Setting giac TI mode" << '\n';
     }
     if (getenv("GIAC_MONO")){
       if (verbose)
-	CERR << "// Threads polynomial * disabled" << endl;
+	CERR << "// Threads polynomial * disabled" << '\n';
       threads_allowed=false;
     }
     if (getenv("GIAC_MPZCLASS")){
       if (verbose)
-	CERR << "// mpz_class enabled" << endl;
+	CERR << "// mpz_class enabled" << '\n';
       mpzclass_allowed=true;
     }
     if (getenv("GIAC_DEBUG")){
       debug_infolevel=atoi(getenv("GIAC_DEBUG"));
-      CERR << "// Setting debug_infolevel to " << debug_infolevel << endl;
+      CERR << "// Setting debug_infolevel to " << debug_infolevel << '\n';
     }
     if (getenv("GIAC_PRINTPROG")){ 
       // force print of prog at parse, 256 for python compat mode print
       printprog=atoi(getenv("GIAC_PRINTPROG"));
-      CERR << "// Setting printprog to " << printprog << endl;
+      CERR << "// Setting printprog to " << printprog << '\n';
     }
     string s;
     if (getenv("LANG"))
       s=getenv("LANG");
     else { // __APPLE__ workaround
-#if !defined VISUALC && !defined __MINGW_H && !defined NSPIRE && !defined FXCG
+#if !defined VISUALC && !defined NSPIRE && !defined FXCG
       if (!strcmp(gettext("File"),"Fich")){
 	setenv("LANG","fr_FR.UTF8",1);
 	s="fr_FR.UTF8";
@@ -3388,6 +4216,10 @@ extern "C" void Sleep(unsigned int miliSecond);
       else {
 	s="en_US.UTF8";
 	setenv("LANG",s.c_str(),1);
+      }
+      if (!strcmp(gettext("File"),"Datei")){
+	setenv("LANG","de_DE.UTF8",1);
+	s="de_DE.UTF8";
       }
 #endif
     }
@@ -3408,7 +4240,7 @@ extern "C" void Sleep(unsigned int miliSecond);
     s += print_VECT(cas_setup(contextptr),_SEQ__VECT,contextptr);
     s += "),";
     s += "xcas_mode(";
-    s += print_INT_(xcas_mode(contextptr)+(python_compat(contextptr)?256:0));
+    s += print_INT_(xcas_mode(contextptr)+python_compat(contextptr)*256);
     s += ")";
     return s;
   }
@@ -3446,7 +4278,7 @@ extern "C" void Sleep(unsigned int miliSecond);
     return *ans;
   }
   context::context() { 
-    // CERR << "new context " << this << endl;
+    // CERR << "new context " << this << '\n';
     parent=0;
     tabptr=new sym_tab; 
     globalcontextptr=this; previous=0; globalptr=new global; 
@@ -3465,11 +4297,11 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
 #ifndef RTOS_THREADX
-#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG
+#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG && !defined(KHICAS)
   std::map<std::string,context *> * context_names = new std::map<std::string,context *> ;
 
   context::context(const string & name) { 
-    // CERR << "new context " << this << endl;
+    // CERR << "new context " << this << '\n';
     parent=0;
     tabptr=new sym_tab; 
     globalcontextptr=this; previous=0; globalptr=new global; 
@@ -3503,7 +4335,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 
   void init_context(context * ptr){
     if (!ptr){
-      CERR << "init_context on null context" << endl;
+      CERR << "init_context on null context" << '\n';
       return;
     }
      ptr->globalptr->_xcas_mode_=_xcas_mode_;
@@ -3535,6 +4367,9 @@ extern "C" void Sleep(unsigned int miliSecond);
      ptr->globalptr->_atan_tan_no_floor_=_atan_tan_no_floor_;
      ptr->globalptr->_keep_acosh_asinh_=_keep_acosh_asinh_;
      ptr->globalptr->_keep_algext_=_keep_algext_;
+     ptr->globalptr->_auto_assume_=_auto_assume_;
+     ptr->globalptr->_parse_e_=_parse_e_;
+     ptr->globalptr->_convert_rootof_=_convert_rootof_;
      ptr->globalptr->_python_compat_=_python_compat_;
      ptr->globalptr->_complex_variables_=_complex_variables_;
      ptr->globalptr->_increasing_power_=_increasing_power_;
@@ -3589,7 +4424,7 @@ extern "C" void Sleep(unsigned int miliSecond);
   }
 
   context::~context(){
-    // CERR << "delete context " << this << endl;
+    // CERR << "delete context " << this << '\n';
     if (!previous){
       if (history_in_ptr)
 	delete history_in_ptr;
@@ -3616,7 +4451,7 @@ extern "C" void Sleep(unsigned int miliSecond);
 	}
       }
 #ifndef RTOS_THREADX
-#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG
+#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG && !defined(KHICAS)
       if (context_names){
 	map<string,context *>::iterator it=context_names->begin(),itend=context_names->end();
 	for (;it!=itend;++it){
@@ -3640,12 +4475,16 @@ extern "C" void Sleep(unsigned int miliSecond);
 
 #ifndef HAVE_NO_SYS_TIMES_H
    double delta_tms(struct tms tmp1,struct tms tmp2){
-#if defined(HAVE_SYSCONF) && !defined(EMCC)
+#if defined(HAVE_SYSCONF) && !defined(EMCC) && !defined(EMCC2)
      return double( tmp2.tms_utime+tmp2.tms_stime+tmp2.tms_cutime+tmp2.tms_cstime-(tmp1.tms_utime+tmp1.tms_stime+tmp1.tms_cutime+tmp1.tms_cstime) )/sysconf(_SC_CLK_TCK);
 #else
     return double( tmp2.tms_utime+tmp2.tms_stime+tmp2.tms_cutime+tmp2.tms_cstime-(tmp1.tms_utime+tmp1.tms_stime+tmp1.tms_cutime+tmp1.tms_cstime) )/CLK_TCK;
 #endif
    }
+#elif defined(__MINGW_H)
+  double delta_tms(clock_t tmp1,clock_t tmp2) {
+    return (double)(tmp2-tmp1)/CLOCKS_PER_SEC;
+  }
 #endif /// HAVE_NO_SYS_TIMES_H
 
   string remove_filename(const string & s){
@@ -3754,11 +4593,11 @@ extern "C" void Sleep(unsigned int miliSecond);
 	pthread_mutex_unlock(mutexptr(contextptr));
 	// double tt=double(tp.v[4].val)/CLOCKS_PER_SEC;
 	if (tt>0.4)
-	  (*logptr(contextptr)) << gettext("\nEvaluation time: ") << tt << endl;
+	  (*logptr(contextptr)) << gettext("\nEvaluation time: ") << tt << '\n';
 	if (f)
 	  f(arg_callback,param_callback);
 	else
-	  (*logptr(contextptr)) << arg_callback << endl;
+	  (*logptr(contextptr)) << arg_callback << '\n';
 	return 0;
       }
     }
@@ -3769,8 +4608,8 @@ extern "C" void Sleep(unsigned int miliSecond);
       cleanup_context(contextptr);
       if (tp.f)
 	tp.f(string2gen("Aborted",false),tp.f_param);
-#ifndef __MINGW_H
-      *logptr(contextptr) << gettext("Thread ") << tp.eval_thread << " has been cancelled" << endl;
+#if !defined __MINGW_H && !defined KHICAS
+      *logptr(contextptr) << gettext("Thread ") << tp.eval_thread << " has been cancelled" << '\n';
 #endif
 #ifdef NO_STDEXCEPT
       pthread_cancel(tp.eval_thread) ;
@@ -3839,8 +4678,8 @@ extern "C" void Sleep(unsigned int miliSecond);
 	  kill_thread(false,contextptr);
 	  clear_prog_status(contextptr);
 	  cleanup_context(contextptr);
-#ifndef __MINGW_H
-	  *logptr(contextptr) << gettext("Cancel thread ") << eval_thread << endl;
+#if !defined __MINGW_H && !defined KHICAS
+	  *logptr(contextptr) << gettext("Cancel thread ") << eval_thread << '\n';
 #endif
 #ifdef NO_STDEXCEPT
 	  pthread_cancel(eval_thread) ;
@@ -3862,7 +4701,7 @@ extern "C" void Sleep(unsigned int miliSecond);
       // double tt=double(v[4].val)/CLOCKS_PER_SEC;
       double tt=v[4]._DOUBLE_val;
       if (tt>0.1)
-	(*logptr(contextptr)) << gettext("Evaluation time: ") << tt << endl;
+	(*logptr(contextptr)) << gettext("Evaluation time: ") << tt << '\n';
       return v[5];
     }
     pthread_mutex_unlock(mutexptr(contextptr));
@@ -3966,9 +4805,19 @@ extern "C" void Sleep(unsigned int miliSecond);
 		     _withsqrt_(true), 
 		     _show_point_(true),  _io_graph_(true),
 		     _all_trig_sol_(false),
-#ifdef WITH_MYOSTREAM
+#ifdef __MINGW_H
+		     _ntl_on_(false),
+#else
 		     _ntl_on_(true),
-		     _lexer_close_parenthesis_(true),_rpn_mode_(false),_try_parse_i_(true),_specialtexprint_double_(false),_atan_tan_no_floor_(false),_keep_acosh_asinh_(false),_keep_algext_(false),_python_compat_(false),_angle_mode_(0), _bounded_function_no_(0), _series_flags_(0x3),_step_infolevel_(0),_default_color_(FL_BLACK), _epsilon_(1e-12), _proba_epsilon_(1e-15),  _show_axes_(1),_spread_Row_ (-1), _spread_Col_ (-1),_logptr_(&my_CERR),_prog_eval_level_val(1), _eval_level(DEFAULT_EVAL_LEVEL), _rand_seed(123457),_last_evaled_function_name_(0),_currently_scanned_(""),_last_evaled_argptr_(0),_max_sum_sqrt_(3),
+#endif
+#ifdef WITH_MYOSTREAM
+		     _lexer_close_parenthesis_(true),_rpn_mode_(false),_try_parse_i_(true),_specialtexprint_double_(false),_atan_tan_no_floor_(false),_keep_acosh_asinh_(false),_keep_algext_(false),_auto_assume_(false),_parse_e_(false),_convert_rootof_(true),
+#ifdef KHICAS
+		     _python_compat_(true),
+#else
+		     _python_compat_(false),
+#endif
+		     _angle_mode_(0), _bounded_function_no_(0), _series_flags_(0x3),_step_infolevel_(0),_default_color_(FL_BLACK), _epsilon_(1e-12), _proba_epsilon_(1e-15),  _show_axes_(1),_spread_Row_ (-1), _spread_Col_ (-1),_logptr_(&my_CERR),_prog_eval_level_val(1), _eval_level(DEFAULT_EVAL_LEVEL), _rand_seed(123457),_last_evaled_function_name_(0),_currently_scanned_(""),_last_evaled_argptr_(0),_max_sum_sqrt_(3),
 #ifdef GIAC_HAS_STO_38 // Prime sum(x^2,x,0,100000) crash on hardware	
 		     _max_sum_add_(10000),
 #else
@@ -3976,15 +4825,24 @@ extern "C" void Sleep(unsigned int miliSecond);
 #endif
 		     _total_time_(0),_evaled_table_(0),_extra_ptr_(0),_series_variable_name_('h'),_series_default_order_(5),
 #else
-		     _ntl_on_(true),
-		     _lexer_close_parenthesis_(true),_rpn_mode_(false),_try_parse_i_(true),_specialtexprint_double_(false),_atan_tan_no_floor_(false),_keep_acosh_asinh_(false),_keep_algext_(false),_python_compat_(false),_angle_mode_(0), _bounded_function_no_(0), _series_flags_(0x3),_step_infolevel_(0),_default_color_(FL_BLACK), _epsilon_(1e-12), _proba_epsilon_(1e-15),  _show_axes_(1),_spread_Row_ (-1), _spread_Col_ (-1), 
-#ifdef EMCC
+		     _lexer_close_parenthesis_(true),_rpn_mode_(false),_try_parse_i_(true),_specialtexprint_double_(false),_atan_tan_no_floor_(false),_keep_acosh_asinh_(false),_keep_algext_(false),_auto_assume_(false),_parse_e_(false),_convert_rootof_(true),
+#ifdef KHICAS
+		     _python_compat_(true),
+#else
+		     _python_compat_(false),
+#endif
+		     _angle_mode_(0), _bounded_function_no_(0), _series_flags_(0x3),_step_infolevel_(0),_default_color_(FL_BLACK), _epsilon_(1e-12), _proba_epsilon_(1e-15),  _show_axes_(1),_spread_Row_ (-1), _spread_Col_ (-1), 
+#if defined(EMCC) || defined(EMCC2)
 		     _logptr_(&COUT), 
 #else
 #ifdef FXCG
 		     _logptr_(0),
 #else
+#ifdef KHICAS
+		     _logptr_(&os_cerr),
+#else
 		     _logptr_(&CERR),
+#endif
 #endif
 #endif
 		     _prog_eval_level_val(1), _eval_level(DEFAULT_EVAL_LEVEL), _rand_seed(123457),_last_evaled_function_name_(0),_currently_scanned_(""),_last_evaled_argptr_(0),_max_sum_sqrt_(3),
@@ -3997,7 +4855,9 @@ extern "C" void Sleep(unsigned int miliSecond);
 #endif
   { 
     _pl._i_sqrt_minus1_=1;
+#ifndef KHICAS
     _turtle_stack_.push_back(_turtle_);
+#endif
     _debug_ptr=new debug_struct;
     _thread_param_ptr=new thread_param;
     _parsed_genptr_=new gen;
@@ -4047,6 +4907,9 @@ extern "C" void Sleep(unsigned int miliSecond);
      _atan_tan_no_floor_=g._atan_tan_no_floor_;
      _keep_acosh_asinh_=g._keep_acosh_asinh_;
      _keep_algext_=g._keep_algext_;
+     _auto_assume_=g._auto_assume_;
+     _parse_e_=g._parse_e_;
+     _convert_rootof_=g._convert_rootof_;
      _python_compat_=g._python_compat_;
      _variables_are_files_=g._variables_are_files_;
      _bounded_function_no_=g._bounded_function_no_;
@@ -4076,7 +4939,9 @@ extern "C" void Sleep(unsigned int miliSecond);
      _max_sum_sqrt_=g._max_sum_sqrt_;
      _max_sum_add_=g._max_sum_add_;
      _turtle_=g._turtle_;
+#ifndef KHICAS
      _turtle_stack_=g._turtle_stack_;
+#endif
      _autoname_=g._autoname_;
      _format_double_=g._format_double_;
      _extra_ptr_=g._extra_ptr_;
@@ -4403,9 +5268,29 @@ Boolean isLegalUTF8Sequence(const UTF8 *source, const UTF8 *sourceEnd) {
 
 /* --------------------------------------------------------------------- */
 
-unsigned int ConvertUTF8toUTF16 (
+unsigned int ConvertUTF8toUTF16 (const UTF8* sourceStart, const UTF8* sourceEnd, UTF16* targetStart, UTF16* targetEnd, ConversionFlags flags)
+#if 0 //def GIAC_HAS_STO_38
+{
+    wchar_t *d= targetStart;
+#define read(a) if (sourceStart>=sourceEnd) break; a= *sourceStart++
+    while (sourceStart<sourceEnd && d!=targetEnd)
+    {
+        read(uint8_t c);
+        if ((c&0x80)==0) { *d++= c; continue; }
+        if ((c&0xe0)==0xc0) { read(uint8_t c2); if ((c2&0xc0)!=0x80) continue; *d++= ((c&0x1f)<<6)+(c2&0x3f); continue; }
+        if ((c&0xf0)==0xe0) { read(uint8_t c2); if ((c2&0xc0)!=0x80) continue; read(uint8_t c3); if ((c3&0xc0)!=0x80) continue; *d++= ((((c&0xf)<<6)+(c2&0x3f))<<6)+(c3&0x3f); continue; }
+        if ((c&0xf8)==0xf0) { read(uint8_t c2); if ((c2&0xc0)!=0x80) continue; read(uint8_t c3); if ((c3&0xc0)!=0x80) continue; read(uint8_t c4); if ((c4&0xc0)!=0x80) continue; *d++= ((((((c&0xf)<<6)+(c2&0x3f))<<6)+(c3&0x3f))<<6)+(c4&0x3f); continue; }
+        while (sourceStart<sourceEnd) { c= *sourceEnd; if ((c&0x80)==0 || (c&0xc0)!=0x80) break; sourceEnd++; }
+    }
+#undef read
+    return d-targetStart;
+}
+
+unsigned int ConvertUTF8toUTF162 (
     const UTF8* sourceStart, const UTF8* sourceEnd, 
-    UTF16* targetStart, UTF16* targetEnd, ConversionFlags flags) {
+    UTF16* targetStart, UTF16* targetEnd, ConversionFlags flags) 
+#endif
+{
     ConversionResult result = conversionOK;
     const UTF8* source = sourceStart;
     UTF16* target = targetStart;
@@ -4705,7 +5590,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
       std::ofstream ofs;
       ofs.open ("e:\\tmp\\logsave", std::ofstream::out | std::ofstream::app);
-      ofs << "IDNT " << g << endl;
+      ofs << "IDNT " << g << '\n';
       ofs.close();
 #endif
       // fprintf(f,"%s",g._IDNTptr->id_name);
@@ -4718,7 +5603,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
       std::ofstream ofs;
       ofs.open ("e:\\tmp\\logsave", std::ofstream::out | std::ofstream::app);
-      ofs << "SYMB " << g << endl;
+      ofs << "SYMB " << g << '\n';
       ofs.close();
 #endif
       short i=archive_function_index(g._SYMBptr->sommet); // equalposcomp(archive_function_tab(),g._SYMBptr->sommet);
@@ -4860,7 +5745,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
       std::ofstream ofs;
       ofs.open ("e:\\tmp\\logrestore", std::ofstream::out | std::ofstream::app);
-      ofs << "IDNT " << res << endl;
+      ofs << "IDNT " << res << '\n';
       ofs.close();
 #endif
       return res;
@@ -4879,7 +5764,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
 	  std::ofstream ofs;
 	  ofs.open ("e:\\tmp\\logrestore", std::ofstream::out | std::ofstream::app);
-	  ofs << "archive_restore error _SYMB index " << index << endl;
+	  ofs << "archive_restore error _SYMB index " << index << '\n';
 	  ofs.close();
 #endif
 	  g=fe; // ERROR
@@ -4921,7 +5806,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
 	      std::ofstream ofs;
 	      ofs.open ("e:\\tmp\\logrestore", std::ofstream::out | std::ofstream::app);
-	      ofs << "archive_restore error _SYMB " << ch << endl;
+	      ofs << "archive_restore error _SYMB " << ch << '\n';
 	      ofs.close();
 #endif
 	      res=0;
@@ -4942,7 +5827,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
 	  std::ofstream ofs;
 	  ofs.open ("e:\\tmp\\logrestore", std::ofstream::out | std::ofstream::app);
-	  ofs << "archive_restore error _SYMB 0 " << ch << endl;
+	  ofs << "archive_restore error _SYMB 0 " << ch << '\n';
 	  ofs.close();
 #endif
 	  res=gen(ch,contextptr);
@@ -4957,7 +5842,7 @@ unsigned int ConvertUTF8toUTF16 (
 #if DBG_ARCHIVE
       std::ofstream ofs;
       ofs.open ("e:\\tmp\\logrestore", std::ofstream::out | std::ofstream::app);
-      ofs << "SYMB " << g << endl;
+      ofs << "SYMB " << g << '\n';
       ofs.close();
 #endif
       return g;
@@ -5066,7 +5951,7 @@ unsigned int ConvertUTF8toUTF16 (
     }
     int xc=xcas_mode(contextptr);
     if (xc==0 && python_compat(contextptr))
-      xc=256;
+      xc=256*python_compat(contextptr);
     if (abs_calc_mode(contextptr)==38)
       res.push_back(xc);
     else
@@ -5132,6 +6017,7 @@ unsigned int ConvertUTF8toUTF16 (
     "autosimplify",
     "canonical_form",
     "cfactor",
+    "convert",
     "cpartfrac",
     "curve",
     "developper",
@@ -5146,6 +6032,7 @@ unsigned int ConvertUTF8toUTF16 (
     "factoriser_entier",
     "factoriser_sur_C",
     "ifactor",
+    "list2exp",
     "lncollect",
     "lnexpand",
     "mathml",
@@ -5162,6 +6049,7 @@ unsigned int ConvertUTF8toUTF16 (
     "plotpolar",
     "pow2exp",
     "powexpand",
+    "propFrac",
     "propfrac",
     "quote",
     "regroup",
@@ -5204,7 +6092,13 @@ unsigned int ConvertUTF8toUTF16 (
 #ifdef GIAC_HAS_STO_38
       const char * c=g._SYMBptr->sommet.ptr()->s;
 #else
-      string ss=unlocalize(g._SYMBptr->sommet.ptr()->s);
+      string ss=g._SYMBptr->sommet.ptr()->s;
+      if (g._SYMBptr->sommet==at_sto && g._SYMBptr->feuille.type==_VECT){
+	vecteur & v=*g._SYMBptr->feuille._VECTptr;
+	if (v.size()==2 && v.front().type==_SYMB)
+	  ss=v.front()._SYMBptr->sommet.ptr()->s;
+      }
+      ss=unlocalize(ss);
       const char * c=ss.c_str();
 #endif
 #if 1
@@ -5234,7 +6128,7 @@ unsigned int ConvertUTF8toUTF16 (
     int nb[256],pointdecsep=0,commadecsep=0; 
     for (int i=0;i<256;++i)
       nb[i]=0;
-    // count occurence of each char
+    // count occurrence of each char
     // and detect decimal separator between . or ,
     for (int i=1;i<count-1;++i){
       if (data[i]=='[' || data[i]==']')
@@ -5275,7 +6169,7 @@ unsigned int ConvertUTF8toUTF16 (
   void (*my_gprintf)(unsigned special,const string & format,const vecteur & v,GIAC_CONTEXT)=0;
 
 
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
   static void newlinestobr(string &s,const string & add){
     int l=int(add.size());
     for (int i=0;i<l;++i){
@@ -5304,15 +6198,15 @@ unsigned int ConvertUTF8toUTF16 (
     }
     string s;
     int pos=0;
-#ifdef EMCC
-    *logptr(contextptr) << char(2) << endl; // start mixed text/mathml
+#if defined(EMCC) || defined(EMCC2)
+    *logptr(contextptr) << char(2) << '\n'; // start mixed text/mathml
 #endif
     for (unsigned i=0;i<v.size();++i){
       int p=int(format.find("%gen",pos));
       if (p<0 || p>=int(format.size()))
 	break;
       newlinestobr(s,format.substr(pos,p-pos));
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
       gen tmp;
       if (v[i].is_symb_of_sommet(at_pnt))
 	tmp=_svg(v[i],contextptr);
@@ -5325,10 +6219,10 @@ unsigned int ConvertUTF8toUTF16 (
       pos=p+4;
     }
     newlinestobr(s,format.substr(pos,format.size()-pos));
-    *logptr(contextptr) << s << endl;
-#ifdef EMCC
-    *logptr(contextptr) << char(3) << endl; // end mixed text/mathml
-    *logptr(contextptr) << endl;
+    *logptr(contextptr) << s << '\n';
+#if defined(EMCC) || defined(EMCC2)
+    *logptr(contextptr) << char(3) << '\n'; // end mixed text/mathml
+    *logptr(contextptr) << '\n';
 #endif
   }
 
@@ -5343,8 +6237,10 @@ unsigned int ConvertUTF8toUTF16 (
   // moved from input_lexer.ll for easier debug
   const char invalid_name[]="Invalid name";
 
-#ifdef USTL    
-  // void update_lexer_localization(const std::vector<int> & v,ustl::map<std::string,std::string> &lexer_map,ustl::multimap<std::string,localized_string> &back_lexer_map){}
+#if defined USTL || defined GIAC_HAS_STO_38 || defined KHICAS
+#if defined GIAC_HAS_STO_38 || defined KHICAS
+void update_lexer_localization(const std::vector<int> & v,std::map<std::string,std::string> &lexer_map,std::multimap<std::string,localized_string> &back_lexer_map,GIAC_CONTEXT){}
+#endif
 #else
   vecteur * keywords_vecteur_ptr(){
     static vecteur v;
@@ -5378,7 +6274,7 @@ unsigned int ConvertUTF8toUTF16 (
 	for (++j;j<l;++j){
 	  if (line[j]==' '){
 	    if (!local_kw.empty()){
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 	      gen localgen(gen(local_kw,contextptr));
 	      keywordsptr->push_back(localgen);
 	      sto(gen(giac_kw,contextptr),localgen,contextptr);
@@ -5393,7 +6289,7 @@ unsigned int ConvertUTF8toUTF16 (
 	    local_kw += line[j];
 	}
 	if (!local_kw.empty()){
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 	  gen localgen(gen(local_kw,contextptr));
 	  keywordsptr->push_back(localgen);
 	  sto(gen(giac_kw,contextptr),localgen,contextptr);
@@ -5416,11 +6312,11 @@ unsigned int ConvertUTF8toUTF16 (
       if (lang>=1 && lang<=4){
 	std::string doc=find_doc_prefix(lang);
 	std::string file=giac_aide_dir()+doc+"keywords";
-	//COUT << "keywords " << file << endl;
+	//COUT << "keywords " << file << '\n';
 	ifstream f(file.c_str());
 	if (f.good()){
 	  in_update_lexer_localization(f,lang,v,lexer_map,back_lexer_map,contextptr);
-	  // COUT << "// Using keyword file " << file << endl;
+	  // COUT << "// Using keyword file " << file << '\n';
 	} // if (f)
 	else {
 	  if (lang==1){
@@ -5429,11 +6325,11 @@ unsigned int ConvertUTF8toUTF16 (
 #else
       istrstream f(
 #endif
-		   "# enter couples\n# giac_keyword translation\n# for example, to define integration as a translation for integrate \nintegrate integration\neven est_pair\nodd est_impair\n# geometry\nbarycenter barycentre\nisobarycenter isobarycentre\nmidpoint milieu\nline_segments aretes\nmedian_line mediane\nhalf_line demi_droite\nparallel parallele\nperpendicular perpendiculaire\ncommon_perpendicular perpendiculaire_commune\nenvelope enveloppe\nequilateral_triangle triangle_equilateral\nisosceles_triangle triangle_isocele\nright_triangle triangle_rectangle\nlocus lieu\ncircle cercle\nconic conique\nreduced_conic conique_reduite\nquadric quadrique\nreduced_quadric quadrique_reduite\nhyperbola hyperbole\ncylinder cylindre\nhalf_cone demi_cone\nline droite\nplane plan\nparabola parabole\nrhombus losange\nsquare carre\nhexagon hexagone\npyramid pyramide\nquadrilateral quadrilatere\nparallelogram parallelogramme\northocenter orthocentre\nexbisector exbissectrice\nparallelepiped parallelepipede\npolyhedron polyedre\ntetrahedron tetraedre\ncentered_tetrahedron tetraedre_centre\ncentered_cube cube_centre\noctahedron octaedre\ndodecahedron dodecaedre\nicosahedron icosaedre\nbisector bissectrice\nperpen_bisector mediatrice\naffix affixe\naltitude hauteur\ncircumcircle circonscrit\nexcircle exinscrit\nincircle inscrit\nis_prime est_premier\nis_equilateral est_equilateral\nis_rectangle est_rectangle\nis_parallel est_parallele\nis_perpendicular est_perpendiculaire\nis_orthogonal est_orthogonal\nis_collinear est_aligne\nis_concyclic est_cocyclique\nis_element est_element\nis_included est_inclus\nis_coplanar est_coplanaire\nis_isosceles est_isocele\nis_square est_carre\nis_rhombus est_losange\nis_parallelogram est_parallelogramme\nis_conjugate est_conjugue\nis_harmonic_line_bundle est_faisceau_droite\nis_harmonic_circle_bundle est_faisceau_cercle\nis_inside est_dans\narea aire\nperimeter perimetre\ndistance longueur\ndistance2 longueur2\nareaat aireen\nslopeat penteen\nangleat angleen\nperimeterat perimetreen\ndistanceat distanceen\nareaatraw aireenbrut\nslopeatraw penteenbrut\nangleatraw angleenbrut\nperimeteratraw perimetreenbrut\ndistanceatraw distanceenbrut\nextract_measure extraire_mesure\ncoordinates coordonnees\nabscissa abscisse\nordinate ordonnee\ncenter centre\nradius rayon\npowerpc puissance\nvertices sommets\npolygon polygone\nisopolygon isopolygone\nopen_polygon polygone_ouvert\nhomothety homothetie\nsimilarity similitude\n# affinity affinite\nreflection symetrie\nreciprocation polaire_reciproque\nscalar_product produit_scalaire\n# solid_line ligne_trait_plein\n# dash_line ligne_tiret\n# dashdot_line ligne_tiret_point\n# dashdotdot_line ligne_tiret_pointpoint\n# cap_flat_line ligne_chapeau_plat\n# cap_round_line ligne_chapeau_rond\n# cap_square_line ligne_chapeau_carre\n# line_width_1 ligne_epaisseur_1\n# line_width_2 ligne_epaisseur_2\n# line_width_3 ligne_epaisseur_3\n# line_width_4 ligne_epaisseur_4\n# line_width_5 ligne_epaisseur_5\n# line_width_6 ligne_epaisseur_6\n# line_width_7 ligne_epaisseur_7\n# line_width_8 ligne_epaisseur_8\n# rhombus_point point_losange\n# plus_point point_plus\n# square_point point_carre\n# cross_point point_croix\n# triangle_point point_triangle\n# star_point point_etoile\n# invisible_point point_invisible\ncross_ratio birapport\nradical_axis axe_radical\npolar polaire\npolar_point point_polaire\npolar_coordinates coordonnees_polaires\nrectangular_coordinates coordonnees_rectangulaires\nharmonic_conjugate conj_harmonique\nharmonic_division div_harmonique\ndivision_point point_div\n# harmonic_division_point point_division_harmonique\ndisplay affichage\nvertices_abc sommets_abc\nvertices_abca sommets_abca\nline_inter inter_droite\nsingle_inter inter_unique\ncolor couleur\nlegend legende\nis_harmonic est_harmonique\nbar_plot diagramme_batons\nbarplot diagrammebatons\nhistogram histogramme\nprism prisme\nis_cospherical est_cospherique\ndot_paper papier_pointe\ngrid_paper papier_quadrille\nline_paper papier_ligne\ntriangle_paper papier_triangule\nvector vecteur\nplotarea tracer_aire\nplotproba graphe_probabiliste\nmult_c_conjugate mult_conjugue_C\nmult_conjugate mult_conjugue\ncanonical_form forme_canonique\nibpu integrer_par_parties_u\nibpdv integrer_par_parties_dv\nwhen quand\nslope pente\ntablefunc table_fonction\ntableseq table_suite\nfsolve resoudre_numerique\ninput saisir\nprint afficher\nassume supposons\nabout domaine\nbreakpoint point_arret\nwatch montrer\nrmwatch ne_plus_montrer\nrmbreakpoint suppr_point_arret\nrand alea\nInputStr saisir_chaine\nOx_2d_unit_vector vecteur_unitaire_Ox_2d\nOy_2d_unit_vector vecteur_unitaire_Oy_2d\nOx_3d_unit_vector vecteur_unitaire_Ox_3d\nOy_3d_unit_vector vecteur_unitaire_Oy_3d\nOz_3d_unit_vector vecteur_unitaire_Oz_3d\nframe_2d repere_2d\nframe_3d repere_3d\nrsolve resoudre_recurrence\nassume supposons\ncumulated_frequencies frequences_cumulees\nfrequencies frequences\nnormald loi_normale\nregroup regrouper\nosculating_circle cercle_osculateur\ncurvature courbure\nevolute developpee\nsort trier\nvector vecteur\n");
+		   "# enter couples\n# giac_keyword translation\n# for example, to define integration as a translation for integrate \nintegrate integration\neven est_pair\nodd est_impair\n# geometry\nbarycenter barycentre\nisobarycenter isobarycentre\nmidpoint milieu\nline_segments aretes\nmedian_line mediane\nhalf_line demi_droite\nparallel parallele\nperpendicular perpendiculaire\ncommon_perpendicular perpendiculaire_commune\nenvelope enveloppe\nequilateral_triangle triangle_equilateral\nisosceles_triangle triangle_isocele\nright_triangle triangle_rectangle\nlocus lieu\ncircle cercle\nconic conique\nreduced_conic conique_reduite\nquadric quadrique\nreduced_quadric quadrique_reduite\nhyperbola hyperbole\ncylinder cylindre\nhalf_cone demi_cone\nline droite\nplane plan\nparabola parabole\nrhombus losange\nsquare carre\nhexagon hexagone\npyramid pyramide\nquadrilateral quadrilatere\nparallelogram parallelogramme\northocenter orthocentre\nexbisector exbissectrice\nparallelepiped parallelepipede\npolyhedron polyedre\ntetrahedron tetraedre\ncentered_tetrahedron tetraedre_centre\ncentered_cube cube_centre\noctahedron octaedre\ndodecahedron dodecaedre\nicosahedron icosaedre\nbisector bissectrice\nperpen_bisector mediatrice\naffix affixe\naltitude hauteur\ncircumcircle circonscrit\nexcircle exinscrit\nincircle inscrit\nis_prime est_premier\nis_equilateral est_equilateral\nis_rectangle est_rectangle\nis_parallel est_parallele\nis_perpendicular est_perpendiculaire\nis_orthogonal est_orthogonal\nis_collinear est_aligne\nis_concyclic est_cocyclique\nis_element est_element\nis_included est_inclus\nis_coplanar est_coplanaire\nis_isosceles est_isocele\nis_square est_carre\nis_rhombus est_losange\nis_parallelogram est_parallelogramme\nis_conjugate est_conjugue\nis_harmonic_line_bundle est_faisceau_droite\nis_harmonic_circle_bundle est_faisceau_cercle\nis_inside est_dans\narea aire\nperimeter perimetre\ndistance longueur\ndistance2 longueur2\nareaat aireen\nslopeat penteen\nangleat angleen\nperimeterat perimetreen\ndistanceat distanceen\nareaatraw aireenbrut\nslopeatraw penteenbrut\nangleatraw angleenbrut\nperimeteratraw perimetreenbrut\ndistanceatraw distanceenbrut\nextract_measure extraire_mesure\ncoordinates coordonnees\nabscissa abscisse\nordinate ordonnee\ncenter centre\nradius rayon\npowerpc puissance\nvertices sommets\npolygon polygone\nisopolygon isopolygone\nopen_polygon polygone_ouvert\nhomothety homothetie\nsimilarity similitude\n# affinity affinite\nreflection symetrie\nreciprocation polaire_reciproque\nscalar_product produit_scalaire\n# solid_line ligne_trait_plein\n# dash_line ligne_tiret\n# dashdot_line ligne_tiret_point\n# dashdotdot_line ligne_tiret_pointpoint\n# cap_flat_line ligne_chapeau_plat\n# cap_round_line ligne_chapeau_rond\n# cap_square_line ligne_chapeau_carre\n# line_width_1 ligne_epaisseur_1\n# line_width_2 ligne_epaisseur_2\n# line_width_3 ligne_epaisseur_3\n# line_width_4 ligne_epaisseur_4\n# line_width_5 ligne_epaisseur_5\n# line_width_6 ligne_epaisseur_6\n# line_width_7 ligne_epaisseur_7\n# line_width_8 ligne_epaisseur_8\n# rhombus_point point_losange\n# plus_point point_plus\n# square_point point_carre\n# cross_point point_croix\n# triangle_point point_triangle\n# star_point point_etoile\n# invisible_point point_invisible\ncross_ratio birapport\nradical_axis axe_radical\npolar polaire\npolar_point point_polaire\npolar_coordinates coordonnees_polaires\nrectangular_coordinates coordonnees_rectangulaires\nharmonic_conjugate conj_harmonique\nharmonic_division div_harmonique\ndivision_point point_div\n# harmonic_division_point point_division_harmonique\ndisplay affichage\nvertices_abc sommets_abc\nvertices_abca sommets_abca\nline_inter inter_droite\nsingle_inter inter_unique\ncolor couleur\nlegend legende\nis_harmonic est_harmonique\nbar_plot diagramme_batons\nbarplot diagrammebatons\nhistogram histogramme\nprism prisme\nis_cospherical est_cospherique\ndot_paper papier_pointe\ngrid_paper papier_quadrille\nline_paper papier_ligne\ntriangle_paper papier_triangule\nvector vecteur\nplotarea tracer_aire\nplotproba graphe_probabiliste\nmult_c_conjugate mult_conjugue_C\nmult_conjugate mult_conjugue\ncanonical_form forme_canonique\nibpu integrer_par_parties_u\nibpdv integrer_par_parties_dv\nwhen quand\nslope pente\ntablefunc table_fonction\ntableseq table_suite\nfsolve resoudre_numerique\ninput saisir\nprint afficher\nassume supposons\nabout domaine\nbreakpoint point_arret\nwatch montrer\nrmwatch ne_plus_montrer\nrmbreakpoint suppr_point_arret\nrand alea\nInputStr saisir_chaine\nOx_2d_unit_vector vecteur_unitaire_Ox_2d\nOy_2d_unit_vector vecteur_unitaire_Oy_2d\nOx_3d_unit_vector vecteur_unitaire_Ox_3d\nOy_3d_unit_vector vecteur_unitaire_Oy_3d\nOz_3d_unit_vector vecteur_unitaire_Oz_3d\nframe_2d repere_2d\nframe_3d repere_3d\nrsolve resoudre_recurrence\nassume supposons\ncumulated_frequencies frequences_cumulees\nfrequencies frequences\nnormald loi_normale\nregroup regrouper\nosculating_circle cercle_osculateur\ncurvature courbure\nevolute developpee\nvector vecteur\n");
 	    in_update_lexer_localization(f,1,v,lexer_map,back_lexer_map,contextptr);
 	  }
 	  else
-	    CERR << "// Unable to find keyword file " << file << endl;
+	    CERR << "// Unable to find keyword file " << file << '\n';
 	}
       }
     }
@@ -5469,12 +6365,12 @@ unsigned int ConvertUTF8toUTF16 (
       if (i!=lexer_functions().end())
 	return false;
       if (doing_insmod){
-	if (debug_infolevel) CERR << "insmod register " << s << endl;
+	if (debug_infolevel) CERR << "insmod register " << s << '\n';
 	registered_lexer_functions().push_back(user_function(s,parser_token));
       }
       if (!builtin_lexer_functions_sorted){
 #ifndef STATIC_BUILTIN_LEXER_FUNCTIONS
-#ifdef NSPIRE_NEWLIB
+#if defined NSPIRE_NEWLIB || defined KHICAS || defined NUMWORKS
 	builtin_lexer_functions_begin()[builtin_lexer_functions_number]=std::pair<const char *,gen>(s,gen(u));
 #else
 	builtin_lexer_functions_begin()[builtin_lexer_functions_number].first=s;
@@ -5487,7 +6383,7 @@ unsigned int ConvertUTF8toUTF16 (
 	  builtin_lexer_functions_begin()[builtin_lexer_functions_number].second.subtype=parser_token-256;
 	builtin_lexer_functions_number++;
 #endif
-	if (debug_infolevel) CERR << "insmod register builtin " << s << endl;
+	if (debug_infolevel) CERR << "insmod register builtin " << s << '\n';
       }
       else {
 	lexer_functions()[s] = gen(u);
@@ -5495,7 +6391,7 @@ unsigned int ConvertUTF8toUTF16 (
 	  lexer_functions()[s].subtype=T_UNARY_OP-256;
 	else
 	  lexer_functions()[s].subtype=parser_token-256;
-	if (debug_infolevel) CERR << "insmod register lexer_functions " << s << endl;	
+	if (debug_infolevel) CERR << "insmod register lexer_functions " << s << '\n';	
       }
       // If s is a library function name (with ::), update the library
       int ss=int(strlen(s)),j=0;
@@ -5604,13 +6500,17 @@ unsigned int ConvertUTF8toUTF16 (
 	  res=gen(int((*builtin_lexer_functions_())[p.first-builtin_lexer_functions_begin()]+p.first->second.val));
 	  res=gen(*res._FUNCptr);	  
 #else
-#ifndef NSPIRE_NEWLIB
+#if !defined NSPIRE_NEWLIB || defined KHICAS
 	  res=0;
 	  int pos=int(p.first-builtin_lexer_functions_begin());
+#if defined KHICAS && !defined x86_64
+	  const unary_function_ptr * at_val=*builtin_lexer_functions_[pos];
+#else
 	  size_t val=builtin_lexer_functions_[pos];
 	  unary_function_ptr * at_val=(unary_function_ptr *)val;
+#endif
 	  res=at_val;
-#ifdef GIAC_HAS_STO_38
+#if defined GIAC_HAS_STO_38 || (defined KHICAS && defined DEVICE)
 	  if (builtin_lexer_functions[pos]._FUNC_%2){
 #ifdef SMARTPTR64
 	    unary_function_ptr tmp=*at_val;
@@ -5644,10 +6544,10 @@ unsigned int ConvertUTF8toUTF16 (
 	res.subtype=pp.first->subtype;
 	return pp.first->return_value;
       }
-      // CERR << "lexer_functions search " << ts << endl;
+      // CERR << "lexer_functions search " << ts << '\n';
       map_charptr_gen::const_iterator i = lexer_functions().find(ts.c_str());
       if (i!=lexer_functions().end()){
-	// CERR << "lexer_functions found " << ts << endl;
+	// CERR << "lexer_functions found " << ts << '\n';
 	if (i->second.subtype==T_TO-256)
 	  res=plus_one;
 	else
@@ -5661,7 +6561,7 @@ unsigned int ConvertUTF8toUTF16 (
       if (i2 == i2end) {
 	unlock_syms_mutex();  
 	const char * S = s.c_str();
-	// std::CERR << "lexer new" << s << endl;
+	// std::CERR << "lexer new" << s << '\n';
 	if (check38 && calc_mode(contextptr)==38 && strcmp(S,string_pi) && strcmp(S,string_euler_gamma) && strcmp(S,string_infinity) && strcmp(S,string_undef) && S[0]!='G'&& (!is_known_name_38 || !is_known_name_38(0,S))){
 	  // detect invalid names and implicit multiplication 
 	  size_t ss=strlen(S);
@@ -5811,12 +6711,17 @@ unsigned int ConvertUTF8toUTF16 (
     if (cur[0]=='_' && (cur.size()==1 || !isalpha(cur[1])))
       cur[0]='@'; // python shortcut for ans(-1)
     bool instring=cur.size() && cur[0]=='"';
+    int openpar=0;
     for (int pos=1;pos<int(cur.size());++pos){
       char prevch=cur[pos-1],curch=cur[pos];
       if (curch=='"' && prevch!='\\')
 	instring=!instring;
       if (instring)
 	continue;
+      if (curch=='(')
+	++openpar;
+      if (curch==')')
+	--openpar;
       if (curch==',' && pos<int(cur.size()-1)){
 	char nextch=cur[pos+1];
 	if (nextch=='}' || nextch==']' || nextch==')'){
@@ -5874,7 +6779,7 @@ unsigned int ConvertUTF8toUTF16 (
 	++pos;
 	continue;
       }
-      if (curch=='=' && prevch!='>' && prevch!='<' && prevch!='!' && prevch!=':' && prevch!=';' && prevch!='=' && prevch!='+' && prevch!='-' && prevch!='*' && prevch!='/' && prevch!='%' && (pos==int(cur.size())-1 || (cur[pos+1]!='=' && cur[pos+1]!='<'))){
+      if (curch=='=' && openpar==0 && prevch!='>' && prevch!='<' && prevch!='!' && prevch!=':' && prevch!=';' && prevch!='=' && prevch!='+' && prevch!='-' && prevch!='*' && prevch!='/' && prevch!='%' && (pos==int(cur.size())-1 || (cur[pos+1]!='=' && cur[pos+1]!='<'))){
 	cur.insert(cur.begin()+pos,':');
 	++pos;
 	continue;
@@ -5912,7 +6817,7 @@ unsigned int ConvertUTF8toUTF16 (
 
   static void python_import(string & cur,int cs,int posturtle,int poscmath,int posmath,int posnumpy,int posmatplotlib,GIAC_CONTEXT){
     if (posmatplotlib>=0 && posmatplotlib<cs){
-      cur += "np:=numpy:;xlim(a,b):=gl_x=a..b:;ylim(a,b):=gl_y=a..b:;scatter:=scatterplot:;bar:=bar_plot:;";
+      cur += "np:=numpy:;xlim(a,b):=gl_x=a..b:;ylim(a,b):=gl_y=a..b:;scatter:=scatterplot:;bar:=bar_plot:;text:=legend:;xlabel:=gl_x_axis_name:;ylabel:=gl_y_axis_name:;arrow:=vector:;boxplot:=moustache:;";
       posnumpy=posmatplotlib;
     }
     if (posnumpy>=0 && posnumpy<cs){
@@ -5927,8 +6832,12 @@ unsigned int ConvertUTF8toUTF16 (
     }
     if (posturtle>=0 && posturtle<cs){
       // add python turtle shortcuts
-      static bool alertturtle=true;      
+      static bool alertturtle=true;
+#ifdef KHICAS
+      cur += "fd:=forward:;bk:=backward:; rt:=right:; lt:=left:; pos:=position:; seth:=heading:;setheading:=heading:; ";
+#else
       cur += "pu:=penup:;up:=penup:; pd:=pendown:;down:=pendown:; fd:=forward:;bk:=backward:; rt:=right:; lt:=left:; pos:=position:; seth:=heading:;setheading:=heading:; reset:=efface:;";
+#endif
       if (alertturtle){
 	alertturtle=false;
 	alert("pu:=penup;up:=penup; pd:=pendown;down:=pendown; fd:=forward;bk:=backward; rt:=right; lt:=left; pos:=position; seth:=heading;setheading:=heading; reset:=efface",contextptr);
@@ -5942,7 +6851,7 @@ unsigned int ConvertUTF8toUTF16 (
 	alertcmath=false;
 	alert(gettext("Assigning phase, j, J and rect."),contextptr);
       }
-      cur += "phase:=arg:;j:=i:;J:=i:;rect(r,theta):=r*exp(i*theta):;";
+      cur += "phase:=arg:;j:=i:;J:=i:;";
       posmath=poscmath;
     }
     if (posmath>=0 && posmath<cs){
@@ -5950,10 +6859,9 @@ unsigned int ConvertUTF8toUTF16 (
       static bool alertmath=true;      
       if (alertmath){
 	alertmath=false;
-	alert(gettext("Assigning log2, expm1 (imprecise), fabs, fmod, modf, radians and degrees. Not supported: copysign."),contextptr);
+	alert(gettext("Assigning gamma, fabs. Not supported: copysign."),contextptr);
       }
-      cur += "log2(x):=logb(x,2):;expm1(x):=exp(x)-1:;fabs:=abs:;fmod(a,b):=a-floor(a/b)*b:;function modf(x) local y; y:=floor(x); return x-y,y; ffunction:;radians(x):=x/180*pi:;degrees(x):=x/pi*180";
-      // todo copysign, isinf, isnan, isfinite, frexp, ldexp
+      cur += "gamma:=Gamma:;fabs:=abs:;";
     }
   }
 
@@ -6034,6 +6942,17 @@ unsigned int ConvertUTF8toUTF16 (
     first=s_orig.find("xcas_mode");
     if (first>=0 && first<sss)
       return s_orig;
+    first=s_orig.find('\n');
+    if (first<0 || first>=sss){
+      first=s_orig.find('\''); // derivative or Python string delimiter?
+      if (first>=0 && first<sss){
+	if (first==sss-1 || s_orig[first+1]=='\'') // '' is a second derivative
+	  return s_orig;
+	first=s_orig.find('\'',first+1);
+	if (first<0 || first>=sss)
+	  return s_orig;
+      }
+    }
     bool pythoncompat=python_compat(contextptr);
     bool pythonmode=false;
     first=0;
@@ -6049,6 +6968,20 @@ unsigned int ConvertUTF8toUTF16 (
     if (s_orig[first]=='#' || (s_orig[first]=='_' && !isalpha(s_orig[first+1])) || s_orig.substr(first,4)=="from" || s_orig.substr(first,7)=="import "){
       pythonmode=true;
       pythoncompat=true;
+    }
+    if (pythoncompat){
+      int pos=s_orig.find("{");
+      if (pos>=0 && pos<sss)
+	pythonmode=true;
+      pos=s_orig.find("}");
+      if (pos>=0 && pos<sss)
+	pythonmode=true;
+      pos=s_orig.find("//");
+      if (pos>=0 && pos<sss)
+	pythonmode=true;
+      pos=s_orig.find(":");
+      if (pos>=0 && pos<sss-1 && s_orig[pos+1]!=';')
+	pythonmode=true;
     }
     for (first=0;!pythonmode && first<sss;){
       int pos=s_orig.find(":]");
@@ -6071,9 +7004,13 @@ unsigned int ConvertUTF8toUTF16 (
 	pythonmode=true;
 	break;
       }
-      first=s_orig.find(':',first);
-      if (first<0 || first>=sss)
-	return s_orig; // not Python like
+      pos=s_orig.find('#',0);
+      if (pos<0 || pos>=sss){
+	first=s_orig.find(':',first);
+	if (first<0 || first>=sss){
+	  return s_orig; // not Python like
+	}
+      }
       pos=s_orig.find("lambda");
       if (pos>=0 && pos<sss)
 	break;
@@ -6096,7 +7033,9 @@ unsigned int ConvertUTF8toUTF16 (
 	break;
     }
     // probably Python-like
-    string res(s_orig);
+    string res;
+    res.reserve(6*s_orig.size()/5);
+    res=s_orig;
     if (res.size()>18 && res.substr(0,17)=="add_autosimplify(" 
 	&& res[res.size()-1]==')'
 	)
@@ -6108,6 +7047,7 @@ unsigned int ConvertUTF8toUTF16 (
     res=glue_lines_backslash(res);
     vector<int_string> stack;
     string s,cur; 
+    s.reserve(res.capacity());
     if (pythoncompat) pythonmode=true;
     for (;res.size();){
       int pos=-1;
@@ -6128,7 +7068,7 @@ unsigned int ConvertUTF8toUTF16 (
 	  break;
 	for (int pos2=pos-1;pos2>=0;--pos2){
 	  ch=res[pos2];
-	  if (ch!=' ' && ch!=9){
+	  if (ch!=' ' && ch!=9 && ch!='\r'){
 	    if (ch=='{' || ch=='[' || ch==',' || ch=='-' || ch=='+' ||  ch=='/')
 	      cherche=true;
 	    break;
@@ -6136,7 +7076,7 @@ unsigned int ConvertUTF8toUTF16 (
 	}
 	for (size_t pos2=pos+1;pos2<res.size();++pos2){
 	  ch=res[pos2];
-	  if (ch!=' ' && ch!=9){
+	  if (ch!=' ' && ch!=9 && ch!='\r'){
 	    if (ch==']' || ch=='}' || ch==')')
 	      cherche=true;
 	    break;
@@ -6154,7 +7094,7 @@ unsigned int ConvertUTF8toUTF16 (
       bool instring=false,chkfrom=true;
       for (pos=0;pos<int(cur.size());++pos){
 	char ch=cur[pos];
-	if (ch==' ' || ch==char(9))
+	if (ch==' ' || ch==char(9) || ch=='\r')
 	  continue;
 	if (!instring && pythoncompat && ch=='{' && (pos==0 || cur[pos-1]!='\\')){
 	  // find matching }, counting : and , and ;
@@ -6170,7 +7110,9 @@ unsigned int ConvertUTF8toUTF16 (
 	    if (ch==';')
 	      ++c3;
 	  }
-	  if (p<cs && c1 && c3==0){
+	  if (p<cs 
+	      //&& c1 
+	      && c3==0){
 	    // table initialization, replace {} by table( ) , 
 	    // cur=cur.substr(0,pos)+"table("+cur.substr(pos+1,p-pos-1)+")"+cur.substr(p+1,cs-pos-1);
 	    cur=cur.substr(0,pos)+"{/"+replace_deuxpoints_egal(cur.substr(pos+1,p-1-pos))+"/}"+cur.substr(p+1,cs-pos-1);
@@ -6254,9 +7196,30 @@ unsigned int ConvertUTF8toUTF16 (
 	    if (posmatplotlib<0 || posmatplotlib>=cur.size())
 	      posmatplotlib=cur.find("pylab");
 	    int cs=int(cur.size());
-	    cur=cur.substr(0,pos);
-	    python_import(cur,cs,posturtle,poscmath,posmath,posnumpy,posmatplotlib,contextptr);
 	    pythonmode=true;
+#ifdef KHICAS
+	    if (
+		(posturtle<0 || posturtle>=cs) && 
+		(poscmath<0 || poscmath>=cs) && 
+		(posmath<0 || posmath>=cs) && 
+		(posnumpy<0 || posnumpy>=cs) && 
+		(posmatplotlib<0 || posmatplotlib>=cs) 
+		){
+	      string filename=cur.substr(pos+5,posi-pos-5)+".py";
+	      // CERR << "import " << filename << endl;
+	      const char * ptr=read_file(filename.c_str());
+	      if (ptr)
+		s += python2xcas(ptr,contextptr); // recursive call
+	      cur ="";
+	      // CERR << s << endl;
+	      continue;
+	    }
+	    else
+#endif
+	      {
+		cur=cur.substr(0,pos);
+		python_import(cur,cs,posturtle,poscmath,posmath,posnumpy,posmatplotlib,contextptr);
+	      }
 	    break;
 	  }
 	}
@@ -6276,10 +7239,12 @@ unsigned int ConvertUTF8toUTF16 (
 	  if (posp>=posi || posp<0)
 	    posp=posi;
 	  if (posi>pos+5 && posi<int(cur.size())){
-	    cur=cur.substr(posi+4,cur.size()-posi-4)+":="+cur.substr(7,posp-7)+';';
+	    cur=cur.substr(posi+4,cur.size()-posi-4)+":="+cur.substr(pos+7,posp-(pos+7))+';';
 	  }
 	  else
 	    cur=cur.substr(pos+7,cur.size()-pos-7);
+	  for (int i=0;i<pos;++i)
+	    cur = ' '+cur;
 	  python_import(cur,cs,posturtle,poscmath,posmath,posnumpy,posmatplotlib,contextptr);
 	  pythonmode=true;
 	  break;	    
@@ -6303,12 +7268,12 @@ unsigned int ConvertUTF8toUTF16 (
 	}
       }
       if (instring){
-	*logptr(contextptr) << "Warning: multi-line strings can not be converted from Python like syntax"<<endl;
+	*logptr(contextptr) << "Warning: multi-line strings can not be converted from Python like syntax"<<'\n';
 	return s_orig;
       }
       // detect : at end of line
       for (pos=int(cur.size())-1;pos>=0;--pos){
-	if (cur[pos]!=' ' && cur[pos]!=char(9))
+	if (cur[pos]!=' ' && cur[pos]!=char(9) && cur[pos]!='\r')
 	  break;
       }
       if (pos<0){ 
@@ -6332,10 +7297,28 @@ unsigned int ConvertUTF8toUTF16 (
 	      instr=false;
 	    continue;
 	  }
-	  if (cur[p]==':' && cur[p+1]!=';')
+	  if (cur[p]==':' && (cur[p+1]!=';' && cur[p+1]!='='))
 	    break;
 	  if (cur[p]=='"' && cur[p-1]!='\\')
 	    instr=true;	  
+	}
+	if (p==0){
+	  // = or return expr if cond else alt_expr => ifte(cond,expr,alt_expr)
+	  int cs=int(cur.size());
+	  int elsepos=cur.find("else");
+	  if (elsepos>0 && elsepos<cs){
+	    int ifpos=cur.find("if");
+	    if (ifpos>0 && ifpos<elsepos){
+	      int retpos=cur.find("return"),endretpos=retpos+6;
+	      if (retpos<0 || retpos>=cs){
+		retpos=cur.find("=");
+		endretpos=retpos+1;
+	      }
+	      if (retpos>=0 && retpos<ifpos){
+		cur=cur.substr(0,endretpos)+" ifte("+cur.substr(ifpos+2,elsepos-ifpos-2)+","+cur.substr(endretpos,ifpos-endretpos)+","+cur.substr(elsepos+4,cs-elsepos-4)+")";
+	      }
+	    }
+	  }
 	}
 	if (p>0){
 	  int cs=int(cur.size()),q=4;
@@ -6344,30 +7327,41 @@ unsigned int ConvertUTF8toUTF16 (
 	    progpos=cur.find("if");
 	    q=2;
 	  }
-	  if (p && progpos>=0 && progpos<cs && instruction_at(cur,progpos,q)){
+	  if (p>progpos && progpos>=0 && progpos<cs && instruction_at(cur,progpos,q)){
 	    pythonmode=true;
+#if 1
+	    res = cur.substr(0,p)+":\n"+string(progpos+4,' ')+cur.substr(p+1,pos-p)+'\n'+res;
+	    continue;
+#else
 	    cur=cur.substr(0,p)+" then "+cur.substr(p+1,pos-p);
 	    convert_python(cur,contextptr);
 	    // no fi if there is an else or elif
 	    for (p=0;p<int(res.size());++p){
-	      if (res[p]!=' ' && res[p]!=char(9))
+	      if (res[p]!=' ' && res[p]!=char(9) && res[p]!='\r')
 		break;
 	    }
-	    if (p<res.size()+5 && (res.substr(p,4)=="else" || res.substr(p,4)=="elif"))
+	    if (p<res.size()+5 && (res.substr(p,4)=="else" || res.substr(p,4)=="elif")){
 	      cur += " ";
+	    }
 	    else
 	      cur += " fi";
 	    p=0;
+#endif
 	  }
 	  progpos=cur.find("else");
-	  if (p && progpos>=0 && progpos<cs && instruction_at(cur,progpos,4)){
+	  if (p>progpos && progpos>=0 && progpos<cs && instruction_at(cur,progpos,4)){
 	    pythonmode=true;
+#if 1
+	    res = cur.substr(0,p)+":\n"+string(progpos+4,' ')+cur.substr(p+1,pos-p)+'\n'+res;
+	    continue;
+#else
 	    cur=cur.substr(0,p)+' '+cur.substr(p+1,pos-p)+" fi";
 	    convert_python(cur,contextptr);
 	    p=0;
+#endif
 	  }
 	  progpos=cur.find("for");
-	  if (p && progpos>=0 && progpos<cs && instruction_at(cur,progpos,3)){
+	  if (p>progpos && progpos>=0 && progpos<cs && instruction_at(cur,progpos,3)){
 	    pythonmode=true;
 	    cur=cur.substr(0,p)+" do "+cur.substr(p+1,pos-p);
 	    convert_python(cur,contextptr);
@@ -6375,7 +7369,7 @@ unsigned int ConvertUTF8toUTF16 (
 	    p=0;
 	  }
 	  progpos=cur.find("while");
-	  if (p && progpos>=0 && progpos<cs && instruction_at(cur,progpos,5)){
+	  if (p>progpos && progpos>=0 && progpos<cs && instruction_at(cur,progpos,5)){
 	    pythonmode=true;
 	    cur=cur.substr(0,p)+" do "+cur.substr(p+1,pos-p);
 	    convert_python(cur,contextptr);
@@ -6388,7 +7382,7 @@ unsigned int ConvertUTF8toUTF16 (
       int ws=0;
       int cs=cur.size();
       for (ws=0;ws<cs;++ws){
-	if (cur[ws]!=' ' && cur[ws]!=char(9))
+	if (cur[ws]!=' ' && cur[ws]!=char(9) && cur[ws]!='\r')
 	  break;
       }
       if (cur[pos]==':'){
@@ -6559,7 +7553,9 @@ unsigned int ConvertUTF8toUTF16 (
     }
     if (pythonmode){
       char ch;
-      while ((ch=s[s.size()-1])==';' || (ch=='\n'))
+      while (s.size()>1 && 
+	     ( ((ch=s[s.size()-1])==';' && s[s.size()-2]!=':') || (ch=='\n'))
+	     )
 	s=s.substr(0,s.size()-1);
       // replace ;) by )
       for (int i=s.size()-1;i>=2;--i){
@@ -6572,13 +7568,15 @@ unsigned int ConvertUTF8toUTF16 (
 	s += ":;";
       else {
 	int pos=s.find('\n');
-	if (pos>=0 && pos<s.size())
+	if (pos>=0 && pos<s.size() && s[s.size()-1]!=';')
 	  s += ";";
       }
       if (debug_infolevel)
-	*logptr(contextptr) << "Translated to Xcas as:\n" << s << endl;
+	*logptr(contextptr) << "Translated to Xcas as:\n" << s << '\n';
     }
-    return s;
+    res.clear(); cur.clear();
+    // CERR << s << endl;
+    return string(s.begin(),s.end());
   }
   
     std::string translate_at(const char * ch){
@@ -6626,12 +7624,16 @@ unsigned int ConvertUTF8toUTF16 (
 
 
 #ifdef STATIC_BUILTIN_LEXER_FUNCTIONS
-
+    
     const charptr_gen_unary builtin_lexer_functions[] ={
 #if defined(GIAC_HAS_STO_38) && defined(CAS38_DISABLED)
 #include "static_lexer_38.h"
 #else
+#if defined KHICAS || defined NSPIRE_NEWLIB
+#include "static_lexer_numworks.h"
+#else
 #include "static_lexer.h"
+#endif // KHICAS
 #endif
     };
 
@@ -6648,6 +7650,11 @@ unsigned int ConvertUTF8toUTF16 (
     }
 #else
     // Array added because GH compiler stores builtin_lexer_functions in RAM
+#if defined KHICAS || defined NSPIRE_NEWLIB
+    const unary_function_ptr * const * const builtin_lexer_functions_[]={
+#include "static_lexer__numworks.h"
+    };
+#else
     const size_t builtin_lexer_functions_[]={
 #if defined(GIAC_HAS_STO_38) && defined(CAS38_DISABLED)
 #include "static_lexer_38_.h"
@@ -6655,7 +7662,8 @@ unsigned int ConvertUTF8toUTF16 (
 #include "static_lexer_.h"
 #endif
     };
-#endif
+#endif // KHICAS
+#endif // STATIC_BUILTIN
 
 #ifdef SMARTPTR64
     charptr_gen * builtin_lexer_functions64(){
@@ -6689,7 +7697,7 @@ unsigned int ConvertUTF8toUTF16 (
     charptr_gen * builtin_lexer_functions(){
       static charptr_gen * ans=0;
       if (!ans){
-	ans = new charptr_gen[1800];
+	ans = new charptr_gen[1999];
 	builtin_lexer_functions_number=0;
       }
       return ans;
@@ -6715,17 +7723,17 @@ unsigned int ConvertUTF8toUTF16 (
 
   // optional, call it just before exiting
   int release_globals(){
-#ifndef VISUALC
+#if !defined VISUALC && !defined KHICAS
     delete normal_sin_pi_12_ptr_();
     delete normal_cos_pi_12_ptr_();
 #endif
 #ifndef STATIC_BUILTIN_LEXER_FUNCTIONS
     if (debug_infolevel)
-      CERR << "releasing " << builtin_lexer_functions_number << " functions" << endl;
+      CERR << "releasing " << builtin_lexer_functions_number << " functions" << '\n';
     for (int i=0;i<builtin_lexer_functions_number;++i){
 #ifdef SMARTPTR64
       if (debug_infolevel)
-	CERR << builtin_lexer_functions_begin()[i].first << endl; 
+	CERR << builtin_lexer_functions_begin()[i].first << '\n'; 
       builtin_lexer_functions_begin()[i].second=0;
       //delete (ref_unary_function_ptr *) (* ((ulonglong * ) &builtin_lexer_functions_begin()[i].second) >> 16);
 #endif

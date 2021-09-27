@@ -4,58 +4,112 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Rewrite an expression with different options : convert convertir</title>
+<title>Riemann sum: sum_riemann
+</title>
 </head>
 <body >
 <a href="cascmd_en224.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en226.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec283" class="subsection">5.21.24  Rewrite an expression with different options : <span style="font-family:monospace">convert convertir</span></h3>
-<p><a id="hevea_default387"></a><a id="hevea_default388"></a><a id="hevea_default389"></a><a id="hevea_default390"></a><a id="hevea_default391"></a><a id="hevea_default392"></a><a id="hevea_default393"></a><a id="hevea_default394"></a><a id="hevea_default395"></a><a id="hevea_default396"></a><a id="hevea_default397"></a><a id="hevea_default398"></a><a id="hevea_default399"></a><a id="hevea_default400"></a><a id="hevea_default401"></a><a id="sec:convert"></a>
-<span style="font-family:monospace">convert</span> takes two arguments an expression and an option.<br>
-<span style="font-family:monospace">convert</span> rewrites this expression applying rules depending 
-on the option. Valid options are :
+<h3 id="sec280" class="subsection">6.20.4  Riemann sum: <span style="font-family:monospace">sum_riemann</span>
+<a id="hevea_default424"></a></h3>
+<p>Given a function <span style="font-style:italic">f</span> on [0,1], the Riemann sum corresponding to
+dividing the interval into <span style="font-style:italic">n</span> equal parts and using the right
+endpoints is 
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-size:xx-large">∑</span></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">k</span>=1</td></tr>
+</table></td><td class="dcell"><span style="font-style:italic">f</span>(</td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center"><span style="font-style:italic">x</span></td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span></td></tr>
+</table></td><td class="dcell">)</td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span></td></tr>
+</table></td><td class="dcell">.
+</td></tr>
+</table><p>The <span style="font-family:monospace">sum_riemann</span> command determines if a sum is such a
+Riemann sum, and if it is, evaluates the integral.
 </p><ul class="itemize"><li class="li-itemize">
-<span style="font-family:monospace">sin</span> converts an expression like <span style="font-family:monospace">trigsin</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">cos</span> converts an expression like <span style="font-family:monospace">trigcos</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">sincos</span> converts an expression like <span style="font-family:monospace">sincos</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">trig</span> converts an expression like <span style="font-family:monospace">sincos</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">tan</span> converts an expression like <span style="font-family:monospace">halftan</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">exp</span> converts an expression like <span style="font-family:monospace">trig2exp</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">ln</span> converts an expression like <span style="font-family:monospace">trig2exp</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">expln</span> converts an expression like <span style="font-family:monospace">trig2exp</span>.
-</li><li class="li-itemize"><span style="font-family:monospace">string</span> converts an expression into a string.
-</li><li class="li-itemize"><span style="font-family:monospace">matrix</span> converts a list of lists into a matrix.
-</li><li class="li-itemize"><span style="font-family:monospace">polynom</span> converts a Taylor series into a polynomial 
-by removing the remainder (cf <a href="cascmd_en282.html#sec%3Aconvertpoly">5.25.22</a>).
-</li><li class="li-itemize"><span style="font-family:monospace">parfrac</span> or <span style="font-family:monospace">partfrac</span> or <span style="font-family:monospace">fullparfrac</span> converts a rational 
-fraction into its partial fraction decomposition (<a href="cascmd_en325.html#sec%3Aconvertparf">5.29.9</a>).
-</li></ul><p>
-<span style="font-family:monospace">convert</span> can also :
-</p><ul class="itemize"><li class="li-itemize">
-convert units, for example 
-<span style="font-family:monospace">convert(1000_g,_kg)=1.0_kg</span> (cf <a href="cascmd_en656.html#sec%3Aconvertunit">9.1.4</a>).
-</li><li class="li-itemize">write a real as a continued fraction : 
-<span style="font-family:monospace">convert(a,confrac,’fc’)</span> writes <span style="font-family:monospace">a</span> as a continued fraction
-stored in <span style="font-family:monospace">fc</span>. Do not forget to quote the last argument if it
-was assigned.<br>
-For example, <span style="font-family:monospace">convert(1.2,confrac,’fc’)=[1,5]</span> and <span style="font-family:monospace">fc</span> contains the 
-continued fraction equal to 1.2 (cf <a href="cascmd_en114.html#sec%3Aconvertdfc">5.8.7</a>). 
-</li><li class="li-itemize">transform an integer into the list of its digits in a 
-base, beginning with the units digit (and reciprocally)
+<span style="font-family:monospace">sum_riemann</span> takes two arguments:
 <ul class="itemize"><li class="li-itemize">
-<span style="font-family:monospace">convert(n,base,b)</span> transforms the integer <span style="font-family:monospace">n</span> into the list of its 
-digits in base <span style="font-family:monospace">b</span> beginning with the units digit.<br>
-For example,
-<span style="font-family:monospace">convert(123,base,10)=[3,2,1]</span> and reciprocally
-</li><li class="li-itemize"><span style="font-family:monospace">convert(l,base,b)</span> transforms the list <span style="font-family:monospace">l</span> into the integer <span style="font-family:monospace">n</span> 
-which has <span style="font-family:monospace">l</span> as list of its 
-digits in base <span style="font-family:monospace">b</span> beginning with the units digit.<br>
-For example, 
-<span style="font-family:monospace">convert([3,2,1],base,10)=123</span> (cf <a href="index.html#sec%3Aconvertbase">5.5</a>). 
+<span style="font-style:italic">expr</span>, an expression depending on two variables.
+</li><li class="li-itemize"><span style="font-family:monospace">[</span><span style="font-style:italic">n</span><span style="font-family:monospace">,</span><span style="font-style:italic">k</span><span style="font-family:monospace">]</span>, the list of those two variables.
 </li></ul>
-</li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">sum_riemann(</span><span style="font-style:italic">expr</span><span style="font-family:monospace">,[</span><span style="font-style:italic">n</span><span style="font-family:monospace">,</span><span style="font-style:italic">k</span><span style="font-family:monospace">])</span>
+returns
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">    </td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">&nbsp;</td></tr>
+<tr><td class="dcell" style="text-align:center">lim</td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span>→∞</td></tr>
+</table></td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-size:xx-large">∑</span></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">k</span>=1</td></tr>
+</table></td><td class="dcell"><span style="font-style:italic">expr</span>
+</td></tr>
+</table>
+(which, viewing the sum as a Riemann sum of a continuous function on
+[0,1], is the definite integral) or returns
+<span style="font-family:monospace">"it is probably not a Riemann sum"</span> when the no result is
+found.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Exercises.</span>
+</p><ol class="enumerate" type=1><li class="li-enumerate">
+Suppose  <span style="font-style:italic">S</span><sub><span style="font-style:italic">n</span></sub>=∑<sub><span style="font-style:italic">k</span>=1</sub><sup><span style="font-style:italic">n</span></sup> <span style="font-style:italic">k</span><sup>2</sup>/<span style="font-style:italic">n</span><sup>3</sup>.<br>
+Compute  lim<sub><span style="font-style:italic">n</span> → +∞</sub> <span style="font-style:italic">S</span><sub><span style="font-style:italic">n</span></sub>.<br>
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">sum_riemann(k^2/n^3,[n,k])</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center">3</td></tr>
+</table></td></tr>
+</table>
+</li><li class="li-enumerate">Suppose  <span style="font-style:italic">S</span><sub><span style="font-style:italic">n</span></sub>=∑<sub><span style="font-style:italic">k</span>=1</sub><sup><span style="font-style:italic">n</span></sup> <span style="font-style:italic">k</span><sup>3</sup>/<span style="font-style:italic">n</span><sup>4</sup>.<br>
+Compute  lim<sub><span style="font-style:italic">n</span> → +∞</sub> <span style="font-style:italic">S</span><sub><span style="font-style:italic">n</span></sub>.<br>
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">sum_riemann(k^3/n^4,[n,k])</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center">4</td></tr>
+</table></td></tr>
+</table>
+</li><li class="li-enumerate">Compute  lim<sub><span style="font-style:italic">n</span> → +∞</sub>(1/<span style="font-style:italic">n</span>+1+
+1/<span style="font-style:italic">n</span>+2+…+1/<span style="font-style:italic">n</span>+<span style="font-style:italic">n</span>).<br>
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">sum_riemann(1/(n+k),[n,k])</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">ln</td><td class="dcell">⎛<br>
+⎝</td><td class="dcell">2</td><td class="dcell">⎞<br>
+⎠</td></tr>
+</table>
+</li><li class="li-enumerate">Suppose  <span style="font-style:italic">S</span><sub><span style="font-style:italic">n</span></sub>=∑<sub><span style="font-style:italic">k</span>=1</sub><sup><span style="font-style:italic">n</span></sup> 32<span style="font-style:italic">n</span><sup>3</sup>/16<span style="font-style:italic">n</span><sup>4</sup>−<span style="font-style:italic">k</span><sup>4</sup>.<br>
+Compute  lim<sub><span style="font-style:italic">n</span> → +∞</sub> <span style="font-style:italic">S</span><sub><span style="font-style:italic">n</span></sub>.<br>
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">sum_riemann(32*n^3/(16*n^4-k^4),[n,k])</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">2 arctan</td><td class="dcell">⎛<br>
+⎜<br>
+⎜<br>
+⎝</td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center">2</td></tr>
+</table></td><td class="dcell">⎞<br>
+⎟<br>
+⎟<br>
+⎠</td><td class="dcell">+ln</td><td class="dcell">⎛<br>
+⎝</td><td class="dcell">3</td><td class="dcell">⎞<br>
+⎠</td></tr>
+</table>
+</li></ol>
 <hr>
 <a href="cascmd_en224.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

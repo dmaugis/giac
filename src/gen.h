@@ -17,6 +17,9 @@
  */
 #ifndef _GIAC_GEN_H
 #define _GIAC_GEN_H
+#ifdef KHICAS
+extern size_t stackptr;
+#endif
 
 /* Warning: the size of a gen depend on the architecture and of compile-time flags
    Define -DSMARTPTR64 on 64 bit CPU if the pointers allocated by new are 48 bits
@@ -38,18 +41,22 @@
 #include "config.h"
 #endif
 #include "first.h"
+#ifdef HAVE_ALLOCA_H
+#include <alloca.h>
+#endif
 
 // #include <gmp.h>
-#ifdef USE_GMP_REPLACEMENTS
+#if defined USE_GMP_REPLACEMENTS 
 #undef HAVE_GMPXX_H
 #undef HAVE_LIBMPFR
+#undef HAVE_LIBMPFI
 #endif
-#ifdef HAVE_GMPXX_H
-#include <gmpxx.h>
-#endif
-#ifdef HAVE_LIBMPFR
+#if defined HAVE_LIBMPFR && !defined BF2GMP_H 
 #include <mpfr.h>
 // #include <mpf2mpfr.h>
+#endif
+#if defined HAVE_GMPXX_H && !defined BF2GMP_H
+#include <gmpxx.h>
 #endif
 #ifdef HAVE_LIBMPFI
 #include <mpfi.h>
@@ -73,11 +80,8 @@
 namespace giac {
 #endif // ndef NO_NAMESPACE_GIAC
 
-
-#ifdef USE_GMP_REPLACEMENTS
-#undef HAVE_GMPXX_H
-#undef HAVE_LIBMPFR
-#endif
+  int sprint_int(char * s,int r);
+  void sprint_double(char * s,double d);
 
   void my_mpz_gcd(mpz_t &z,const mpz_t & A,const mpz_t & B);
 
@@ -126,6 +130,7 @@ namespace giac {
   int invmod(int n,int modulo);
   unsigned invmod(unsigned a,int b);
   int invmod(longlong a,int b);
+  longlong invmodll(longlong a,longlong b);
 #ifdef INT128
   int invmod(int128_t a,int b);
   inline int smod(int128_t r,int m){
@@ -140,6 +145,7 @@ namespace giac {
   }
   int smod(int a,int b); // where b is assumed to be positive
   int smod(longlong a,int b); 
+  longlong smodll(longlong res,longlong m);
   int simplify(int & a,int & b);
 
   struct ref_mpz_t {
@@ -239,7 +245,7 @@ namespace giac {
       static std::string s; 
       s=this->print(0);
 #if 0 // ndef NSPIRE
-      CERR << s << std::endl;
+      CERR << s << '\n';
 #endif
       return s.c_str(); 
     }
@@ -261,6 +267,7 @@ namespace giac {
     virtual gen divide (const gen & g,GIAC_CONTEXT) const;
     gen operator / (const gen & g) const;
     virtual gen substract (const gen & g,GIAC_CONTEXT) const;
+    gen subtract(const gen & g,GIAC_CONTEXT) const;
     virtual gen operator / (const real_object & g) const;
     gen operator - (const gen & g) const;
     virtual gen operator - (const real_object & g) const;
@@ -367,6 +374,7 @@ namespace giac {
     virtual real_interval operator * (const real_interval & g) const;
     virtual gen divide (const gen & g,GIAC_CONTEXT) const;
     virtual gen substract (const gen & g,GIAC_CONTEXT) const;
+    gen subtract(const gen & g,GIAC_CONTEXT) const;
     virtual gen operator - (const real_object & g) const;
     virtual real_interval operator - (const real_interval & g) const ;
     virtual gen operator -() const;
@@ -405,6 +413,7 @@ namespace giac {
   gen accurate_evalf(const gen & g,int nbits);
   vecteur accurate_evalf(const vecteur & v,int nbits);
   std::string print_DOUBLE_(double d,GIAC_CONTEXT);
+  bool islogo(const gen & g);
 
 #if 1 // def NSPIRE
   class comparegen {
@@ -565,13 +574,13 @@ namespace giac {
 #ifdef SMARTPTR64
     gen()  {
       * ((ulonglong * ) this)=0;
-#ifdef COMPILE_FOR_STABILITY
+#if defined COMPILE_FOR_STABILITY && !defined(POCKETCAS)
       control_c();
 #endif
     };
 #else
     gen(): type(_INT_),subtype(0),val(0) {
-#ifdef COMPILE_FOR_STABILITY
+#if defined COMPILE_FOR_STABILITY && !defined(POCKETCAS)
       control_c();
 #endif
     };
@@ -602,25 +611,25 @@ namespace giac {
     gen(int i) {
       * ((ulonglong * ) this)=0;
       val=i;
-#ifdef COMPILE_FOR_STABILITY
+#ifdef COMPILE_FOR_STABILITY 
       control_c();
 #endif
     };
     gen(size_t i) {
       * ((ulonglong * ) this)=0;
       val=int(i);
-#ifdef COMPILE_FOR_STABILITY
+#ifdef COMPILE_FOR_STABILITY 
       control_c();
 #endif
     };
 #else
     gen(int i): type(_INT_),subtype(0),val(i) {
-#ifdef COMPILE_FOR_STABILITY
+#if defined COMPILE_FOR_STABILITY && !defined(POCKETCAS)
       control_c();
 #endif
     };
     gen(size_t i): type(_INT_),subtype(0),val((int)i)  {
-#ifdef COMPILE_FOR_STABILITY
+#if defined COMPILE_FOR_STABILITY && !defined(POCKETCAS)
       control_c();
 #endif
     };
@@ -677,7 +686,7 @@ namespace giac {
     gen (const gen_map & m);
     gen (const eqwdata & );
     gen (const grob & );
-#ifdef HAVE_GMPXX_H
+#if defined HAVE_GMPXX_H && !defined BF2GMP_H
     gen (const mpz_class &);
 #endif
     gen (const my_mpz &);
@@ -698,7 +707,7 @@ namespace giac {
 
     bool in_eval(int level,gen & evaled,const context * contextptr) const;
     inline gen eval(int level,const context * contextptr) const{
-      // CERR << "eval " << *this << " " << level << endl;
+      // CERR << "eval " << *this << " " << level << '\n';
       gen res;
       // return in_eval(level,res,contextptr)?res:*this;
       if (in_eval(level,res,contextptr))
@@ -777,17 +786,17 @@ namespace giac {
     bool is_integer() const ;
     bool is_constant() const;
     std::string print(GIAC_CONTEXT) const;
-    inline const char * printcharptr(GIAC_CONTEXT) const { return print(contextptr).c_str(); };
+    // inline const char * printcharptr(GIAC_CONTEXT) const { return print(contextptr).c_str(); };
     // if sptr==0, return length required, otherwise print at end of *sptr
     int sprint(std::string * sptr,GIAC_CONTEXT) const; 
     std::string print_universal(GIAC_CONTEXT) const;
     std::string print() const;
-    inline const char * printcharptr() const { return print().c_str(); };
+    //inline const char * printcharptr() const { return print().c_str(); };
     wchar_t * wprint(GIAC_CONTEXT) const ; 
     // print then convert to a malloc-ated wchar_t *
     void modify(int i) { *this =gen(i); };
     const char * dbgprint() const; 
-    void uncoerce() ;
+    void uncoerce(size_t s=128) ;
     gen conj(GIAC_CONTEXT) const;
     gen re(GIAC_CONTEXT) const ;
     gen im(GIAC_CONTEXT) const ;
@@ -860,7 +869,7 @@ namespace giac {
     vectpoly(size_t i,const polynome & p):std::vector<polynome>::vector(i,p) {};
     const char * dbgprint(){  
 #if !defined(NSPIRE) && !defined(FXCG)
-      CERR << *this << std::endl; 
+      CERR << *this << '\n'; 
 #endif
       return "Done";
     }
@@ -880,8 +889,13 @@ namespace giac {
   struct alias_ref_fraction { ref_count_t ref_count; alias_gen num; alias_gen den; };
   struct alias_ref_complex {
     ref_count_t ref_count;
+#ifdef BIGENDIAN
+    alias_gen im,re;
+    int display;
+#else
     int display;
     alias_gen re,im;
+#endif
   };
 
   struct ref_vecteur {
@@ -930,8 +944,13 @@ namespace giac {
 
   struct ref_complex {
     volatile ref_count_t ref_count;
+#ifdef BIGENDIAN
+    gen im,re;
+    int display;
+#else
     int display;
     gen re,im;
+#endif
     ref_complex(const std::complex<double> & c):ref_count(1),display(0),re(real(c)),im(imag(c)) {}
     ref_complex(const gen & R,const gen & I):ref_count(1),display(0),re(R),im(I) {}
     ref_complex(const gen & R,const gen & I,int display_mode):ref_count(1),display(display_mode),re(R),im(I) {}
@@ -1011,6 +1030,7 @@ namespace giac {
   gen rdiv(const gen & a,const gen & b,GIAC_CONTEXT0); // rational division
   inline gen operator /(const gen & a,const gen & b){ return rdiv(a,b); };
   gen operator %(const gen & a,const gen & b); // for int only
+  bool is_multiple(const gen & a,const gen &b);
   // gen inv(const gen & a);
   gen inv(const gen & a,GIAC_CONTEXT);
   inline wchar_t * wprint(const gen & g,GIAC_CONTEXT){ return g.wprint(contextptr); }
@@ -1105,6 +1125,7 @@ namespace giac {
   // more advanced arithmetic
   gen gcd(const gen & A,const gen & B,GIAC_CONTEXT);
   gen gcd(const gen & A,const gen & B);
+  int iegcd(int a_,int b_,int &u,int & v);
   gen lcm(const gen & a,const gen & b);
   gen simplify(gen & n, gen & d);
   void egcd(const gen &a,const gen &b, gen & u,gen &v,gen &d );
@@ -1113,6 +1134,7 @@ namespace giac {
   gen fracmod(const gen & a_orig,const gen & modulo); // -> p/q=a mod modulo
   bool fracmod(const gen & a_orig,const gen & modulo,gen & res);
   bool in_fracmod(const gen &m,const gen & a,mpz_t & d,mpz_t & d1,mpz_t & absd1,mpz_t &u,mpz_t & u1,mpz_t & ur,mpz_t & q,mpz_t & r,mpz_t &sqrtm,mpz_t & tmp,gen & num,gen & den);
+  bool alloc_fracmod(const gen & a_orig,const gen & modulo,gen & res,mpz_t & d,mpz_t & d1,mpz_t & absd1,mpz_t &u,mpz_t & u1,mpz_t & ur,mpz_t & q,mpz_t & r,mpz_t &sqrtm,mpz_t & tmp);
   gen powmod(const gen &base,const gen & expo,const gen & modulo);
   gen isqrt(const gen & A);
   gen re(const gen & a,GIAC_CONTEXT);
@@ -1230,7 +1252,7 @@ namespace giac {
       return false;
     }
     virtual bool operator == (const gen_user & a) const { return (*this) == gen(a); }
-    // must redefine > AND <= since we do not have symetrical type arguments
+    // must redefine > AND <= since we do not have symmetrical type arguments
     virtual gen operator > (const gen &) const { return gensizeerr(gettext("> not redefined")); }
     virtual gen operator > (const gen_user & a) const { return superieur_strict(*this, gen(a),0); }
     virtual gen operator <= (const gen &) const { return gensizeerr(gettext("<= not redefined")); }
@@ -1247,7 +1269,7 @@ namespace giac {
       static std::string s;
       s=this->print(0);
 #if !defined( NSPIRE) && !defined(FXCG)
-      CERR << s << std::endl;
+      CERR << s << '\n';
 #endif
       return s.c_str();
     }
@@ -1268,6 +1290,9 @@ namespace giac {
   std::string print_the_type(int val,GIAC_CONTEXT);
 
   // I/O
+#ifdef KHICAS
+  stdostream & operator << (stdostream & os,const gen & a);
+#endif
 #ifdef NSPIRE
   template<class T> nio::ios_base<T> & operator<<(nio::ios_base<T> & os,const gen & a){
     return os << a.print(context0); 
@@ -1294,6 +1319,9 @@ namespace giac {
     std::string print(GIAC_CONTEXT) const ;
     const char * dbgprint() const ;
   };
+#if 0 // def KHICAS
+  stdostream & operator<<(stdostream & os,const monome & m){    return os << m.print() ;}
+#endif
 #ifdef NSPIRE
   template<class T> nio::ios_base<T> & operator<<(nio::ios_base<T> & os,const monome & m){    return os << m.print() ;}
 #else
@@ -1354,9 +1382,9 @@ namespace giac {
   // extern environment * env; 
 
   struct attributs {
-    int fontsize;
-    int background;
-    int text_color;
+    short int fontsize;
+    unsigned short int background;
+    unsigned short int text_color;
     attributs(int f,int b,int t): fontsize(f),background(b),text_color(t) {};
     attributs():fontsize(0),background(0),text_color(0) {};
   };
@@ -1364,18 +1392,23 @@ namespace giac {
   // Terminal data for EQW display
   struct eqwdata {
     gen g; 
-    attributs eqw_attributs;
+#if defined KHICAS || defined FXCG
+    short int x,y,dx,dy;
+    short int baseline;
+#else
     int x,y,dx,dy;
+    int baseline;
+#endif
     bool selected;
     bool active;
     bool hasbaseline;
     bool modifiable;
-    int baseline;
+    attributs eqw_attributs;
     eqwdata(int dxx,int dyy,int xx, int yy,const attributs & a,const gen& gg):g(gg),eqw_attributs(a),x(xx),y(yy),dx(dxx),dy(dyy),selected(false),active(false),hasbaseline(false),modifiable(true),baseline(0) {};
     eqwdata(int dxx,int dyy,int xx, int yy,const attributs & a,const gen& gg,int mybaseline):g(gg),eqw_attributs(a),x(xx),y(yy),dx(dxx),dy(dyy),selected(false),active(false),hasbaseline(true),modifiable(true),baseline(mybaseline) {};
     const char * dbgprint(){ 
 #if !defined( NSPIRE) && !defined(FXCG)
-      CERR << g << ":" << dx<< ","<< dy<< "+"<<x <<","<< y<< "," << baseline << "," << eqw_attributs.fontsize << "," << eqw_attributs.background << "," << eqw_attributs.text_color << std::endl; 
+      CERR << g << ":" << dx<< ","<< dy<< "+"<<x <<","<< y<< "," << baseline << "," << eqw_attributs.fontsize << "," << eqw_attributs.background << "," << eqw_attributs.text_color << '\n'; 
 #endif
       return "Done";
     }
@@ -1478,7 +1511,7 @@ namespace giac {
       static std::string s;
       s=this->print(context0);
 #if 0 // ndef NSPIRE
-      COUT << s << std::endl; 
+      COUT << s << '\n'; 
 #endif
       return s.c_str();
     }

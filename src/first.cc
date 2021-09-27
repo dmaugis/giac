@@ -85,15 +85,16 @@ init_gmp_memory::~init_gmp_memory() { }
 #include <cstdlib>
 #include <stdexcept>
 #endif
-  
-#ifdef GIAC_CHECK_NEW
+
+
+#ifdef GIAC_CHECK_NEW 
 
 #include <iostream>
 
 size_t giac_allocated = 0;
 void* operator new(std::size_t size)
 {
-  std::cerr << giac_allocated << " + " << size << std::endl;
+  std::cerr << giac_allocated << " + " << size << '\n';
   giac_allocated += size;
   void * p =  std::malloc(size);  
   if(!p) {
@@ -105,7 +106,7 @@ void* operator new(std::size_t size)
   
 void* operator new[](std::size_t size)
 {
-  std::cerr << giac_allocated << " + [] " << size << std::endl;
+  std::cerr << giac_allocated << " + [] " << size << '\n';
   giac_allocated += size;
   void * p =  std::malloc(size);  
   if(!p) {
@@ -119,7 +120,40 @@ void operator delete[](void* obj)
 {
   free(obj);
 }
-#endif
+#else
+
+#if 0 // defined KHICAS && defined DEVICE
+// #include <unistd.h>
+extern const void * _stack_end;
+
+namespace giac {
+  extern volatile bool ctrl_c,interrupted;
+}
+
+void* operator new(std::size_t size){
+  void * p =  std::malloc(size);
+  if ((size_t) p > (size_t) _stack_end)
+    giac::ctrl_c=giac::interrupted=true;
+  return p;
+}
+  
+void* operator new[](std::size_t size){
+  // if ( (0x20038000-(size_t)sbrk(0))<2*size) giac::ctrl_c=giac::interrupted=true;
+  void * p =  std::malloc(size);  
+  if ((size_t) p > (size_t) _stack_end)
+    giac::ctrl_c=giac::interrupted=true;
+  return p;
+}
+  
+void operator delete(void* obj){
+  free(obj);
+}
+  
+void operator delete[](void* obj){
+  free(obj);
+}
+#endif // KHICAS
+#endif // GIAC_CHECK_NEW
 
 #endif
 

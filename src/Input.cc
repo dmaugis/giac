@@ -19,11 +19,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#ifndef IN_GIAC
-#include <giac/first.h>
-#else
 #include "first.h"
-#endif
 #include <string>
 #ifdef HAVE_LIBFLTK
 #include "Input.h"
@@ -40,15 +36,10 @@
 #include "Tableur.h"
 #include "Graph3d.h"
 #include "Help1.h"
-#ifndef IN_GIAC
-#include <giac/plot.h>
-#include <giac/help.h>
-#include <giac/global.h>
-#else
 #include "plot.h"
 #include "help.h"
 #include "global.h"
-#endif
+#include "Python.h"
 #include <iostream>
 #include <fstream>
 #ifdef HAVE_UNISTD_H
@@ -93,11 +84,11 @@ namespace xcas {
       (*giac::vector_aide_ptr())=giac::readhelp(helpfile.c_str(),helpitems);
     }
     if (!helpitems){
-      cerr << "// Unable to open help file "<< helpfile << endl;
+      cerr << "// Unable to open help file "<< helpfile << '\n';
       return false;
     }
     else {
-      cerr << "// Using help file " << helpfile << endl;
+      cerr << "// Using help file " << helpfile << '\n';
       giac::xcasroot()=giac::xcasroot_dir((char *) progname.c_str());
       /* patch for gsview TEMP, but does not work
       if (!getenv("TEMP")){
@@ -107,7 +98,7 @@ namespace xcas {
 	  setenv("TEMP",giac::xcasroot().c_str(),1);
       }
       */
-      cerr << "// root dir " << giac::xcasroot() << endl;
+      cerr << "// root dir " << giac::xcasroot() << '\n';
       giac::html_help_init((char *) progname.c_str(),language);
       giac::update_completions();
       return true;
@@ -336,10 +327,34 @@ namespace xcas {
     }
   }
 
+
+#ifdef HAVE_LIBMICROPYTHON
+  vector<string> micropython_filter_help(const vector<string> & v_orig){
+    vector<string> v;
+    for (int i=0;i<v_orig.size();++i){
+      const char * ptr=v_orig[i].c_str();
+      if (giac::is_python_builtin(ptr) || giac::is_python_keyword(ptr) || mp_token(ptr))
+	v.push_back(v_orig[i]);
+    }
+    return v;
+  }
+#endif
+#ifdef QUICKJS
+  vector<string> js_filter_help(const vector<string> & v_orig){
+    vector<string> v;
+    for (int i=0;i<v_orig.size();++i){
+      const char * ptr=v_orig[i].c_str();
+      if (giac::is_python_keyword(ptr) || js_token(ptr))
+	v.push_back(v_orig[i]);
+    }
+    return v;
+  }
+#endif
+
   Fl_Window * handle_tab_w = 0;
   // Find a completion of s in v -> ans, return true if user OK
   // dx,dy=size of browser window
-  int handle_tab(const string & s,const vector<string> & v,int dx,int dy,int & remove,string & ans,bool allow_immediate_out){
+  int handle_tab(const string & s,const vector<string> & v_orig,int dx,int dy,int & remove,string & ans,bool allow_immediate_out){
     static Fl_Hold_Browser * browser = 0;
     static Fl_Hold_Browser * related = 0;
     static Fl_Hold_Browser * syns = 0;
@@ -363,6 +378,16 @@ namespace xcas {
       if (dx>500)
 	dx=500;
     }
+    // filter help if MicroPython is active
+    vector<string> v(v_orig);
+#ifdef HAVE_LIBMICROPYTHON
+    if (contextptr && python_compat(contextptr)>0 && (python_compat(contextptr) & 4))
+      v=micropython_filter_help(v_orig);
+#endif
+#ifdef QUICKJS
+    if (contextptr && python_compat(contextptr)<0)
+      v=js_filter_help(v_orig);
+#endif
     if (dy<300)
       dy=300;
     if (dx<240)
@@ -490,7 +515,7 @@ namespace xcas {
 	  int j=0;
 	  for (;j<TAB_ARGS;j++){
 	    if (o==argtab[j]){ 
-	      cerr << j << endl;
+	      cerr << j << '\n';
 	      Fl::e_keysym=argtab[j]->value()[0];
 	      break;
 	    }
@@ -785,7 +810,7 @@ namespace xcas {
 
   void increase_size(Fl_Widget * wid, int L){
     if (!wid) return;
-    // CERR << "increase size " << L << endl;
+    // CERR << "increase size " << L << '\n';
     if (L+wid->h()<=wid->labelsize()+4)
       L=wid->labelsize()+5-wid->h();
     if (!L) return;
@@ -1479,7 +1504,7 @@ namespace xcas {
 	  if (!haspoint)
 	    continue;
 	  string url;
-	  if (i>wordbegin+7 && (s.substr(wordbegin,7)=="http://" || s.substr(wordbegin,7)=="file://")){
+	  if (i>wordbegin+8 && (s.substr(wordbegin,8)=="https://" || s.substr(wordbegin,7)=="http://" || s.substr(wordbegin,7)=="file://")){
 	    url=s.substr(wordbegin,i-wordbegin);
 	  }
 	  else {
@@ -1494,7 +1519,7 @@ namespace xcas {
 	      url=*giac::_pwd(0,0)._STRNGptr+"/"+url;
 	  }
 	  else {
-	    if (url.size()<7 || (url.substr(0,7)!="http://" && url.substr(0,7)!="file://"))
+	    if (url.size()<8 || (url.substr(0,8)!="https://" && url.substr(0,7)!="http://" && url.substr(0,7)!="file://"))
 	      url="http://"+url;
 	  }
 	  giac::system_browser_command(url);

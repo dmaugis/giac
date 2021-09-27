@@ -84,7 +84,7 @@ inline double giac_log(double d){
 #include <cstring>
 #endif
 #include <iostream>
-#include <fstream>
+//#include <fstream>
 #include <map>
 
 #ifdef GNUWINCE
@@ -101,9 +101,46 @@ inline double giac_log(double d){
 #include "tinymt32.h"
 #endif
 
+#if defined(HAVE_NO_SYS_TIMES_H) && defined(__MINGW_H)
+#include <time.h>
+#endif
+
+extern "C" int ctrl_c_interrupted(int exception);
+extern "C" void console_print(const char * s);
+extern "C" const char * console_prompt(const char * s);
+
+bool dfu_get_scriptstore_addr(size_t & start,size_t & taille);
+bool dfu_get_scriptstore(const char * fname);
+bool dfu_send_scriptstore(const char * fname);
+bool dfu_send_rescue(const char * fname);
+const int nwstoresize1=0x8000,nwstoresize2=0x8014;
+bool dfu_send_firmware(const char * fname);
+bool dfu_send_apps(const char * fname);
+
+#if defined HAVE_LIBMICROPYTHON
+#include <string>
+// giac interface to micropython modules
+std::string & python_console();
+#endif
+#ifdef QUICKJS
+#include <string>
+extern std::string js_vars;
+#endif
+int js_token(const char * list,const char * buf);
+int js_token(const char * buf);
+void update_js_vars();
+
+extern bool freezeturtle;
+extern "C" size_t pythonjs_stack_size,pythonjs_heap_size;
+extern "C" void * bf_ctx_ptr;
+extern "C" size_t bf_global_prec;
+
 #ifndef NO_NAMESPACE_GIAC
 namespace giac {
 #endif // ndef NO_NAMESPACE_GIAC
+  // 3 or 1 if a list of space separated commandnames includes buf
+
+  int dichotomic_search(const char * const * tab,unsigned tab_size,const char * s);
   void opaque_double_copy(void * source,void * target);
   double opaque_double_val(const void * source);
 
@@ -189,11 +226,15 @@ Boolean isLegalUTF8Sequence(const UTF8 *source, const UTF8 *sourceEnd);
   int access(const char * ch,int mode);
   void usleep(int );
 #endif
-#ifdef NSPIRE_NEWLIB
+#if defined NSPIRE_NEWLIB || defined KHICAS
   void usleep(int );
 #endif
 
+#ifndef HAVE_NO_SYS_TIMES_H
   double delta_tms(struct tms tmp1,struct tms tmp2);
+#elif defined(__MINGW_H)
+  double delta_tms(clock_t tmp1,clock_t tmp2);
+#endif
 
 #define GIAC_DATA_BEGIN   ((char) 2)
 #define GIAC_DATA_END     ((char) 5)
@@ -246,12 +287,17 @@ Boolean isLegalUTF8Sequence(const UTF8 *source, const UTF8 *sourceEnd);
   extern int NEWTON_DEFAULT_ITERATION;
   extern int DEFAULT_EVAL_LEVEL;
   extern int PARENTHESIS_NWAIT;
+  extern int MAX_PROD_EXPAND_SIZE;
 
   extern int TEST_PROBAB_PRIME; // probabilistic primality tests
   extern int GCDHEU_MAXTRY; // maximal number of retry for heuristic algorithms
   extern int GCDHEU_DEGREE; // max degree allowed inside gcdheu
   extern int MODFACTOR_PRIMES; // number of primes used for factorization
   extern int NTL_MODGCD; // lowest degree for NTL univariate modular GCD 
+  extern int NTL_RESULTANT; // lowest degree for NTL univariate resultant 
+  extern int NTL_XGCD; // lowest degree for NTL univariate extended GCD over Z
+  extern int MODRESULTANT; // lowest degree for modular resultant 
+  extern int HGCD; // lowest degree for half gcd call
   extern int HENSEL_QUADRATIC_POWER; // above #steps do quadratic Hensel lift
   extern int KARAMUL_SIZE; // Use Karatsuba multiplication if degree is >
   extern int INT_KARAMUL_SIZE; // Use Karatsuba multiplication if degree is >
@@ -268,12 +314,19 @@ Boolean isLegalUTF8Sequence(const UTF8 *source, const UTF8 *sourceEnd);
   extern int GBASISF4_MAX_TOTALDEG;
   extern int GBASISF4_MAXITER;
   // extern int GBASISF4_BUCHBERGER;
+  extern unsigned max_pairs_by_iteration; 
+  extern unsigned simult_primes,simult_primes2,simult_primes_seuil2,simult_primes3,simult_primes_seuil3; 
+  // see global.cc for explanations
+  extern double gbasis_reinject_ratio;
+  extern double gbasis_reinject_speed_ratio;
+  extern int gbasis_logz_age_sort,gbasis_stop,rur_do_gbasis,rur_do_certify,rur_certify_maxthreads;
+
   extern int PROOT_FACTOR_MAXDEG;
   extern int ABS_NBITS_EVALF;
-  extern volatile bool ctrl_c,interrupted;
+  extern volatile bool ctrl_c,interrupted,kbd_interrupted;
   void ctrl_c_signal_handler(int signum);
 #ifdef TIMEOUT
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
   double time(int );
 #endif
   extern time_t caseval_begin,caseval_current;
@@ -295,17 +348,17 @@ Boolean isLegalUTF8Sequence(const UTF8 *source, const UTF8 *sourceEnd);
 #elif defined FIR
 #define control_c()
 #else
-#ifdef TIMEOUT
+#if defined TIMEOUT && !defined POCKETCAS
   void control_c();
 #else
 #if 0
-#define control_c() if (ctrl_c) { interrupted = true; CERR << "Throwing exception for user interruption." << std::endl; throw(std::runtime_error("Stopped by user interruption.")); }
+#define control_c() if (ctrl_c) { interrupted = true; CERR << "Throwing exception for user interruption." << '\n'; throw(std::runtime_error("Stopped by user interruption.")); }
 #else
 #define control_c() if (ctrl_c) { \
 interrupted = true; \
 std::string source_path = __FILE__; \
 std::string source_filename = source_path.substr(source_path.find_last_of("/\\") + 1); \
-CERR << "Throwing exception for user interruption (" << source_filename << ":" << __LINE__ << ")" << std::endl; \
+CERR << "Throwing exception for user interruption (" << source_filename << ":" << __LINE__ << ")" << '\n'; \
 throw(std::runtime_error("Stopped by user interruption.")); \
 }
 #endif
@@ -325,7 +378,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
     dbgprint_vector(size_t i,const T & t) : std::imvector<T>::imvector(i,t) { };
     // ~dbgprint_vector() { };
     // inherited destructors
-    void dbgprint() const { COUT << *this << std::endl; }
+    void dbgprint() const { COUT << *this << '\n'; }
   };
 #else // IMMEDIATE_VECTOR
   template <class T> class dbgprint_vector: public std::vector<T> {
@@ -340,7 +393,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
     dbgprint_vector(size_t i,const T & t) : std::vector<T>::vector(i,t) { };
     // ~dbgprint_vector() { };
     // inherited destructors
-    void dbgprint() const { COUT << *this << std::endl; }
+    void dbgprint() const { COUT << *this << '\n'; }
   };
 #endif // IMMEDIATE_VECTOR
   
@@ -380,7 +433,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
       }
       return res;
     }
-    void dbgprint() { COUT << *this << std::endl; }
+    void dbgprint() { COUT << *this << '\n'; }
   };
 
   struct user_function {
@@ -398,6 +451,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
   vecteur * keywords_vecteur_ptr(); // idnt assigned to a commandname for localization, like mediatrice for perpen_bissector
 
   class context;
+  extern const giac::context * python_contextptr;
   
   struct debug_struct {
     int indent_spaces;
@@ -472,6 +526,17 @@ throw(std::runtime_error("Stopped by user interruption.")); \
   typedef std::map<const char *, gen,ltstr> map_charptr_gen;
   typedef map_charptr_gen sym_tab;
 
+  struct nwsrec {
+    unsigned char type;
+    std::vector<unsigned char> data;
+  };
+  typedef std::map<std::string,nwsrec,ltstring> nws_map;
+  bool scriptstore2map(const char * fname,nws_map & m);
+  bool map2scriptstore(const nws_map & m,const char * fname);
+  // check that filename content matches a file content signed in sigfilename
+  bool sha256_check(const char * sigfilename,const char * filename);
+  bool nws_certify_firmware(bool with_overwrite,GIAC_CONTEXT); // Numworks certification
+
   struct parser_lexer {
     int _index_status_; // 0 if [ -> T_VECT_DISPATCH, 1 if [ -> T_INDEX_BEGIN
     int _opened_quote_; // 1 if we are inside a quote
@@ -488,6 +553,23 @@ throw(std::runtime_error("Stopped by user interruption.")); \
     int _i_sqrt_minus1_;
   };
   std::string gen2string(const gen & g);
+  const int turtle_length=10;
+#ifdef KHICAS
+  struct logo_turtle {
+    double x,y;
+    double theta; // theta is given in degrees or radians dep. on angle_mode
+    bool visible; // true if turtle visible
+    bool mark; // true if moving marks
+    bool direct; // true if rond/disque is done in the trigonometric direction
+    char turtle_width;
+    short int s;//std::string s;
+    int color;
+    int radius; // 0 nothing, >0 -> draw a plain disk 
+    // bit 0-8=radius, bit9-17 angle1, bit 18-26 angle2, bit 27=1 filled  or 0 
+    // <0 fill a polygon from previous turtle positions
+    logo_turtle(): x(100),y(100),theta(0),visible(true),mark(true),direct(true),color(0),turtle_width(1),radius(0) {}
+  };
+#else // KHICAS
   struct logo_turtle {
     double x,y;
     double theta; // theta is given in degrees or radians dep. on angle_mode
@@ -495,19 +577,20 @@ throw(std::runtime_error("Stopped by user interruption.")); \
     bool mark; // true if moving marks
     bool direct; // true if rond/disque is done in the trigonometric direction
     int color;
-    int turtle_length;
+    int turtle_width;
     int radius; // 0 nothing, >0 -> draw a plain disk 
     // bit 0-8=radius, bit9-17 angle1, bit 18-26 angle2, bit 27=1 filled  or 0 
     // <0 fill a polygon from previous turtle positions
     std::string s;
     void * widget;
 #ifdef IPAQ
-    logo_turtle(): x(70),y(70),theta(0),visible(true),mark(true),direct(true),color(0),turtle_length(10),radius(0),widget(0) {}
+    logo_turtle(): x(70),y(70),theta(0),visible(true),mark(true),direct(true),color(0),turtle_width(1),radius(0),widget(0) {}
 #else
-    logo_turtle(): x(100),y(100),theta(0),visible(true),mark(true),direct(true),color(0),turtle_length(10),radius(0),widget(0) {}
+    logo_turtle(): x(100),y(100),theta(0),visible(true),mark(true),direct(true),color(0),turtle_width(1),radius(0),widget(0) {}
 #endif
   };
-
+#endif // KHICAS
+    
   // a structure that should contain all global variables
   class global {
   public:
@@ -548,6 +631,9 @@ throw(std::runtime_error("Stopped by user interruption.")); \
     bool _atan_tan_no_floor_;
     bool _keep_acosh_asinh_;
     bool _keep_algext_;
+    bool _auto_assume_;
+    bool _parse_e_;
+    bool _convert_rootof_;
     int _python_compat_;
     int _angle_mode_;
     int _bounded_function_no_;
@@ -563,7 +649,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
 #ifdef NSPIRE
     nio::console * _logptr_;
 #else
-#ifdef WITH_MYOSTREAM
+#if 1 // def WITH_MYOSTREAM
     my_ostream * _logptr_;
 #else
     std::ostream * _logptr_;
@@ -593,8 +679,10 @@ throw(std::runtime_error("Stopped by user interruption.")); \
     std::string _format_double_;
     std::string _autosimplify_;
     std::string _lastprog_name_;
-    std::string _currently_scanned_;
+    const char * _currently_scanned_;
+#ifndef KHICAS
     std::vector<logo_turtle> _turtle_stack_; 
+#endif
     double _total_time_;
     void * _evaled_table_;
     void * _extra_ptr_;
@@ -641,12 +729,12 @@ throw(std::runtime_error("Stopped by user interruption.")); \
   extern pthread_mutex_t context_list_mutex;
 #endif
   
-#if !defined(RTOS_THREADX) && !defined(BESTA_OS) && !defined(NSPIRE) && !defined(FXCG)
+#if !defined(RTOS_THREADX) && !defined(BESTA_OS) && !defined(NSPIRE) && !defined(FXCG) && !defined KHICAS
   extern std::map<std::string,context *> * context_names ;
 #endif
 
   const char * & last_evaled_function_name(GIAC_CONTEXT);
-  std::string & currently_scanned(GIAC_CONTEXT);
+  const char * & currently_scanned(GIAC_CONTEXT);
   const gen * & last_evaled_argptr(GIAC_CONTEXT);
 
   bool make_thread(const giac::gen & g,int level,const giac_callback & f,void * f_param,const context * contextptr);
@@ -673,6 +761,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
   void python_compat(int b,GIAC_CONTEXT);
   int array_start(GIAC_CONTEXT);
   extern bool python_color; // global variable for syntax highlighting
+  extern bool os_shell; // true if Numworks called from shell
 
   int & calc_mode(GIAC_CONTEXT);
   int abs_calc_mode(GIAC_CONTEXT);
@@ -723,6 +812,15 @@ throw(std::runtime_error("Stopped by user interruption.")); \
   bool & keep_algext(GIAC_CONTEXT);
   void keep_algext(bool b,GIAC_CONTEXT);
 
+  bool & auto_assume(GIAC_CONTEXT);
+  void auto_assume(bool b,GIAC_CONTEXT);
+
+  bool & parse_e(GIAC_CONTEXT);
+  void parse_e(bool b,GIAC_CONTEXT);
+
+  bool & convert_rootof(GIAC_CONTEXT);
+  void convert_rootof(bool b,GIAC_CONTEXT);
+
   bool & do_lnabs(GIAC_CONTEXT);
   void do_lnabs(bool b,GIAC_CONTEXT);
 
@@ -770,8 +868,13 @@ throw(std::runtime_error("Stopped by user interruption.")); \
   std::string lastprog_name(GIAC_CONTEXT);
   std::string lastprog_name(const std::string & b,GIAC_CONTEXT);
 
+#ifdef KHICAS
+  logo_turtle & turtle();
+  std::vector<logo_turtle> & turtle_stack();
+#else
   logo_turtle & turtle(GIAC_CONTEXT);
   std::vector<logo_turtle> & turtle_stack(GIAC_CONTEXT);
+#endif
 
   int & angle_mode(GIAC_CONTEXT);
   int get_mode_set_radian(GIAC_CONTEXT);
@@ -936,7 +1039,7 @@ throw(std::runtime_error("Stopped by user interruption.")); \
 
   void read_config(const std::string & name,GIAC_CONTEXT,bool verbose=true);
   void protected_read_config(GIAC_CONTEXT,bool verbose=true);
-  vecteur remove_multiples(vecteur & v); // sort v and return list without multiple occurences
+  vecteur remove_multiples(vecteur & v); // sort v and return list without multiple occurrences
   int equalposcomp(const std::vector<int> v,int i);
   int equalposcomp(const std::vector<short int> v,int i);
   int equalposcomp(int tab[],int f);

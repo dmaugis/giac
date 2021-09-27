@@ -4,122 +4,100 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Integration by parts : ibpdv and ibpu</title>
+<title>Eliminating one or more variables from a list of equations: eliminate
+</title>
 </head>
 <body >
 <a href="cascmd_en195.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en197.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec249" class="subsection">5.18.4  Integration by parts : <span style="font-family:monospace">ibpdv</span> and <span style="font-family:monospace">ibpu</span></h3>
-<h4 id="sec250" class="subsubsection"><span style="font-family:monospace">ibpdv</span></h4>
-<p><a id="hevea_default334"></a>
-<span style="font-family:monospace">ibpdv</span> is used to search the primitive of an expression written 
-as <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>).<span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>).<br>
-<span style="font-family:monospace">ibpdv</span> takes two arguments :
+<h3 id="sec239" class="subsection">6.12.22  Eliminating one or more variables from a list of equations: <span style="font-family:monospace">eliminate</span>
+<a id="hevea_default327"></a></h3>
+<p>The <span style="font-family:monospace">eliminate</span> command eliminates variables from a list of
+equations.
 </p><ul class="itemize"><li class="li-itemize">
-an expression 
-<span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) * <span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>) and <span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>) (or a list of two expressions 
-[<span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>), <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>)] and <span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>)),
-</li><li class="li-itemize">or an expression <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>) and 0 (or a list of two expressions 
-[<span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>), <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>)] and 0).
-</li></ul><p>
-<span style="font-family:monospace">ibpdv</span> returns :
+<span style="font-family:monospace">eliminate</span> takes two arguments:
+<ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">eqns</span>, a list of equations.
+</li><li class="li-itemize"><span style="font-style:italic">vars</span>, the variable or list of variables to eliminate.
+The equations can be given as expressions, in which case they will be
+assumed to be 0.
+</li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">eliminate(</span><span style="font-style:italic">eqns</span><span style="font-family:monospace">,</span><span style="font-style:italic">vars</span><span style="font-family:monospace">)</span>
+returns the equations with the variables <span style="font-style:italic">vars</span> eliminated or
+an indication that <span style="font-family:monospace">Xcas</span> can’t eliminate them.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Examples.</span><br>
+Assuming the variables used haven’t been set to any values:
 </p><ul class="itemize"><li class="li-itemize">
-if <span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>) ≠ 0, the list [<span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) <span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>),−<span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>) <span style="font-style:italic">u</span>′(<span style="font-style:italic">x</span>)] (or 
-[<span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>)+<span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) <span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>),−<span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>) <span style="font-style:italic">u</span>′(<span style="font-style:italic">x</span>)]),
-</li><li class="li-itemize">if the second argument is zero, a primitive of the first argument 
-<span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>) (or <span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>)+a primitive of <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>)) :<br>
-hence, <span style="font-family:monospace">ibpdv(g(x),0)</span> returns a primitive <span style="font-family:monospace">G(x)</span> of <span style="font-family:monospace">g(x)</span> or <br>
-<span style="font-family:monospace">ibpdv([F(x),g(x)],0)</span> returns <span style="font-family:monospace">F(x)+G(x)</span> where <span style="font-family:monospace">diff(G(x))=g(x)</span>.
-</li></ul><p>
-Hence, <span style="font-family:monospace">ibpdv</span> returns the terms computed in an integration by parts, 
-with the possibility of doing several <span style="font-family:monospace">ibpdv</span>s successively.<br>
-When the answer of <span style="font-family:monospace">ibpdv(u(x)*v’(x),v(x))</span> is computed, to obtain a 
-primitive of <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) <span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>), it remains to 
-compute the integral of the second term of this answer and then, to sum this 
-integral with the first term of this answer : to do this, just use 
-<span style="font-family:monospace">ibpdv</span> command with the answer as first argument and 
-a new <span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>) (or 0 to terminate the integration) as second argument.<br>
-Input :
-</p><div class="center"><span style="font-family:monospace">ibpdv(ln(x),x) </span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">[x ln(x),-1]</span></div><p>
-then
-</p><div class="center"><span style="font-family:monospace">ibpdv([x ln(x),-1],0) </span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">-x+x ln(x)</span></div><p>
-<span style="font-weight:bold">Remark</span><br>
- When the first argument of <span style="font-family:monospace">ibpdv</span> is a list of two elements, <span style="font-family:monospace">ibpdv</span> 
-works only on the last element of this list and adds the integrated term to
-the first element of this list. 
-(therefore it is possible to do several <span style="font-family:monospace">ibpdv</span>s successively).<br>
-For example :<br>
-<span style="font-family:monospace">ibpdv((log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,x) = [x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,-(2*log(x))]</span><br>
-it remains to integrate <span style="font-family:monospace">-(2*log(x))</span>, the input :<br>
-<span style="font-family:monospace">ibpdv(ans(),x)</span> or input :<br>
-<span style="font-family:monospace">ibpdv([x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,-(2*log(x))],x)</span><br>
-Output :<br>
-<span style="font-family:monospace">[x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+x*(-(2*log(x))),2]</span><br>
-and it remains to integrate <span style="font-family:monospace">2</span>, hence input <span style="font-family:monospace">ibpdv(ans(),0)</span> or<br>
-<span style="font-family:monospace">ibpdv([x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+x*(-(2*log(x))),2],0)</span>.<br>
-Output :
-<span style="font-family:monospace">x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+x*(-(2*log(x)))+2*x</span>
-</p>
-<h4 id="sec251" class="subsubsection"><span style="font-family:monospace">ibpu</span></h4>
-<p><a id="hevea_default335"></a>
-<span style="font-family:monospace">ibpu</span> is used to search the primitive of an expression written 
-as <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>).<span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>)
-<span style="font-family:monospace">ibpu</span> takes two arguments : 
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">eliminate([x = v0*t, y = y0-g*t^2], t)</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  </td><td class="dcell">⎡<br>
+⎣</td><td class="dcell"><span style="font-style:italic">g</span> <span style="font-style:italic">x</span><sup>2</sup>+<span style="font-style:italic">y</span> <span style="font-style:italic">v</span><sub>0</sub><sup>2</sup>−<span style="font-style:italic">v</span><sub>0</sub><sup>2</sup> <span style="font-style:italic">y</span><sub>0</sub></td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">eliminate([x+y+z+t-2,x*y*t=1,x^2+t^2=z^2],[x,z])</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  </td><td class="dcell">⎡<br>
+⎣</td><td class="dcell">2 <span style="font-style:italic">t</span><sup>2</sup> <span style="font-style:italic">y</span><sup>2</sup>−4 <span style="font-style:italic">t</span><sup>2</sup> <span style="font-style:italic">y</span>+<span style="font-style:italic">t</span> <span style="font-style:italic">y</span><sup>3</sup>−4 <span style="font-style:italic">t</span> <span style="font-style:italic">y</span><sup>2</sup>+4 <span style="font-style:italic">t</span> <span style="font-style:italic">y</span>+2 <span style="font-style:italic">t</span>+2 <span style="font-style:italic">y</span>−4</td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table>
+</li></ul><p>If the variable(s) can’t be eliminated, then <span style="font-family:monospace">eliminate</span>
+returns <span style="font-family:monospace">[1]</span> or <span style="font-family:monospace">[-1]</span>. If <span style="font-family:monospace">eliminate</span> returns
+<span style="font-family:monospace">[]</span>, that means the equations determine the values of the
+variables to be eliminated.</p><p><br>
+</p><p><span style="font-family:monospace">Examples.</span>
 </p><ul class="itemize"><li class="li-itemize">
-an expression <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>) and <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) (or a list of two expressions 
-[<span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>), <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>)] and <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>)),
-</li><li class="li-itemize">an expression <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>) and 0 (or a list of two expressions [<span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>), <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>)] 
-and 0).
-</li></ul><p>
-<span style="font-family:monospace">ibpu</span> returns :
-</p><ul class="itemize"><li class="li-itemize">
-if <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) ≠ 0, the list [<span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>),−<span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">u</span>′(<span style="font-style:italic">x</span>)] 
-(or returns the list [<span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>)+<span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>),−<span style="font-style:italic">v</span>(<span style="font-style:italic">x</span>)*<span style="font-style:italic">u</span>′(<span style="font-style:italic">x</span>)]),
-</li><li class="li-itemize">if the second argument is zero, a primitive of the first argument <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>)
-(or <span style="font-style:italic">F</span>(<span style="font-style:italic">x</span>)+a primitive of <span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>)):<br>
-<span style="font-family:monospace">ibpu(g(x),0)</span> returns <span style="font-family:monospace">G(x)</span> where <span style="font-family:monospace">diff(G(x))=g(x)</span> or<br>
- <span style="font-family:monospace">ibpu([F(x),g(x)],0)</span> returns <span style="font-family:monospace">F(x)+G(x)</span> where <span style="font-family:monospace">diff(G(x))=g(x)</span>.
-</li></ul><p>
-Hence, <span style="font-family:monospace">ibpu</span> returns the terms computed in an integration by parts, 
-with the possibility of doing several <span style="font-family:monospace">ibpu</span>s successively.<br>
-When the answer of <span style="font-family:monospace">ibpu(u(x)*v’(x),u(x))</span> is computed, to obtain a 
-primitive of <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) <span style="font-style:italic">v</span>′(<span style="font-style:italic">x</span>), it remains to 
-compute the integral of the second term of this answer and then, to sum this 
-integral with the first term of this answer : to do this, just use 
-<span style="font-family:monospace">ibpu</span> command with the answer as first argument and 
-a new <span style="font-style:italic">u</span>(<span style="font-style:italic">x</span>) (or 0 to terminate the integration) as second argument.<br>
-Input :
-</p><div class="center"><span style="font-family:monospace">ibpu(ln(x),ln(x)) </span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">[x*ln(x),-1]</span></div><p>
-then
-</p><div class="center"><span style="font-family:monospace">ibpu([x*ln(x),-1],0) </span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">-x+x*ln(x)</span></div><p>
-<span style="font-weight:bold">Remark</span><br>
-When the first argument of <span style="font-family:monospace">ibpu</span> is a list of two elements, <span style="font-family:monospace">ibpu</span> 
-works only on the last element of this list and adds the integrated term to
-the first element of this list. 
-(therefore it is possible to do several <span style="font-family:monospace">ibpu</span>s successively).<br>
-For example :<br>
-<span style="font-family:monospace">ibpu((log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,log(x)) = [x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,-(2*log(x))]</span><br>
-it remains to integrate <span style="font-family:monospace">-(2*log(x))</span>, hence input : <br>
-<span style="font-family:monospace">ibpu(ans(),log(x))</span>
-or input :<br>
-<span style="font-family:monospace">ibpu([x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,-(2*log(x))],log(x))</span><br>
-Output :<br>
-<span style="font-family:monospace">[x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+x*(-(2*log(x))),2]</span><br>
-it remains to integrate <span style="font-family:monospace">2</span>, hence input :<br>
-<span style="font-family:monospace">ibpu(ans(),0)</span> or input :<br>
-<span style="font-family:monospace">ibpu([x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+x*(-(2*log(x))),2],0)</span>.<br>
-Output :
-<span style="font-family:monospace">x*(log(x))</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+x*(-(2*log(x)))+2*x</span></p>
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">x:=2;y:=-5</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">eliminate([x=2*t,y=1-10*t^2],t)</span>
+</td></tr>
+</table>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  </td><td class="dcell">⎡<br>
+⎣</td><td class="dcell">1</td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table>
+since <span style="font-family:monospace">t</span> cannot be eliminated from both equations.
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">x:=2;y:=-9</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">eliminate([x=2*t,y=1-10*t^2],t)</span>
+</td></tr>
+</table>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  </td><td class="dcell">⎡<br>
+⎣</td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table>
+since the first equation gives <span style="font-family:monospace">t</span>=1, which satisfies the
+second equation.
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">x:= 2; y:= -9</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">eliminate([x = 2*t, y = 1-10*t^2, z = x + y - t], t)</span>
+</td></tr>
+</table>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  </td><td class="dcell">⎡<br>
+⎣</td><td class="dcell">1,<span style="font-style:italic">z</span>+8</td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table>
+since the first equation gives <span style="font-family:monospace">t</span>=1, which satisfies the
+second equation, and so that leaves <span style="font-family:monospace">z = 2 - 9 - 1 = -8</span>, or
+<span style="font-family:monospace">z + 8 = 0</span>.
+</li></ul>
 <hr>
 <a href="cascmd_en195.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

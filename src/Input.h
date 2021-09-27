@@ -6,15 +6,9 @@
 #endif
 #include "vector.h"
 #include <string>
-#ifndef IN_GIAC
-#include <giac/first.h>
-#include <giac/gen.h>
-#include <giac/identificateur.h>
-#else
 #include "first.h"
 #include "gen.h"
 #include "identificateur.h"
-#endif
 #ifdef HAVE_LIBFLTK
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Menu.H>
@@ -33,10 +27,11 @@
 namespace xcas {
 #endif // ndef NO_NAMESPACE_XCAS
 
+  std::vector<std::string> micropython_filter_help(const std::vector<std::string> & v_orig);
   // If use_external_browser is true you can change the browser used
   // by setting the BROWSER env variable, e.g. export BROWSER=...
   extern bool use_external_browser; 
-  // alert if the command is not successfull
+  // alert if the command is not successful
   void system_browser(const std::string & s);
 
   // return the last keyword of s

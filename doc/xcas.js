@@ -6,11 +6,12 @@ var UI = {
   from: '',
   ready: false,
   focusaftereval: true,
-  docprefix: "https://www-fourier.ujf-grenoble.fr/%7eparisse/giac/doc/fr/cascmd_fr/",
-  base_url: "https://www-fourier.ujf-grenoble.fr/%7eparisse/",
-  //forum_url: "http://xcas.e.ujf-grenoble.fr/XCAS/viewforum.php?f=25",
+  frac_add:1.0, // set to 0 to avoid adding an approx value of a fraction
+  docprefix: "https://www-fourier.univ-grenoble-alpes.fr/%7eparisse/giac/doc/fr/cascmd_fr/",
+  base_url: "https://www-fourier.univ-grenoble-alpes.fr/%7eparisse/",
+  //forum_url: "http://xcas.e.univ-grenoble-alpes.fr/XCAS/viewforum.php?f=25",
   forum_url: "http://xcas.univ-grenoble-alpes.fr/forum/viewforum.php?f=25",
-  // forum_url: "http://xcas.e.ujf-grenoble.fr/XCAS/posting.php?mode=post&f=12&subject=session",
+  // forum_url: "http://xcas.e.univ-grenoble-alpes.fr/XCAS/posting.php?mode=post&f=12&subject=session",
   //forum_url: "http://xcas.univ-grenoble-alpes.fr/forum/posting.php?mode=post&f=12&subject=session",
   forum_warn: true,
   focused: entree,
@@ -24,6 +25,11 @@ var UI = {
   histcount: 0,
   selection: '',
   langue: -1,
+  calc: 2, // 1 KhiCAS, 2 Numworks, 3 TI Nspire CX
+  calculator:0, // !=0 if hardware Numworks connected
+  calculator_connected:false,
+  nws_records:0,
+  xwaspy_shift: 33, // must be >32 for space encoding, and <=35 for a..z encoding
   canvas_w: 350,
   canvas_h: 200,
   canvas_lastx: 0,
@@ -31,10 +37,17 @@ var UI = {
   canvas_pushed: false,
   gr2d_ncanvas: 0,
   initconfigstring: '',
-  python_mode: false,
+  python_mode: 0,
   python_indent: 4,
   warnpy: true, // set to false if you do not want Python compat warning
   xtn: 'x', // var name, depends on last app
+  clean_for_html: function(text){
+    text = text.replace(/&/g, "&amp;");
+    text = text.replace(/</g, "&lt;");
+    text = text.replace(/>/g, "&gt;");
+    text = text.replace(/\n/g, '<br>');
+    return text;
+  },    
   sleep: function (miliseconds) {
     var currentTime = new Date().getTime();
     while (currentTime + miliseconds >= new Date().getTime()) {
@@ -72,7 +85,8 @@ var UI = {
     UI.focused = UI.savefocused;
     var st = $id('pourvarstep').value;
     if (UI.python_mode) {
-      UI.insert(UI.focused, '\nfor ' + $id('pourvarname').value + ' in range(' + $id('pourvarmin').value + ',' + $id('pourvarmax').value);
+      var sup=eval($id('pourvarmax').value)+1;
+      UI.insert(UI.focused, '\nfor ' + $id('pourvarname').value + ' in range(' + $id('pourvarmin').value + ',' + sup);
       if (st.length) st = ',' + st;
       UI.insert(UI.focused, st + '):');
       UI.indentline(UI.focused);
@@ -197,7 +211,7 @@ var UI = {
     if (UI.python_mode) {
       UI.insert(UI.focused, 'def ' + fc + '(' + argu + '):');
       UI.indentline(UI.focused);
-      if (loc.length != 0) {
+      if (0 && loc.length != 0) {
         UI.insert(UI.focused, '\n# local ' + loc);
         UI.indentline(UI.focused);
         UI.insert(UI.focused, '\n\nreturn ' + ret);
@@ -212,7 +226,7 @@ var UI = {
     }
     else {
       if (loc.length == 0)
-        UI.insert(UI.focused, fc + '(' + argu + '):=' + ret + ';');
+        UI.insert(UI.focused, 'fonction ' + fc + '(' + argu + ')\n \nffonction:;\n'); // was fc + '(' + argu + '):=' + ret + ';');
       else {
         UI.insert(UI.focused, 'fonction ' + fc + '(' + argu + ')\n  local ' + loc + ';\n  \n  retourne ' + ret + ';\nffonction:;\n');
         UI.moveCaretUpDown(UI.focused, -3);
@@ -425,7 +439,9 @@ var UI = {
   is_sheet: true,
   sheet_i: 0,
   sheet_j: 0,
+  save_sheet:false,
   open_sheet: function (tableur) {
+    UI.savesheet=true;
     UI.funcoff();
     UI.savefocused = UI.focused;
     $id('assistant_matr').style.display = 'block';
@@ -484,6 +500,43 @@ var UI = {
     if (cmd == 4) UI.sheet_coladd(1);
     if (cmd == 5) UI.sheet_coladd(-1);
   },
+  sheet_set_ij:function(s,i,j){
+    //console.log('sheet_set',s,i,j);
+    // set cell i,j from spreadsheet
+    // must set UI.sheet=true and call UI.sheet_recompute(''); at some point after
+    if (i>=UI.assistant_matr_maxrows || j>=UI.assistant_matr_maxcols)
+      return 0;
+    var field=$id('matr_nrows');
+    if (i>=field.value)
+      field.value=i+1;
+    field=$id('matr_ncols');
+    if (j>=field.value)
+      field.value=j+1;
+    field = $id('matr_case' + i + '_' + j);
+    field.value=s;
+    return 1;
+  },
+  current_sheet: function(t){ // t=0 create 3 values per cell, t=1 1 value
+    var R = $id('matr_nrows').value;//UI.assistant_matr_maxrows;
+    var C = $id('matr_ncols').value; // UI.assistant_matr_maxcols;
+    var s = 'spreadsheet[';
+    for (var i = 0; i < R; i++) {
+      s += '[';
+      for (var j = 0; j < C; j++) {
+        var field = $id('matr_case' + i + '_' + j);
+	if (t==0){
+          var tmp = '[' + field.value;
+          if (tmp.length == 1) tmp += '""';
+          s += tmp + ',0,0],';
+	}
+	else
+	  s += field.value+',';
+      }
+      s += '],';
+    }
+    s += ']';
+    return s;
+  },    
   sheet_recompute: function (cmd) {
     // if cmd=='' convert to CAS sheet, eval and convert back
     // else calls convert(matrix,cmd), where cmd='command,row,col',
@@ -491,19 +544,7 @@ var UI = {
     // console.log('sheet_recompute',cmd);
     var R = UI.assistant_matr_maxrows;
     if (!UI.is_sheet || R == 0) return;
-    var s = 'spreadsheet[';
-    for (var i = 0; i < R; i++) {
-      var C = UI.assistant_matr_maxcols;
-      s += '[';
-      for (var j = 0; j < C; j++) {
-        var field = $id('matr_case' + i + '_' + j);
-        var tmp = '[' + field.value;
-        if (tmp.length == 1) tmp += '""';
-        s += tmp + ',0,0],';
-      }
-      s += '],';
-    }
-    s += ']';
+    var s=UI.current_sheet(0);
     if (cmd.length != 0)
       s = 'convert(' + s + ',cell,' + cmd + ')';
     //console.log(s);
@@ -539,6 +580,7 @@ var UI = {
         // field.style.display='inline';
       }
     }
+    UI.link(0);
     return 1;
   },
   matrix2spreadsheet: function () {
@@ -623,7 +665,7 @@ var UI = {
     mydiv.style.overflow = "auto";
     UI.assistant_matr_maxrows = l;
     UI.assistant_matr_maxcols = c;
-    var s = '<table>\n';
+    var s = '<table onkeydown="return UI.sheet_handle(this,event);">\n';
     var h = '<tr><th id="matr_head">@</th>';
     for (var j = 0; j < c; ++j) {
       h += '<th id="matr_head_' + j + '" style="text-align:center">' + j + '</th>';
@@ -635,16 +677,16 @@ var UI = {
       s += '<td id="matr_line_' + i + '">' + i + '</td>';
       for (var j = 0; j < c; ++j) {
         var field = $id('matr_case' + i + '_' + j);
-        var oldval = '';
+        var oldval = '0'; // '';
         //console.log(i,j,field.value);
         if (field !== null) oldval = field.value;
         if (UI.assistant_matr_textarea > 0)
           s += '<td class="matrixcell"><textarea class="matrixcell" \
-onkeypress="if (event.keyCode!=13) return true; UI.cb_matr_enter(this,true); return false;" \
+onkeypress="return UI.cell_handle(this,event);" \
 onclick="UI.focused=this;" onblur="UI.sheet_blur(this)" onfocus="nextSibling.style.display=\'none\';UI.focused=this;" \
 id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcell" style="display:none;width:20px" onclick="UI.sheet_onfocus(this);" id="matr_span' + i + '_' + j + '"></div></td>';
         else
-          s += '<td class="matrixcell" onclick="UI.sheet_onfocus(lastChild);"><input class="matrixcell" onkeypress="if (event.keyCode!=13) return true; UI.cb_matr_enter(this,true); return false;" onclick="UI.focused=this;" onblur="UI.sheet_blur(this)" onfocus="nextSibling.style.display=\'none\';UI.focused=this;" id="matr_case' + i + '_' + j + '" value="' + oldval + '" /><div class="matrixcell" style="display:none;width:20px" onclick="UI.sheet_onfocus(this);"  id="matr_span' + i + '_' + j + '"></div></td>';
+          s += '<td class="matrixcell" onclick="UI.sheet_onfocus(lastChild);"><input class="matrixcell" onkeypress="return UI.cell_handle(this,event);" onclick="UI.focused=this;" onblur="UI.sheet_blur(this)" onfocus="nextSibling.style.display=\'none\';UI.focused=this;" id="matr_case' + i + '_' + j + '" value="' + oldval + '" /><div class="matrixcell" style="display:none;width:20px" onclick="UI.sheet_onfocus(this);"  id="matr_span' + i + '_' + j + '"></div></td>';
       }
       s += '</tr>\n';
     }
@@ -663,6 +705,16 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     //console.log(field.nextSibling.innerHTML);
     field.style.display = 'none';
     field.nextSibling.style.display = 'inline';
+  },
+  cell_handle: function(field,event){
+    console.log('cell',event);
+    if (event.keyCode!=13) return true;
+    UI.cb_matr_enter(field,true);
+    return false;
+  },
+  sheet_handle: function(field,event){
+    console.log('sheet',event);
+    return true;
   },
   cb_matr_enter: function (field, focusnext) {
     var s = 'csv2gen("' + field.value + '",string)';
@@ -1165,7 +1217,10 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     if (!UI.usecm) return;
     if (UI.python_mode) {
       //console.log('Python mode');
-      cmentree.setOption("mode", "python");
+      if (UI.micropy>0)
+	cmentree.setOption("mode", "micropy");
+      else
+	cmentree.setOption("mode", "python");
     }
     else {
       //console.log('Xcas mode');
@@ -1210,7 +1265,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         aString += "<button onclick=\"UI.restorefrom('" + tmp.substr(1, pos - 1) + "')\">" + tmpname + "</button>\n";
       }
     }
-    aString += "<button onclick=$id('loadfile_cookie').innerHTML=''>&#x274C;</button>\n"
+    aString += "<button onclick=$id('loadfile_cookie').innerHTML=''>X</button>\n"
     //console.log(aString);
     return aString;
   },
@@ -1287,10 +1342,194 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     }
     return value;
   },
+  mp_init:function(taille){
+    var init = Module.cwrap('mp_js_init', 'null', ['number']);
+    UI.micropy_initialized=1;
+    return init(taille);
+  },
+  mp_str:function(s){
+    var ev = Module.cwrap('mp_js_do_str', 'number', ['string']);
+    return ev(s);
+  },
+  set_xcas:function(){
+    UI.micropy=0; UI.python_mode=0; 
+    var form = $id('config');
+    form.python_xor.checked = false;
+    form.python_mode.checked = false;
+    form.js_mode.checked=false;
+    UI.set_settings();
+    return UI.caseval('python_compat(0)');
+  },
+  set_xcas_python:function(){
+    UI.micropy=0; UI.python_mode=1; 
+    var form = $id('config');
+    form.python_xor.checked = false;
+    form.python_mode.checked = true;
+    form.js_mode.checked=false;
+    UI.set_settings();
+    return UI.caseval('python_compat(1)');
+  },
+  set_micropython:function(){
+    UI.micropy=1; UI.python_mode=4; 
+    var form = $id('config');
+    form.python_xor.checked = false;
+    form.python_mode.checked = true;
+    form.js_mode.checked=false;
+    UI.set_settings();
+    return UI.caseval('python_compat(4)');
+  },
+  quickjs:function(text){
+    while (text.length>0){
+      var ch=text.substr(text.length-1,1);
+      if (ch!=' ')
+	break;
+      text=text.substr(0,text.length-1);
+    }
+    if (text=='xcas' || text=='xcas '){
+      UI.set_xcas();
+    }
+    if (text=='.'){ // show turtle
+      let s=UI.caseval('avance(0)');
+      //console.log(s);
+      return s;
+    }
+    if (text==','){ // show (matplotl)
+      Module.print('>>> show()');
+      let s=UI.caseval('show()');
+      return s;
+    }
+    if (text==';'){
+      let s=UI.caseval('show_pixels()');
+      return s;
+    }
+    if (text.length>=2 && text[0]=='@'){
+      if (text[1]=='@')
+	return eval(text.substr(2,text.length-2));
+      text=text.substr(1,text.length-1);
+    }
+    else text='"use math";'+text;
+    let ev=Module.cwrap('quickjs_ck_eval', 'string', ['string']);
+    return ev(text);
+  },
+  classlist2evaluator:function(l){
+    if (l===undefined) return '';
+    let evals=['cas','micropy','js'];
+    for (let i=0;i<evals.length;++i){
+      if (l.contains(evals[i]))
+	return evals[i];
+    }
+    return '';
+  },
+  set_micropy:function(field,alert=0){
+    //console.log('set_micropy',field.classList);
+    if (field.classList.contains('cas')) {
+      UI.micropy=0; UI.python_mode=0;
+      if (alert)
+	console.log('set_micropy 0');
+    }
+    if (field.classList.contains('micropy')) {
+      UI.micropy=1; UI.python_mode=4;
+      if (alert)
+	console.log('set_micropy 1');
+    }
+    if (field.classList.contains('js')){
+      UI.micropy=-1; UI.python_mode=0;
+      if (alert)
+	console.log('set_micropy -1');
+    }
+    UI.set_settings();
+  },
+  micropy:0,
+  micropy_initialized:0,
+  micropy_heap:4194304,
+  python_output:"",
+  add_python_output:function(s){
+    UI.python_output += s;
+    //console.log(s);//console.log(UI.python_output);
+  },
+  mpeval:function(text){
+    while (text.length>0){
+      var ch=text.substr(text.length-1,1);
+      if (ch!=' ')
+	break;
+      text=text.substr(0,text.length-1);
+    }
+    if (text=='xcas' || text=='xcas '){
+      UI.micropy=0; UI.python_mode=0; 
+      var form = $id('config');
+      form.python_xor.checked = false;
+      form.python_mode.checked = true;
+      form.js_mode.checked=false;
+      UI.set_settings();
+      return UI.caseval('python_compat(1)');
+    }
+    if (text=='.'){ // show turtle
+      var s=UI.caseval('avance(0)');
+      //console.log(s);
+      return s;
+    }
+    if (text==','){ // show (matplotl)
+      Module.print('>>> show()');
+      var s=UI.caseval('show()');
+      return s;
+    }
+    if (text==';'){
+      var s=UI.caseval('show_pixels()');
+      return s;
+    }
+    if (!UI.micropy_initialized){
+      UI.mp_init(UI.micropy_heap);
+      console.log('mp init done');
+    }
+    UI.python_output='';
+    /*
+    var pos=text.search('=');
+    if (pos<0){
+      pos=text.search('print');
+      if (pos<0)
+	text='print('+text+')';
+    }
+    */
+    //console.log('mpeval',text);
+    Module.print('>>> '+text);
+    UI.mp_str(text);
+    // console.log('mpevaled',UI.python_output);
+    if (UI.python_output==''){
+      return '"Done"';
+    }
+    if (UI.python_output.substr(UI.python_output.length-1,1)=='\n')
+      UI.python_output=UI.python_output.substr(0,UI.python_output.length-1);
+    if (UI.python_output.length>4 && UI.python_output.substr(0,5)=='"<svg')
+      return UI.caseval('show()');
+    return '"'+UI.python_output+'"';
+  },
+  handle_shortcuts:function(text){
+    while (text.length>0){
+      var ch=text.substr(text.length-1,1);
+      if (ch!=' '){
+	if (ch==':') return text.substr(0,text.length-1)+';show_pixels()';
+	break;
+      }
+      text=text.substr(0,text.length-1);
+    }
+    if (text=='.') return 'avance(0)';
+    if (text==',') return 'show()';
+    if (text==';') return 'show_pixels()';
+    if (text=='python' || text=='python '){
+      UI.micropy=1; UI.python_mode = 4;
+      UI.set_settings();
+      var form = $id('config');
+      form.python_xor.checked = true;
+      form.python_mode.checked = true;
+      form.js_mode.checked=false;
+      return 'python_compat(4)';
+    }
+    return text;
+  },
   caseval: function (text) {
     if (!UI.ready) return ' Clic_on_Exec ';
     var docaseval = Module.cwrap('caseval', 'string', ['string']);
-    var value = text;
+    var value = UI.handle_shortcuts(text);
     value = value.replace(/%22/g, '\"');
     value = UI.add_autosimplify(value);
     var s, err;
@@ -1307,7 +1546,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     if (!UI.ready) return ' Clic_on_Exec ';
     //console.log(text);
     var docaseval = Module.cwrap('caseval', 'string', ['string']);
-    var value = text;
+    var value = UI.handle_shortcuts(text);
     value = value.replace(/%22/g, '\"');
     var s, err;
     try {
@@ -1321,6 +1560,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
   withworker: 0,
   busy: 0,
   casevalcb: function (text, callback, args) {
+    //console.log('casevalcb',text,callback);
     // prepare for webworker: casevalcb will run docaseval in a worker
     // 3d plotting does not work...
     if (UI.withworker && !!window.Worker) {
@@ -1345,15 +1585,37 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       return;
       // STOP: myWorker.terminate()
     }
-    var docaseval = Module.cwrap('caseval', 'string', ['string']);
-    var value = UI.add_autosimplify(text);
-    var s, err;
-    //console.log(value);
-    try {
-      s = docaseval(value);
-    } catch (err) {
+    if (UI.micropy>0)
+      return callback(UI.mpeval(text),args);
+    if (text=='python'){
+      UI.micropy=1; UI.python_mode = 4; UI.set_settings();
+      var form = $id('config');
+      form.python_xor.checked = true;
+      form.python_mode.checked = true;
+      form.js_mode.checked=false;
+      return callback(UI.caseval('python_compat(4)'),args);
     }
-    // Module.print(text+ ' '+s);
+    if (text=='js'){
+      UI.micropy=-1; UI.python_mode = 0; UI.set_settings();
+      var form = $id('config');
+      form.python_xor.checked = false;
+      form.python_mode.checked = false;
+      form.js_mode.checked=true;
+      return callback(UI.caseval('python_compat(-1)'),args);
+    }
+    var s;
+    if (UI.micropy==-1)
+      s='"'+UI.quickjs(text)+'"';
+    else {
+      let docaseval = Module.cwrap('caseval', 'string', ['string']);
+      let value = UI.add_autosimplify(UI.handle_shortcuts(text)),err;
+      //console.log(value);
+      try {
+	s = docaseval(value);
+      } catch (err) {
+      }
+    }
+    //Module.print(text+ ' '+s);
     return callback(s, args);
   },
   history_cm: 0,
@@ -1405,6 +1667,26 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         par.focus();
     }
     return false;
+  },
+  parse_int:function(s){
+    let i=0,l=s.length,r=0;
+    for (;i<l;++i){
+      let c=s.charCodeAt(i);
+      if (c<48 || c>57){
+	console.log('invalid char in '+s+' position '+i);
+	console.trace();
+	return 0;
+      }
+      r=r*10+(c-48);
+    }
+    return r;
+  },
+  split:function(s,c){ // split s in 2 parts at c
+    for (let i=0;i<s.length;++i){
+      if (s[i]==c)
+	return [s.substr(0,i),s.substr(i+1,s.length-1)];
+    }
+    return [s,''];
   },
   restoresession: function (chaine, hist, asked, doexec) {
     if (!UI.ready) {
@@ -1465,7 +1747,52 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         UI.addcurseur(name, value, mini, maxi, s);
         continue;
       }
-      var p = s.split('=');
+      var p = UI.split(s,'=');
+      if (p[0]=='cas' || p[0]=='micropy' || p[0]=='py' || p[0]=='js' || p[0]=='comment' || p[0]=='handwriting' || p[0]=='svg' || p[0]=='img'){
+	console.log(p[1]);
+	let ms=p[1]; // let ms = decodeURIComponent(p[1]); // already decoded!
+	if (ms.length && ms[0]==',')
+	  ms=ms.substr(1,ms.length-1);
+	//console.log('restoresession',ms);
+	let pos=ms.search(',');
+	let ms0=ms.substr(0,pos),msbgcol='',mscol='';
+	// background color
+	// rgb(,,) or rgba(,,,) color, skip to )
+	if (pos>4 && ms0.substr(0,3)=='rgb'){
+	  pos=ms.indexOf(')')+1; // end of rgba(
+	}
+	if (ms.length && ms[0]>'9'){
+	  msbgcol=ms.substr(0,pos);
+	  ms=ms.substr(pos+1,ms.length-pos-1);
+	  pos=ms.search(',');
+	  ms0=ms.substr(0,pos);
+	}
+	// color, rgb skip
+	if (pos>4 && ms0.substr(0,3)=='rgb'){
+	  pos=ms.indexOf(')')+1; // end of rgba(
+	}
+	if (ms.length && ms[0]>'9'){
+	  mscol=ms.substr(0,pos);
+	  ms=ms.substr(pos+1,ms.length-pos-1);
+	  pos=ms.search(',');
+	  ms0=ms.substr(0,pos);
+	}
+	let mx=UI.parse_int(ms0);
+	ms=ms.substr(pos+1,ms.length-pos-1);
+	pos=ms.search(',');
+	let my=UI.parse_int(ms.substr(0,pos));
+	ms=ms.substr(pos+1,ms.length-pos-1);
+	let doit=false;
+	if (p[0]=='cas'){ doit=true; UI.micropy=0; }
+	if (p[0]=='micropy' || p[0]=='py'){ doit=true; UI.micropy=1;}
+	if (p[0]=='js'){ doit=true; UI.micropy=-1; }
+	if (p[0]=='comment'){ doit=true; ms='///'+ms;}
+	if (p[0]=='handwriting') UI.addhandwriting(ms,msbgcol);
+	if (p[0]=='img') UI.addimg(ms,'img='+ms,msbgcol);
+	if (p[0]=='svg') UI.addsvg(ms,msbgcol);
+        if (doit && ms.length) UI.eval_cmdline1(ms, false);	
+	continue;
+      }
       if (p[0] == '') continue;
       if (p[0] == 'lang') {
         p = p[1];
@@ -1519,11 +1846,32 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       if (p[0] == 'python') {
         if (p[1] == '0') {
           form.python_mode.checked = false;
+	  form.python_xor.checked = false;
+	  form.js_mode.checked = false;
+          UI.python_mode = 0;
+	  UI.micropy=0;
         }
+	if (p[1]=='-1'){
+          form.python_mode.checked = false;
+	  form.python_xor.checked = false;
+	  form.js_mode.checked = true;
+          UI.python_mode = 0;
+	  UI.micropy=-1;
+	}
         if (p[1] == '1') {
           form.python_mode.checked = true;
+	  form.python_xor.checked = false;
+	  form.js_mode.checked = false;
+          UI.python_mode = 1;
+	  UI.micropy=0;
         }
-        UI.python_mode = form.python_mode.checked;
+        if (p[1] == '4') {
+          form.python_mode.checked = true;
+	  form.python_xor.checked = true;
+	  form.js_mode.checked = false;
+          UI.python_mode = 4;
+	  UI.micropy=1;
+        }
         UI.setoption_mode(cmentree);
         continue;
       }
@@ -1556,8 +1904,17 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         }
         continue;
       }
+      if (p[0]=='sheet'){
+	console.log(p[1]);
+	UI.caseval_noautosimp('current_sheet('+p[1]+')');
+	continue;
+      }
+      if (p[0]=='' || !p[1] || p[0]=='width' || p[0]=='height' || p[0]=='svg' || p[0]=='handwriting' || p[0]=='img')
+	continue;
+      console.log(p[0],p[1]);
       $id(p[0]).value = decodeURIComponent(p[1]);
     } // end for (i=...)
+    UI.set_settings();
     if (doexec) {
       UI.exec(hist, 0);
     }
@@ -1591,18 +1948,26 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       s = filename + s;
       //console.log(s);
       smail = smail + s;
-      var sforum;
+      var sforum,stableau;
       if (UI.langue == -1) {
         sforum = UI.base_url + "xcasfr.html#exec&" + s;
+	stableau = "tableaufr.html#" + s;
         s = UI.base_url + "xcasfr.html#" + s;
       }
       else {
         sforum = UI.base_url + "xcasen.html#exec&" + s;
+	stableau = "tableauen.html#" + s;
         s = UI.base_url + "xcasen.html#" + s;
       }
+      if (0) stableau = UI.base_url + stableau;
+      if (UI.detectmob())
+	stableau='';
+      else
+	stableau = '<a href="'+ stableau+'" target="_blank">tableau</a>';
       //s=encodeURIComponent(s); // does not work innerHTML will add a prefix
       //var sforum=encodeURIComponent('[url]'+s+'[/url]');
       sforum = '[url=' + sforum + ']session Xcas[/url]';
+      //console.log(sforum);
       $id('theforumlink').innerHTML = sforum;
       var copy = "<button title=";
       copy += UI.langue == -1 ? "'Partager cette session sur le forum'" : "'Share this session on the forum'";
@@ -1611,20 +1976,20 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         UI.forum_warn = false;
         copy += UI.langue == -1 ? "alert(\"Le lien de la session a été copié dans le presse-papier\");" : "alert(\"Clipboard contains a link to session\");";
       }
-      copy += "var win=window.open(\"" + UI.forum_url + "\", \"_blank\");'>&#x282A;</button>,";
+      copy += "var win=window.open(\"" + UI.forum_url + "\", \"_blank\");'>F</button>,";
       //console.log(copy);
       if (window.location.href.substr(0, 4) == 'file' && !UI.detectmob()) {
-        $id('thelink').innerHTML = '<a href="' + s + '" target="_blank">x2</a>, <a href="' + s2 + '" target="_blank">local</a>,' + copy;//+',<a href="http://xcas.e.ujf-grenoble.fr/XCAS/posting.php?mode=post&f=12&subject=session&message='+encodeURIComponent(sforum)+'" target="_blank">forum</a>,';
+        $id('thelink').innerHTML = '<a title="Clone session" href="' + s + '" target="_blank">x2</a>, <a title="Local clone" href="' + s2 + '" target="_blank">local</a>,' + copy + stableau;//+',<a href="http://xcas.e.univ-grenoble-alpes.fr/XCAS/posting.php?mode=post&f=12&subject=session&message='+encodeURIComponent(sforum)+'" target="_blank">forum</a>,';
       }
       else
-        $id('thelink').innerHTML = '<a href="' + s + '" target="_blank">x2</a>,' + (copy);
+        $id('thelink').innerHTML = '<a href="' + s + '" target="_blank">x2</a>,' + copy + stableau;
       var mailurl;
       if (UI.from.length > 9 && UI.from.substr(UI.from.length - 9, 9) == "gmail.com")
         mailurl = 'https://mail.google.com/mail/?view=cm&fs=1&tf=1&source=mailto&su=session+Xcas&to=' + UI.mailto;
       else
         mailurl = 'mailto:' + UI.mailto + '?subject=session Xcas';
       mailurl += '&body=Bonjour%0d%0aVeuillez suivre ce lien : <' + encodeURIComponent(smail) + '>';
-      $id('themailto').innerHTML = '<a href="#" target="_blank">&nbsp;+&nbsp;</a>,<a href="' + mailurl + '" target="_blank"> &#x2709; </a>,';
+      $id('themailto').innerHTML = '<a href="#" title="New session" target="_blank">&nbsp;+&nbsp;</a>,<a title="E-mail session" href="' + mailurl + '" target="_blank"> &#x2709; </a>,';
     }
   },
   rewritestring: function (s) {
@@ -1649,19 +2014,73 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     }
     return res;
   },
-  makelink: function (start) {
+  makelink: function (start) { // start=-1 Casio save
+    //console.log('makelink',start);
     var s = 'python=';
-    if (UI.python_mode) s += '1&'; else s += '0&';
+    if (UI.python_mode) s += (UI.python_mode+'&'); else s += '0&';
+    let radian_mode=($id('config').angle_mode.checked?1:0);
+    s += 'radian='+(radian_mode?1:0)+'&';
     var cur = $id('mathoutput').firstChild;
     var i = 0;
+    var savepy=UI.python_mode;
+    if (savepy)
+      UI.caseval_noautosimp('python_compat(0)');
+    var casiovars=UI.caseval_noautosimp('VARS(-1)');
+    if (savepy)
+      UI.caseval_noautosimp('python_compat('+savepy+')');
+    casiovars += ';python_compat('+UI.python_mode+');angle_radian('+ radian_mode+');';
+    // console.log('UI.savesheet=',UI.savesheet);
+    if (UI.savesheet){
+      var tabl=UI.current_sheet(1);
+      casiovars += 'current_sheet('+tabl+');';
+      s += 'sheet='+tabl+'&';
+    }
+    // console.log(casiovars);
+    var casioscript="",casioin=[];
     for (; cur; i++) {
       if (i >= start) {
         var field = cur.firstChild;
         field = field.firstChild;
         field = UI.skip_buttons(field);
+	//console.log('makelink',field.firstChild);
+	if (field.firstChild.tagName=='svg'){
+	  //console.log(field.innerHTML);
+	  let position=''+Math.floor(i/3)*400+','+(i%3)*200;
+	  s += 'svg='+position+','+encodeURIComponent(field.innerHTML)+'&';	    
+	  cur=cur.nextSibling;
+	  continue;
+	}
+	if (field.firstChild.tagName=='DIV'){
+	  let f=field.nextSibling;
+	  let tmp=f.innerText;
+	  if (start>=0){
+	    let position=''+Math.floor(i/3)*400+','+(i%3)*200;
+	    let bg=f.style.backgroundColor;
+	    //console.log('makelink handwrite/img',bg,position,tmp);
+	    if (bg!='')
+	      bg += ',';
+	    let type='handwriting=';
+	    for (let p=0;p<tmp.length;++p){
+	      if (tmp[p]=='='){
+		type=tmp.substr(0,p+1);
+		tmp=tmp.substr(p+1,tmp.length-1);
+		break;
+	      }
+	    }
+	    s += type+bg+position+','+encodeURIComponent(tmp)+'&';	    
+            cur = cur.nextSibling;
+	  }
+	  continue;
+	}
         var fs = field.innerHTML;
         if (fs.length > 6 && fs.substr(0, 6) == "<span ") { // comment
           fs = field.firstChild.firstChild.value;
+	  if (start==-1){
+	    casioin.push('/*'+fs+'*/');
+	    casioin.push('');
+            cur = cur.nextSibling;
+	    continue;
+	  }
           fs = encodeURIComponent(fs);
           //fs=fs.replace(/\n/g,'%0a');
           //console.log(fs);
@@ -1669,19 +2088,25 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         if (fs.length > 5) {
           var fs1 = fs.substr(0, 5);
           if (fs1 == "<form") {
+	    //console.log(fs);
             var pos1 = fs.search("<input");
             fs = fs.substr(pos1, fs.length - pos1);
             //console.log(fs);
             var pos1 = fs.search("value=");
             pos1 += 7;
             fs = fs.substr(pos1, fs.length - pos1);
+	    //console.log(fs);
             var pos2 = fs.search("\"");
             fs1 = fs.substr(0, pos2); // cursor name
+	    if (start==-1) fs1='assume('+fs1;
+	    //console.log(fs1);
             var pos1 = fs.search("value=");
             pos1 += 7;
             fs = fs.substr(pos1, fs.length - pos1);
             var pos2 = fs.search("\"");
-            fs1 += ',' + fs.substr(0, pos2); // current value
+            fs1 += start==-1?"=[":',';
+	    fs1 += fs.substr(0, pos2); // current value
+	    //console.log(fs1);
             var pos1 = fs.search("minname");
             pos1 += 7;
             fs = fs.substr(pos1, fs.length - pos1);
@@ -1690,6 +2115,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
             fs = fs.substr(pos1, fs.length - pos1);
             var pos2 = fs.search("\"");
             fs1 += ',' + fs.substr(0, pos2); // min
+	    //console.log(fs1);
             var pos1 = fs.search("maxname");
             pos1 += 7;
             fs = fs.substr(pos1, fs.length - pos1);
@@ -1698,13 +2124,21 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
             fs = fs.substr(pos1, fs.length - pos1);
             var pos2 = fs.search("\"");
             fs1 += ',' + fs.substr(0, pos2); //max
+	    //console.log(fs1);
             var pos1 = fs.search("value=");
             pos1 += 7;
             fs = fs.substr(pos1, fs.length - pos1);
             var pos2 = fs.search("\"");
             fs1 += ',' + fs.substr(0, pos2); // step
-            //console.log(fs1);
+	    //console.log(fs1);
+	    if (start==-1){
+	      fs1 +='])';
+              //console.log(fs1);
+	      casioin.push(fs1);
+	      casioin.push('');
+	    }
             s += '*' + fs1 + '&';
+	    //console.log(s);
             cur = cur.nextSibling;
             continue;
           }
@@ -1713,8 +2147,39 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         if (pos >= 0 && pos < fs.length) {
           // var tmp=field.firstChild.value.replace(/\n/g,'%0a'); tmp=tmp.replace(';','%3b','g');
           // s += '+' + tmp.replace('&&',' and ','g') + '&';
-          var tmp = encodeURIComponent(field.firstChild.value);
-          s += '+' + tmp + '&';
+          var tmp = field.firstChild.value;
+	  if (start==-1){ // Casio export
+	    if (tmp.indexOf('\n')!=-1 &&
+		(tmp.indexOf('def')!=-1 || tmp.indexOf('nction')!=-1 || tmp.indexOf('{')!=-1))
+	      casioscript += tmp+'\n';
+	    else {
+	      casioin.push(tmp);
+	      if (field.nextSibling){
+		field=field.nextSibling.firstChild;
+		if (field){
+		    field=field.nextSibling;
+		  if (field){
+		    fs = field.innerHTML;
+		    casioin.push(fs);
+		  }
+		  else
+		    casioin.push('Graphic object');
+		}
+	      }
+	      else casioin.push("");
+	    }
+	  } // matches start==-1 Casio export
+	  else
+	    tmp=encodeURIComponent(tmp);
+	  // if mode is the same as UI.micropy from beginning use old format
+	  // console.log(field.firstChild.classList);
+	  let evaluator=UI.classlist2evaluator(field.firstChild.classList);
+	  if (evaluator=='')
+            s += '+'+tmp+'&';
+	  else {
+	    let position=''+Math.floor(i/3)*400+','+(i%3)*200;
+	    s += evaluator+'='+position+','+tmp+'&';
+	  }
           cur = cur.nextSibling;
           continue;
         }
@@ -1723,6 +2188,10 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
           cur = cur.nextSibling;
           continue;
         }
+	if (start==-1){
+	  casioin.push('/*'+fs+'*/');
+	  casioin.push('')
+	}
         s += '+///' + fs + '&';
       }
       cur = cur.nextSibling;
@@ -1730,6 +2199,8 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     // Module.print(s);
     s = s.replace(/\"/g, '%22');
     s = s.replace(/>/g, '%3e');
+    if (start==-1) return [casiovars,casioscript,casioin];
+    //console.log(s);
     return s;
   },
   canvas_mousemove: function (event, no) {
@@ -1781,6 +2252,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
   show_config: function () {
     var form = $id('config');
     form.style.display = 'inline';
+    form.scrollIntoView();
   },
   editline: false,
   set_editline: function (field, b) {
@@ -1801,20 +2273,44 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         field.style.display = b ? 'inline' : 'none';
     }
   },
-  set_settings: function () {
+  python_mode_str: function(i,j){
+    if (j==-1) return 'JS';
+    if (i==0) return 'xcas';
+    if (i==1) return 'pyth **';
+    if (i==2) return 'pyth xor';
+    if (i & 4) return 'Python';
+    return '?';
+  },
+  set_settings: function () { // refresh the mode displayed at the top left
+    $id('bouton_math').style.display=UI.micropy?'none':'inline';
     var form = $id('config');
+    if (UI.micropy>0){
+      form.python_mode.checked=true;
+      form.python_xor.checked=true;
+      form.js_mode.checked=false;
+    }
+    if (UI.micropy==0){
+      form.python_mode.checked=UI.python_mode>0;
+      form.python_xor.checked=false;
+      form.js_mode.checked=false;
+    }
+    if (UI.micropy==-1){
+      form.python_mode.checked=false;
+      form.python_xor.checked=false;
+      form.js_mode.checked=true;
+    }
     var hw = window.innerWidth;
     //console.log(hw);
     if (hw >= 700) {
       var cfg = $id('curcfg');
       var s = "";
-      s += UI.python_mode ? 'pyth ' : 'xcas ';
+      s += UI.python_mode_str(UI.python_mode,UI.micropy)+' ';
       s += form.angle_mode.checked ? 'rad ' : 'deg ';
       s += form.digits_mode.value;
       if (form.complex_mode.checked) s += " ℂ"; // else s+=" ℝ";
       if (form.sqrt_mode.checked) s += " &radic;";
       cfg.innerHTML = s;
-    }
+      window.getComputedStyle(cfg, null);    }
   },
   set_config_width: function () {
     UI.set_settings();
@@ -1966,18 +2462,40 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     s += '); step_infolevel(';
     if (form.step_mode.checked) s += 1; else s += 0;
     s += ');python_compat(';
-    if (form.python_mode.checked) s += 1; else s += 0;
+    if (form.python_xor.checked)
+      form.python_mode.checked=true;
+    if (form.python_mode.checked){
+      if (form.python_xor.checked){ s+=4; UI.micropy=1; } else { s += 1; UI.micropy=0; }
+    }
+    else {
+      if (form.js_mode.checked){
+	s += -1; UI.micropy=-1;
+      }
+      else {
+	s += 0; UI.micropy=0;
+      }
+    }
     s += ');';
     // Module.print(s);
     return s;
   },
+  set_calc_type:function(test){
+    UI.calc=test;
+    if (test==1) $id('loadfileinput').accept=".xw";
+    if (test==2) $id('loadfileinput').accept=".py";
+    if (test==3) $id('loadfileinput').accept=".tns";
+  },
   set_config: function (setcm_mode) { // b==true if we set cmentree
     var form = $id('config');
+    let py=form.python_mode.checked,mp=form.python_xor.checked,js=form.js_mode.checked;
+    if (mp) py=true;
+    console.log('set_config',py,mp);
     UI.canvas_w = form.canvas_w.value;
     UI.canvas_h = form.canvas_h.value;
     var s = UI.config_string();
     //console.log(form.wasm_mode);
     UI.addhelp(' ', s);
+    form.python_mode.checked=py; form.python_xor.checked=mp; form.js_mode.checked=js;
     form.style.display = 'none';
     if (UI.focusaftereval) UI.focused.focus();
     var test;
@@ -1988,14 +2506,25 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     if (test > 5 || test == 2) test = 0;
     UI.langue = -test;
     UI.createCookie('xcas_lang', test, 10000);
+    for (test = 0; test < 3; ++test) {
+      if (form.calc[test].checked) break;
+    }
+    test++;
+    UI.set_calc_type(test);
+    //console.log('accept file',$id('loadfileinput').accept);
+    UI.createCookie('xcas_calc', test, 10000);
     UI.createCookie('xcas_from', form.from.value, 10000);
     UI.createCookie('xcas_to', form.to.value, 10000);
     UI.createCookie('xcas_digits', form.digits_mode.value, 10000);
     UI.createCookie('xcas_angle_radian', form.angle_mode.checked ? 1 : -1, 10000);
     UI.warnpy = form.warnpy_mode.checked;
     UI.createCookie('xcas_warnpy', form.warnpy_mode.checked ? 1 : -1, 10000);
-    UI.createCookie('xcas_python_mode', form.python_mode.checked ? 1 : -1, 10000);
-    UI.python_mode = form.python_mode.checked;
+    UI.python_mode = form.python_mode.checked?(form.python_xor.checked?4:1):0;
+    UI.micropy=form.python_xor.checked?1:0;
+    if (form.js_mode.checked)
+      UI.micropy=-1;
+    //console.log(UI.python_mode,UI.micropy);
+    UI.createCookie('xcas_python_mode', UI.python_mode, 10000);
     UI.set_settings();
     if (setcm_mode) {
       UI.setoption_mode(cmentree);
@@ -2026,17 +2555,409 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     //$id('settings').style.backgroundImage = "url('config.png')";
     //document.body.style.backgroundImage = "url('logo.png')";
   },
+  copystringtoclipboard:function(str){
+    // Create new element
+    var el = document.createElement('textarea');
+    // Set value (string to be copied)
+    el.value = str;
+    // Set non-editable to avoid focus and move outside of view
+    el.setAttribute('readonly', '');
+    el.style = {position: 'absolute', left: '-9999px'};
+    document.body.appendChild(el);
+    // Select text inside element
+    el.select();
+    // Copy text to clipboard
+    document.execCommand('copy');
+    // Remove temporary element
+    document.body.removeChild(el);
+  },
+  nws_connect:function(){
+    if (navigator.usb){
+      //console.log('nws_connect 0');
+      if (UI.calculator!=0)
+	return;
+      //console.log('nws_connect 1');
+      function autoConnectHandler(e) {
+	UI.calculator.stopAutoConnect();
+	console.log('connected');
+	UI.calculator_connected=true;
+      }
+      UI.calculator= new Numworks();
+      navigator.usb.addEventListener("disconnect", function(e) {
+	if (UI.calculator==0) return;
+	UI.calculator.onUnexpectedDisconnect(e, function() {
+	  UI.calculator_connected=false;
+          UI.calculator=0;
+	});
+      });
+      //console.log('nws_connect 2');
+      UI.calculator.autoConnect(autoConnectHandler);
+      //console.log('nws_connect 3');
+    }
+  },
+  numworks_load:function(){
+    UI.calc=2;
+    UI.nws_connect();
+    window.setTimeout(UI.numworks_load_,100);
+  },
+  sig_check:async function(sig,data,fname){
+    // sig should be a list of lists of size 3 (name, length, hash)
+    /* c++ program to generate nws_sig.js
+// -*- mode:C++ ; compile-command: "/usr/bin/g++ -g nws_sig.cc sha256.c -Wall -o nws_sig" -*-
+// Pour pouvoir certifier compiler puis faire 
+// ./nws_sig /shared/numworks/nw-external-apps/firmware/* ../doc/apps.tar 
+// recopier nws_sig.js dans le repertoire de xcasfr.html
+#include <sys/stat.h>
+#include <sys/types.h>
+#include "sha256.h"
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <string.h>
+using namespace std;
+const char sigfname[]="nws_sig.js";
+const int MAXKEYS=64;
+std::string remove_path(const std::string & st){
+  int s=int(st.size()),i;
+  for (i=s-1;i>=0;--i){
+    if (st[i]=='/')
+	break;
+  }
+  return st.substr(i+1,s-i-1);
+}
+
+int main(int argc,const char ** argv){
+  if (argc<2)
+    return 0;
+  if (argc>MAXKEYS)
+    argc=MAXKEYS+1;
+  ofstream of(sigfname);
+  // BYTE hash[MAXKEYS][SHA256_BLOCK_SIZE];
+  BYTE buf[SHA256_BLOCK_SIZE];
+  SHA256_CTX ctx;
+  of << "var nws_sig=[\n";
+  for (int j=1;j<argc;++j){
+    string text;
+    FILE * f=fopen(argv[j],"r");
+    if (!f)
+      return 0;
+    size_t taille=0;
+    for (;;++taille){
+      unsigned char c=fgetc(f);
+      if (feof(f))
+	break;
+      text += c;
+    }
+    fclose(f);
+    unsigned char * ptr=(unsigned char *)text.c_str();
+    sha256_init(&ctx);
+    sha256_update(&ctx, ptr, text.size());
+    sha256_final(&ctx, buf);
+    of << '[' << '"' << remove_path(argv[j]) << '"' << "," << taille << ", [";
+    for (int i=0;i<SHA256_BLOCK_SIZE;++i){
+      of << (unsigned) buf[i] << ",";
+      // bcd convert
+      //int b=buf[i];
+      //b = (b/100+'0')*65536+(((b/10)%10)+'0')*256+((b%10)+'0');
+    }
+    of << "]],\n";
+  }
+  of << "];\n";
+  of.close();
+  return 0;
+}
+     // end of C program to generate nws_sig.js */
+    let i=0,l=sig.length;
+    for (;i<l;++i){
+      let cur=sig[i];
+      if (cur[0]!=fname) continue;
+      console.log('sig_check',cur[1],data.byteLength);
+      if (cur[1]>data.byteLength) continue;
+      let dat=data.slice(0,cur[1]);
+      let digest = await window.crypto.subtle.digest('SHA-256', dat);
+      digest=Array.from(new Uint8Array(digest));
+      console.log(cur[2],digest);
+      let j=0;
+      for (;j<32;++j){
+	let tst=(digest[j]-cur[2][j]) % 256;
+	// console.log(j,digest[j],cur[2][j]);
+	if (tst)
+	  break;
+      }
+      if (j==32){
+	console.log('signature match',cur[0]);
+	return true;
+      }      
+    }
+    return false;
+  },
+  numworks_certify:function(sigfile,rwcheck=false){
+    UI.calc=2;
+    UI.nws_connect();
+    window.setTimeout(UI.numworks_certify_,100,sigfile,rwcheck);
+  },
+  numworks_certify_:async function(sigfile,rwcheck){
+    if (UI.calculator==0 || !UI.calculator_connected){
+      alert(UI.langue==-1?'Verifiez que la calculatrice Numworks est connectee':'Check that the Numworks calculator is connected');
+      return -1;
+    }
+    if (rwcheck)
+      alert(UI.langue==-1?'Le test va prendre une petite minute':'Test will take about 1 minute');
+    else
+      alert(UI.langue==-1?'Le test va prendre environ 20 secondes':'Test will take about 20 seconds');
+    let internal=await UI.calculator.get_internal_flash();
+    //console.log(sigfile);
+    let res=await UI.sig_check(sigfile,internal,'delta.internal.bin');
+    if (!res){
+      alert(UI.langue==-1?'Flash interne non certifiee':'Internal flash not certified');
+      return 1;
+    }
+    Module.print('Internal flash OK');
+    let external=await UI.calculator.get_external_flash();
+    res=await UI.sig_check(sigfile,external,'delta.external.bin');
+    if (!res){
+      alert(UI.langue==-1?'Flash externe non certifiee':'External flash not certified');
+      return 2;
+    }
+    Module.print('External flash OK');
+    let apps=await UI.calculator.get_apps();
+    res=await UI.sig_check(sigfile,apps,'apps.tar');
+    if (!res){
+      alert(UI.langue==-1?'Applications non certifiees':'Applications not certified');
+      return 3;
+    }
+    Module.print('Apps OK');
+    if (rwcheck){
+      Module.print('R/W check');
+      res=await UI.calculator.rw_check(0x90100000,0x100000);
+      if (!res){
+	alert(UI.langue==-1?'Echec du test lecture/ecriture':'Read/Write test failure');
+	return 4;
+      }
+      Module.print('R/W OK');
+    }
+    alert(UI.langue==-1?'Firmware certifie':'Firmware certified');
+    return 0;
+  },
+  numworks_load_: async function(){
+    console.log(UI.calculator,UI.calculator_connected);
+    if (UI.calculator==0 || !UI.calculator_connected){
+      alert(UI.langue==-1?'Verifiez que la calculatrice Numworks est connectee':'Check that the Numworks calculator is connected');
+      return;
+    }
+    $id('progbuttons').style.display='block'; 
+    let storage = await UI.calculator.backupStorage();
+    let rec=storage.records,j=0,s='Choisissez un numero parmi ';
+    for (;j<rec.length;++j){
+      s+=j;
+      s+=':'+rec[j].name+', ';
+    }
+    let p=prompt(s),n=0;
+    console.log(p);
+    if (!p) return;
+    let l=p.length;
+    for (j=0;j<l;++j){
+      if (p[j]<'0' || p[j]>'9'){ alert(UI.langue==-1?'Nombre invalide':'Invalid number'); return ;}
+      n*=10;
+      n+=p.charCodeAt(j)-48;
+    }
+    if (n>=rec.length){ alert(UI.langue==-1?'Choix invalide':'Invalide choice'); return; }
+    s=rec[n].code; p=rec[n].name;
+    if (p.length>3 && p.substr(p.length-2)=='xw'){
+      UI.set_xcas_python();
+      $id('outputfilename').value=p; // session
+    }
+    else {
+      UI.set_micropython();
+      $id('outputfilename').value=p+'.py';
+    }
+    // console.log(s);
+    UI.do_load(s);
+  },
+  numworks_save:function(filename,S,newbuf,pos){
+    UI.nws_connect();
+    window.setTimeout(UI.numworks_save_,100,filename,S,newbuf,pos);
+  },
+  numworks_save_script:async function(filename,S){
+    if (UI.calculator==0 || !UI.calculator_connected){
+      alert(UI.langue==-1?'Verifiez la connection de la calculatrice':'Check calculator connection');
+      return;
+    }
+    let storage = await UI.calculator.backupStorage();
+    let rec=storage.records,j=0;
+    for (;j<rec.length;++j){
+      if (rec[j].name==filename){
+	if (!confirm((UI.langue==-1?'? Ecraser ':'? Overwrite ')+rec[j].name))
+	  return;
+	rec[j].code=S;
+	break;
+      }
+    }
+    if (j==rec.length)
+      rec.push({"name": filename, "type":"py", "autoImport": false, "code": S});
+    await UI.calculator.installStorage(storage, function() {
+      // Do stuff after writing to the storage is done
+      console.log(filename+'_xw.py saved to Numworks');
+    });
+  },    
+  numworks_save_:function(filename,S,newbuf,pos){
+    console.log(UI.calculator,UI.calculator_connected);
+    if (UI.calculator==0 || !UI.calculator_connected){
+      buf=new Uint8Array(pos);
+      for (var i=0;i<pos;++i)
+	buf[i]=newbuf[i];
+      var blob = new Blob([buf]);
+      if (UI.calc==2)
+	filename += "_xw.py";
+      else
+        filename += ".xw";
+      if (UI.calc==3) filename += ".tns";
+      saveAs(blob, filename);
+      return;
+    }
+    UI.numworks_save_script(filename+"_xw",S);
+  },
   savesession: function (i) {
-    // console.log('save_session',i);
-    var s;
+    let s='';
     filename = $id("outputfilename").value;
+    let ext='';
+    if (filename.length>3 && filename.substr(filename.length-3,3)=='.py'){
+      filename=filename.substr(0,filename.length-3);
+      ext='.py';
+    }
+    if (filename.length>3 && filename.substr(filename.length-2,2)=='xw'){
+      filename=filename.substr(0,filename.length-2);
+      if (filename.length && filename[filename.length-1]=='_')
+      filename=filename.substr(0,filename.length-1);	
+      ext='.xw';
+    }
+    console.log('save_session',filename,ext);
+    // console.log('save_session',i,UI.makelink(0));
     document.title = "Xcas_" + filename;
-    if (i == 2) {
+    if (i==2) {
       UI.createCookie('xcas__' + filename, UI.makelink(0), 9999);
       console.log(UI.listCookies());
       return;
     }
-    if (i == 1) {
+    if (i==1) {
+      if (ext=='.py'){ // not a session, but a Python script
+	let cur = $id('mathoutput').firstChild;
+	for (; cur; cur=cur.nextSibling) {
+          let field = cur.firstChild;
+          field = field.firstChild;
+          field = UI.skip_buttons(field);
+	  if (field.firstChild.tagName=='svg')
+	    continue;
+	  if (field.firstChild.tagName=='DIV')
+	    continue;
+          var fs = field.innerHTML;
+          if (fs.length>6 && fs.substr(0,6)=="<span ") { // comment
+            fs = field.firstChild.firstChild.value;
+	    s += '"""' + fs + '"""\n';
+          }
+          if (fs.length>5 && fs.substr(0,5)=="<form") 
+            continue;
+          let pos = fs.search("<textarea");
+          if (pos>=0 && pos<fs.length) {
+            // var tmp=field.firstChild.value.replace(/\n/g,'%0a'); tmp=tmp.replace(';','%3b','g');
+            // s += '+' + tmp.replace('&&',' and ','g') + '&';
+            let tmp = field.firstChild.value;
+	    s += tmp+'\n';
+            continue;
+          }
+          pos = fs.search("UI.addhelp");
+          if (pos>=0 && pos<fs.length) 
+            continue;
+          s += '"""' + fs + '"""\n';
+	} // end for
+	UI.nws_connect();
+	window.setTimeout(UI.numworks_save_script,100,filename,s);
+	console.log(s);
+	return;
+      } // ext=='.py'
+      s=UI.makelink(-1);
+      if (s[1].length==0)
+	s[1]='\n';
+      var l=4+s[0].length+4+s[1].length;
+      for (var j=0;j<s[2].length;j++)
+	l+=6+s[2][j].length;
+      console.log(l);
+      var L=l+2;
+      var buf=new Uint8Array(L);
+      buf[0]=0;
+      l=s[0].length;
+      buf[1]=l/65536;
+      buf[2]=(l/256)%256;
+      buf[3]=l%256;
+      for (var j=0;j<s[0].length;++j){
+	buf[4+j]=s[0].charCodeAt(j);
+      }
+      var pos=4+l;
+      buf[pos]=0;
+      l=s[1].length;
+      buf[pos+1]==l/65536;
+      buf[pos+2]=(l/256)%256;
+      buf[pos+3]=l%256;
+      for (var j=0;j<s[1].length;++j){
+	buf[pos+4+j]=s[1].charCodeAt(j);
+      }
+      pos +=4+l;
+      for (var i=0;i<s[2].length;++i){
+	var S=s[2][i];
+	l=S.length;
+	if (l==0) continue;
+	buf[pos]=l/256;
+	buf[pos+1]=l%256;
+	buf[pos+4]=(i%2)?1:0;
+	buf[pos+5]=1;
+	for (var j=0;j<S.length;++j){
+	  buf[pos+6+j]=S.charCodeAt(j);
+	}
+	pos += 6+l;
+      }
+      if (UI.calc==2){ // encode as a Python file for Numworks workshop
+	var newbuf=new Uint8Array(4*(L+2)/3+10); // 4/3 oldlen + 8(#xwaspy\n) + 2 for ending  zeros);
+	S="#xwaspy\n";
+	for (var j=0;j<S.length;++j)
+	  newbuf[j]=S.charCodeAt(j);
+	pos=8;
+	for (var i=0;i<L;i+=3){
+	  // keep space newlines and a..z characters
+	  while (i<L && (buf[i]==32 || buf[i]==10 || buf[i]==58 || buf[i]==59 || buf[i]==41 || (buf[i]>=97 && buf[i]<=123))){
+	    var c=buf[i];
+	    if (c==58) // : -> ~ 
+	      c=126;
+	    if (c==59) // ; -> |
+	      c=124;
+	    if (c==41) // ) -> }
+	      c=125; 
+	    newbuf[pos]=c;
+	    S+=String.fromCharCode(c);
+	    ++i;
+	    ++pos;
+	  }
+	  var a=buf[i],b=i+1<L?buf[i+1]:0,c=i+2<L?buf[i+2]:0;
+	  var A=UI.xwaspy_shift+(a>>2),B=UI.xwaspy_shift+(((a&3)<<4)|(b>>4)),C=UI.xwaspy_shift+(((b&0xf)<<2)|(c>>6)),D=UI.xwaspy_shift+(c&0x3f);
+	  newbuf[pos]=A; ++pos;
+	  newbuf[pos]=B; ++pos;
+	  newbuf[pos]=C; ++pos;
+	  newbuf[pos]=D; ++pos;
+	  S += String.fromCharCode(A,B,C,D);
+	}
+	//console.log(S,newbuf);
+	UI.numworks_save(filename,S,newbuf,pos);
+	return;
+      }
+      var blob = new Blob([buf]);
+      if (UI.calc==2)
+	filename += "_xw.py";
+      else
+        filename += ".xw";
+      if (UI.calc==3) filename += ".tns";
+      saveAs(blob, filename);
+      return;
+      // Casio change: make a Int8Array
+      // create Blob([Int8Array_varname]) or Blob([Int8Array_varname],{type: "application/octet-stream"}))
       s = $id("fulldocument").innerHTML;
       s = '<html id="fulldocument" manifest="xcas.appcache">' + s + '</html>';
     }
@@ -2061,6 +2982,20 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     else
       tmp.style.display = 'none'
   },
+  hide_show_xcas: function (t) {
+    var tmp=$id(t);
+    if (UI.micropy)
+      tmp.style.display = 'none';
+    else
+      tmp.style.display = 'inline'
+  },
+  hide_show_python: function (t) {
+    var tmp=$id(t);
+    if (UI.micropy>0)
+      tmp.style.display = 'inline';
+    else
+      tmp.style.display = 'none'
+  },
   remove_extension: function(name){
     var s=name.length,i;
     for (i=s-1;i>=0;--i){
@@ -2071,25 +3006,173 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       return name.substr(0,i);
     return name;
   },
+  unsignedchar:function(s,pos){
+    var r=s.charCodeAt(pos);
+    var r1=(r+256)%256;
+    return r1;
+  },
+  decode_fakepy:function(s){
+    // decode sessions saved as fake py files (Numworks)
+    let pos=8;
+    let str="";
+    for (;;){
+      while (pos<s.length && (s[pos]=='\n' || s[pos]==' ' || (s[pos]>='a' && s[pos]<='~'))){
+	let c=s[pos];
+	if (c=='}')
+	  c=')';
+	if (c=='~')
+	  c=':';
+	if (c=='|')
+	  c=';';
+	str += c; ++pos;
+      }
+      if (pos>=s.length) break;
+      let a=s.charCodeAt(pos)-UI.xwaspy_shift; ++pos;
+      if (a<0) break;
+      let b=s.charCodeAt(pos)-UI.xwaspy_shift; ++pos;
+      if (b<0) break;
+      let c=s.charCodeAt(pos)-UI.xwaspy_shift; ++pos;
+      if (c<0) break;
+      let d=s.charCodeAt(pos)-UI.xwaspy_shift; ++pos;
+      if (d<0) break;
+      str += String.fromCharCode((a<<2)|(b>>4),((b&0xf)<<4)|(c>>2),((c&0x3)<<6)|d);
+    }
+    console.log(str);
+    return str;
+  },
+  do_load:function(s){
+    if (s.length>11 && (s.substr(3,7)=='<tbody>' || s.substr(3,8)=='#xwaspy\n') )
+      s=s.substr(3,s.length-3);
+    //console.log(s.substr(0,7));
+    if (s.length>8 && s.substr(0,8)=='#xwaspy\n'){
+      s=UI.decode_fakepy(s);
+    }
+    if (s.length > 7 && s.substr(0, 7) == '<tbody>') {
+      UI.show_history123();
+      $id("mathoutput").innerHTML += s;
+      if (confirm(UI.langue == -1 ? 'Ex&eacute;cuter les commandes de l\'historique?' : 'Execute history commands?'))
+        UI.exec($id('mathoutput'), 0);
+      // Module.print(s);
+    }
+    else {
+      // Casio change ?reader.readAsArrayBuffer or readAsBinaryString
+      if (s.charCodeAt(0)==0){
+	var editpos=0;
+	var editl=UI.unsignedchar(s,1);
+	editl=editl*256+UI.unsignedchar(s,2);
+	editl=editl*256+UI.unsignedchar(s,3);
+	var edits=s.substr(4,editl);
+	//console.log(edits);
+	var py=edits[editl-19];
+	var rad=edits[editl-3];
+	//console.log(edits,py,rad);
+	edits=edits.substr(0,edits.length-34);
+	UI.python_mode=0;
+	if (edits.length)
+	  UI.caseval(edits);
+	UI.python_mode=py;
+	UI.micropy=py==4;
+	form.python_xor.checked=UI.micropy>0;
+	UI.set_settings();
+	editpos=4+editl;
+	editl=UI.unsignedchar(s,editpos);
+	// console.log(0,editl);
+	for (var i=1;i<=3;i++){
+	  editl=editl*256+UI.unsignedchar(s,editpos+i);
+	  // console.log(i,editl);
+	}
+	edits=s.substr(editpos+4,editl);
+	// console.log('script ',editl,edits,edits.length);
+	if (edits=='\n')
+	  edits=UI.python_mode?'def\n':'function\nffunction';
+	if (edits.length)
+	  UI.eval_cmdline1(edits,true);
+	editpos += 4+editl;
+	while (editpos<s.length-4){
+	  editl=UI.unsignedchar(s,editpos);
+	  editl=editl*256+UI.unsignedchar(s,editpos+1);
+	  if (editl==0) break;
+	  var t=UI.unsignedchar(s,editpos+4);
+	  var ro=UI.unsignedchar(s,editpos+5);
+	  edits=s.substr(editpos+6,editl);
+	  //console.log(t,ro,edits);
+	  if (edits.length>=2){
+	    if (edits[0]=='#')
+	      edits='///'+edits.substr(1,edits.length-1);
+	    else {
+	      if (edits[0]=='/'){
+		if (edits[1]=='/')
+		  edits ='/'+edits;
+		else {
+		  if (edits[1]=='*' && edits.length>=4){
+		    edits='///'+edits.substr(2,edits.length-4);
+		  }
+		}
+	      }
+	    }
+	  }
+	  if (edits.length && t==0){
+	    var done=false;
+	    // detect assume(a=[cur,min,max,step])
+	    if (edits.length>=15 && edits.substr(0,7)=="assume("){
+	      var pos=edits.search("=");
+	      var name,value,mini,maxi,step;
+	      if (pos>=8 && pos<edits.length){
+		name=edits.substr(7,pos-7);
+		//console.log(name);
+		// skip =[
+		edits=edits.substr(pos+2,edits.length-pos-2);
+		pos=edits.search(',');
+		if (pos>=1 && pos<edits.length){
+		  value=edits.substr(0,pos);
+		  //console.log(value);
+		  edits=edits.substr(pos+1,edits.length-pos-1);
+		  pos=edits.search(',');
+		  if (pos>=1 && pos<edits.length){
+		    mini=edits.substr(0,pos);
+		    //console.log(mini);
+		    edits=edits.substr(pos+1,edits.length-pos-1);
+		    pos=edits.search(',');
+		    if (pos>=1 && pos<edits.length){
+		      maxi=edits.substr(0,pos);
+		      //console.log(maxi);
+		      edits=edits.substr(pos+1,edits.length-pos-1);
+		      pos=edits.search(']');
+		      if (pos>=1 && pos<edits.length){
+			step=edits.substr(0,pos);
+			//console.log(name,value,mini,maxi,step);
+			UI.addcurseur(name, value, mini, maxi, step);
+			done=true;
+		      }
+		    }
+		  }
+		}
+	      }
+	    }
+	    if (!done)
+	      UI.eval_cmdline1(edits,true);
+	  }
+	  editpos+= 6+editl;
+	}
+      }
+      else { // s.charCodeAt(0)==0 
+	// alert(UI.langue == -1 ? 'Format de document invalide' : 'Invalid document format');
+	if (cmentree.type != 'textarea') cmentree.setValue(s); else entree.value(s);
+      }
+    }
+    if (UI.focusaftereval) UI.focused.focus();
+  },    
   loadfile: function (oFiles) {
     var nFiles = oFiles.length;
     for (var nFileId = 0; nFileId < nFiles; nFileId++) {
       console.log('load',oFiles[nFileId].name);
       $id('outputfilename').innerHTML=UI.remove_extension(oFiles[nFileId].name);
       var reader = new FileReader();
-      reader.readAsText(oFiles[nFileId]);
+      reader.readAsBinaryString(oFiles[nFileId]);//reader.readAsText(oFiles[nFileId]);
       var s;
       reader.onloadend = function (e) {
         s = e.target.result;
-        if (s.length > 7 && s.substr(0, 7) == '<tbody>') {
-          UI.show_history123();
-          $id("mathoutput").innerHTML += s;
-          if (confirm(UI.langue == -1 ? 'Ex&eacute;cuter les commandes de l\'historique?' : 'Execute history commands?'))
-            UI.exec($id('mathoutput'), 0);
-          // Module.print(s);
-        }
-        else alert(UI.langue == -1 ? 'Format de document invalide' : 'Invalid document format');
-        if (UI.focusaftereval) UI.focused.focus();
+	UI.do_load(s);
       }
     }
   },
@@ -2193,6 +3276,256 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     UI.scrollatend(out.parentNode);
     if (UI.focusaftereval) UI.focused.focus();
   },
+  decode_polygon:function(s,DX=0,DY=0){
+    // s is a string of format [color_if_not_white,]startX,startY,
+    // followed by points of the delineation in a "compact" format [pressure]dxdy
+    // where dx and dy are encoded with UI.compact
+    // returns lx,ly,lp,color,s where
+    // lx, ly is the list of x,y stroke coordinate
+    // lp list of pressures
+    // color is the color
+    // s is the part of initial string after color+initial absolute coordinates
+    let lx=[],ly=[],lp=[];
+    let l=s.length,pos=s.search(','),lastX=0,lastY=0;
+    let color="white",pressure=0.5;
+    if (s[0]>'9'){
+      color=s.substr(0,pos);
+      s=s.substr(pos+1,l-pos-1);
+      pos=s.search(',');
+    }
+    lastX=UI.parse_int(s.substr(0,pos))+DX;
+    s=s.substr(pos+1,l-pos-1);
+    pos=s.search(',');
+    lastY=UI.parse_int(s.substr(0,pos))+DY;
+    lx.push(lastX); ly.push(lastY); lp.push(pressure);
+    // console.log(color,lastX,lastY); return;
+    l=s.length; s=s.substr(pos+1,l-pos-1);
+    // now s has format [digit]majuscules minuscules
+    l=s.length;
+    for (pos=0;pos<l;){
+      let n=s.charCodeAt(pos);
+      if (n>=48 && n<=57){
+	pressure=(n-48)/10+0.05;
+	//console.log('pressure',pressure);
+	++pos;
+      }
+      let dx=0,dy=0;
+      for (;pos<l;++pos){
+	n=s.charCodeAt(pos);
+	if (n>96)
+	  break;
+	if (n<65){
+	  console.log('invalid char');
+	  return [lx,ly,lp,color];
+	}
+	dx *= 13;
+	dx += (n-77); // 65+12 where 'A'==65
+      }
+      // console.log(dx);
+      for (;pos<l;++pos){
+	n=s.charCodeAt(pos);
+	if (n<97)
+	  break;
+	if (n>122){
+	  console.log('invalid char');
+	  return [lx,ly,lp,color];
+	}
+	dy *= 13;
+	dy += (n-109); // 97+12 where 'A'==65
+      }
+      // console.log(dy);
+      let curX=lastX+dx;
+      let curY=lastY+dy;
+      //console.log(dx,dy);
+      lastX=curX; lastY=curY;
+      lx.push(lastX); ly.push(lastY); lp.push(pressure);
+    }
+    return [lx,ly,lp,color,s];
+  },
+  drawline:function(context, x1, y1, x2, y2, pressure = 1.0, color = user.getCurrentColor()) {
+    context.beginPath();
+    context.strokeStyle = color;
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 0.75 + 0.25 * pressure;
+    context.lineWidth = 1 + 3.5 * pressure;
+    //console.log(x1,y1,x2,y2,color,context.lineWidth);
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
+    context.stroke();
+    context.closePath();
+  },
+  drawdot:function(context,x, y, color) {
+    context.beginPath();
+    context.fillStyle = color;
+    context.lineWidth = 2.5;
+    context.arc(x, y, 2, 0, 2 * Math.PI);
+    context.fill();
+    context.closePath();
+  },
+  draw_encoded:function(s,ctx=0,DX=0,DY=0,bg){
+    if (ctx==0)
+      ctx=document.getElementById("canvas").getContext("2d");
+    // console.log('draw_encoded',s,bg);
+    // polyline drawing encoded by a string formatted by
+    // color,startX,startY,relative strokes (see UI.relative for relative positions encoding)
+    let lxypc=UI.decode_polygon(s,DX,DY);
+    let lx=lxypc[0],ly=lxypc[1],lp=lxypc[2],color=lxypc[3];
+    if (bg=='' && color=='white') color='black'; 
+    // console.log('draw_encoded',color);
+    let lastX=lx[0],lastY=ly[0],curX,curY,pressure=0.5;
+    if (lx.length==1){
+      UI.drawdot(ctx,lastX,lastY,color);
+      return;
+    }
+    for (let i=1;i<lx.length;++i){
+      curX=lx[i]; curY=ly[i];
+      UI.drawline(ctx,lastX,lastY,curX,curY,lp[i],color);
+      lastX=curX; lastY=curY;
+    }
+  },
+  find_whxy:function(tab){
+    // find canvas size that contains these relative handwritings
+    // and dx,dy shift to write s from 0,0
+    let xmin=1e307,xmax=-1e307,ymin=1e307,ymax=-1e307,lastX,lastY;
+    for (let i=0;i<tab.length;++i){
+      let s=tab[i];
+      // console.log('handwrite_rectangle',i,s);
+      let l=s.length,pos=s.search(','),lastX=0,lastY=0;
+      if (s[0]>'9'){
+	s=s.substr(pos+1,l-pos-1);
+	pos=s.search(',');
+      }
+      lastX=UI.parse_int(s.substr(0,pos));
+      s=s.substr(pos+1,l-pos-1);
+      pos=s.search(',');
+      lastY=UI.parse_int(s.substr(0,pos));
+      if (xmin>lastX)
+	xmin=lastX;
+      if (xmax<lastX)
+	xmax=lastX;
+      if (ymin>lastY)
+	ymin=lastY;
+      if (ymax<lastY)
+	ymax=lastY;
+      // console.log(lastX,lastY); // return;
+      l=s.length; s=s.substr(pos+1,l-pos-1);
+      // now s has format [digit]majuscules minuscules
+      l=s.length;
+      for (pos=0;pos<l;){
+	let n=s.charCodeAt(pos);
+	if (n>=48 && n<=57){
+	  //console.log('pressure',pressure);
+	  ++pos;
+	}
+	let dx=0,dy=0;
+	for (;pos<l;++pos){
+	  n=s.charCodeAt(pos);
+	  if (n>96)
+	    break;
+	  if (n<65){
+	    console.log('invalid char',n);
+	    return n;
+	  }
+	  dx *= 13;
+	  dx += (n-77); // 65+12 where 'A'==65
+	}
+	// console.log(dx);
+	for (;pos<l;++pos){
+	  n=s.charCodeAt(pos);
+	  if (n<97)
+	    break;
+	  if (n>122){
+	    console.log('invalid char');
+	    return c;
+	  }
+	  dy *= 13;
+	  dy += (n-109); // 97+12 where 'A'==65
+	}
+	// console.log(dy);
+	let curX=lastX+dx;
+	let curY=lastY+dy;
+	//console.log(dx,dy);
+	lastX=curX; lastY=curY;
+	if (xmin>lastX)
+	  xmin=lastX;
+	if (xmax<lastX)
+	  xmax=lastX;
+	if (ymin>lastY)
+	  ymin=lastY;
+	if (ymax<lastY)
+	  ymax=lastY;
+      }
+    }
+    // console.log(xmin,xmax,ymin,ymax);
+    w=xmax+1-xmin;
+    h=ymax+1-ymin;
+    dx=-xmin;
+    dy=-ymin;
+    return [w,h,dx,dy];
+  },
+  handwrite:function(s_in,w=0,h=0,dx=0,dy=0,bg=''){
+    // console.log('handwrite',s_in);
+    // return a canvas from handwritings encoded in s
+    let c=document.createElement("CANVAS");
+    //c.onfocus=(e) => { this.blur(); this.parentNode.focus();};
+    if (s_in.length && s_in[s_in.length-1]=='&')
+      s_in=s_in.substr(0,s_in.length-1);
+    let tab=s_in.split('&');
+    /*
+    for (let i=0;i<tab.length;++i){
+      let s_=UI.parse_util(tab[i]);
+      console.log(tab[i],s_);
+      tab[i]=s_.substr(1,s_.length-1); // remove '=' at start
+    }
+    */
+    if (w==0 || h==0)
+      [w,h,dx,dy]=UI.find_whxy(tab);
+    c.width=w; c.height=h;
+    let ctx=c.getContext("2d");
+    for (let i=0;i<tab.length;++i)
+      UI.draw_encoded(tab[i],ctx,dx,dy,bg);
+    return c;
+  },
+  addhandwriting:function(txt,bg=''){
+    let f=UI.handwrite(txt,0,0,0,0,bg);
+    f=f.toDataURL();
+    UI.addimg(f,'handwriting='+txt,bg);
+  },
+  addimg:function(f,txt,bg=''){
+    let s = UI.move_buttons(!UI.qa);
+    s += '<td colspan=3><div style="text-align:center"></div></td><td style="display:none">456</td>';
+    s += UI.erase_button(!UI.qa);
+    let out = $id('mathoutput');
+    //console.log('addhandwriting',txt,bg);
+    out.innerHTML += s;
+    let container=out.lastChild.firstChild.children[2].firstChild;
+    let img = new Image();
+    img.src = f;
+    if (bg!=''){ img.style.backgroundColor=bg; out.lastChild.firstChild.children[3].style.backgroundColor=bg; }
+    container.style.textAlign='center';
+    container.appendChild(img);
+    out.lastChild.firstChild.children[3].innerText=txt;
+    UI.show_history123();
+    UI.link(0);
+    UI.scrollatend(out.parentNode);
+    if (UI.focusaftereval) UI.focused.focus();    
+  },
+  addsvg:function(txt,bg=''){
+    let s = UI.move_buttons(!UI.qa);
+    //console.log('addsvg',txt);
+    s += '<td colspan=3>'+txt+'</td>';
+    s += UI.erase_button(!UI.qa);
+    let out = $id('mathoutput');
+    //console.log('addhandwriting',txt,bg);
+    out.innerHTML += s;
+    let container=out.lastChild.firstChild.children[2].firstChild;
+    if (bg!=''){ container.style.backgroundColor=bg; }
+    container.style.textAlign='center';
+    UI.show_history123();
+    UI.link(0);
+    UI.scrollatend(out.parentNode);
+    if (UI.focusaftereval) UI.focused.focus();    
+  },
   exec_history: function () {
     alert(UI.langue == -1 ? 'Historique!' : 'History!');
   },
@@ -2254,6 +3587,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     UI.eval_cmdline1(value, true);
   },
   eval_cmdline1: function (value, docaseval) {
+    //console.log('eval_cmdline1',value,docaseval);
     if (!UI.ready) {
       alert(UI.langue == -1 ? 'Veuillez patienter pendant la préparation' : 'Please wait until system is ready');
       return;
@@ -2283,7 +3617,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     } else {
       if (docaseval) {
         if (UI.busy) {
-          out = ' Le moteur de calcul est occupe.';
+          out = UI.langue == -1 ?' Le moteur de calcul est occupe.':' Kernel is busy.';
           s = out;
         }
         else {
@@ -2292,13 +3626,14 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         }
       }
       else {
-        out = ' Non evalue. Cliquer sur Exec pour evaluer. ';
+        out = UI.langue == -1 ?' Non evalue. Cliquer sur Exec pour evaluer. ':' Not evaled. Click Exec to eval. ';
         s = out;
       }
     }
     UI.eval_cmdline1end(value, out, s);
   },
   eval_cmdline1end: function (value, out, s) {
+    //console.log('eval_cmdline1end',value,out,s);
     var add = UI.addinput(value, out, s);
     //var s=UI.caseval_noautosimp('mathml(quote('+value+'),1)');
     //add += '&nbsp;&nbsp;'+s.substr(1,s.length-2);
@@ -2332,7 +3667,9 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
   },
   eval_cmdline1cb: function (out, value) {
     var s;
-    //console.log(out);
+    //console.log('eval_cmdline1cb',out);
+    if (out.length>6 && (out.substr(2,4)=='<svg' || out.substr(1,5)=='gl3d ' || out.substr(1,5)=='gr2d(') )
+      out=out.substr(1,out.length-2);
     if (out.length > 5 && (out.substr(1, 4) == '<svg' || out.substr(0, 5) == 'gl3d ' || out.substr(0, 5) == 'gr2d(')) {
       //console.log(s);
       s = out;
@@ -2341,7 +3678,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     else {
       if (out.length > 1 && out[out.length - 1] == ';')
         out = out.substr(0, out.length - 1);
-      if (out[0] == '"')
+      if (out[0] == '"' || UI.micropy)
         s = 'text ' + out;
       else {
         if (UI.prettyprint) {
@@ -2349,7 +3686,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
             s = 'latex(quote(' + out + '))';
           else
             s = 'mathml(quote(' + out + '),1)'; //Module.print(s);
-          //console.log(out,s);
+          console.log(out,s);
           if (out.length > 10 && out.substr(0, 10) == 'GIAC_ERROR')
             s = '"' + out.substr(11, out.length - 11) + '"';
           else s = UI.caseval_noautosimp(s);
@@ -2359,7 +3696,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     UI.eval_cmdline1end(value, out, s);
   },
   set_locale: function () {
-    UI.caseval_noautosimp('python_compat(' + (UI.python_mode ? 1 : 0) + ')');
+    UI.caseval_noautosimp('python_compat(' + (UI.python_mode ? UI.python_mode : 0) + ')');
     if (UI.langue <= 0) {
       var out = UI.caseval_noautosimp('set_language(' + -UI.langue + '); ');
       //UI.langue=1; // commente sinon la langue n'est pas toujours reconnue
@@ -2527,11 +3864,11 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     var s = UI.move_buttons(!UI.qa);
     var t = text.length >= 3 ? text.substr(3, text.length - 3) : text;
     s += '<td colspan="2"><span style="display:none"><textarea title="';
-    s += UI.langue == -1 ? 'Ctrl-Enter ou &#x2705; pour valider ce commentaire' : 'Ctrl-Enter or &#x2705; will update this comment';
+    s += UI.langue == -1 ? 'Ctrl-Enter ou Ok pour valider ce commentaire' : 'Ctrl-Enter or Ok will update this comment';
     s += '" onfocus="UI.focused=this" onkeypress="UI.ckenter_comment(event,this)" row="5" cols="60">' + t + '</textarea>';
     s += '<button class="bouton" title="';
     s += UI.langue == -1 ? 'Valide ce commentaire' : 'Update comment';
-    s += '" onclick="UI.editcomment_end(this,true)">&#x2705;</button>';
+    s += '" onclick="UI.editcomment_end(this,true)">Ok</button>';
     s += '<br><button onmousedown="event.preventDefault()" title="';
     s += UI.langue == -1 ? 'Ajoute $ $ pour ins&eacute;rer des maths' : 'Add $ $ to insert maths';
     s += '" class="bouton" onclick="UI.add_math(UI.focused)">math</button>';
@@ -2622,11 +3959,25 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
   },
   eval: function (text, textin) {
     UI.set_locale();
-    var out = UI.caseval(text);
-    //console.log(text,out);
+    var out ;
+    if (UI.micropy>0)
+      out=UI.mpeval(text);
+    else {
+      if (UI.micropy==-1){
+	out=UI.quickjs(text);
+	// console.log('js eval',text,out);
+      }
+      else
+	out = UI.caseval(text);
+    }
+    if (out==null){
+      console.log(text,out);
+      return;
+    }
+    //console.log('UI.eval',text,out);
     var s = ' ';
     var isstr = out[0] == '"';
-    if (out.substr(1, 4) == '<svg' || out.substr(0, 5) == 'gl3d ' || out.substr(0, 5) == 'gr2d(') {
+    if (out.length>5 && (out.substr(1, 4) == '<svg' || out.substr(0, 5) == 'gl3d ' || out.substr(0, 5) == 'gr2d(') ) {
       // Module.print(text+' -> Done');
       //console.log(out);
       s = out;
@@ -2635,7 +3986,9 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     else {
       // Module.print(text+' -> '+out);
       if (out[0] == '"')
-        s = 'text ' + out;
+        s = 'text ' + out+'';
+      else if (UI.micropy)
+        s = '"' + out+'"';	
       else {
 	if (out.substr(0, 10) == 'GIAC_ERROR')
 	  s=' '+out+' ';
@@ -2645,10 +3998,12 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
               s = UI.caseval_noautosimp('latex(quote(' + out + '))');
             else
               s = UI.caseval_noautosimp('mathml(quote(' + out + '),1)');
+	    //console.log(s);
           } else s = out;
 	}
       }
     }
+    //console.log('addinput',textin,out,s);
     s = UI.addinput(textin, out, s);
     return s;
   },
@@ -2660,12 +4015,18 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       UI.turtle_draw(n, field.nextSibling.value);
     }
     if (n && n.length > 5 && n.substr(0, 5) == 'gl3d_') {
-      Module.print(n);
+      console.log('render',n);
+      field.removeEventListener("touchstart", UI.touch_handler, false);
+      field.removeEventListener("touchend", UI.touch_handler, false);
+      field.removeEventListener("touchmove", UI.touch_handler, false); 
+      field.addEventListener("touchstart", UI.touch_handler, false);
+      field.addEventListener("touchend", UI.touch_handler, false);
+      field.addEventListener("touchmove", UI.touch_handler, false);
+      $id('table_3d').style.display='none';
       var n3d = n.substr(5, n.length - 5);
       //Module.print(n3d);
       //Module.canvas=$id(n);
       UI.giac_renderer(n3d);
-      //Module.canvas=$id('canvas');
       return;
     }
     var f = field.firstChild;
@@ -2820,7 +4181,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         //console.log(cur);
         cur = cur.firstChild;
         //Module.print(cur.name.value+':='+cur.rangename.value);
-        UI.caseval_noautosimp(cur.name.value + ':=' + cur.rangename.value);
+        UI.caseval_noautosimp('assume('+cur.name.value + '=' + cur.rangename.value+')');
         var s = UI.curseurhtml(cur.name.value, cur.minname.value, cur.maxname.value, cur.stepname.value, cur.valname.value);
         level.innerHTML = s;
       }
@@ -2835,6 +4196,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       tst.nextSibling.click();
       return;
     }
+    UI.set_micropy(cur);
     s = cur.value;
     s = UI.eval(s, s);
     field.innerHTML = s;
@@ -2939,6 +4301,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     return r;
   },
   addinput: function (textin, textout, mathmlout) {
+    //console.log('addinput in',textin,'out',textout,'mathml',mathmlout);
     $id('startup_restore').style.display = 'none'
     //console.log(textin,textout,mathmlout);
     if (mathmlout.length >= 5 && mathmlout.substr(0, 5) == 'gl3d ') {
@@ -2959,17 +4322,24 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         s += '<td>';
       else
         s += '<td colspan=2>';
-      s += '<textarea class="historyinput" ';
+      s += '<textarea class="historyinput';
+      if (UI.micropy>0)
+	s += ' micropy';
+      if (UI.micropy==0)
+	s += ' cas';
+      if (UI.micropy==-1)
+	s += ' js';
+      s += ' "';
       if (is_svg && UI.qa)
         s += 'rows=8 style="font-size:large"';
       else
       //s += 'rows='+(UI.count_newline(textin)+1) +' style="font-size:large"';
         s += 'style="height:' + (20 + 16 * UI.count_newline(textin)) + 'px; font-size:large"';
-      s += ' title="Enter: saut de ligne, Ctrl-Enter: eval" onkeypress="UI.ckenter(event,this)" onblur="UI.updatelevel(this);" onfocus="if (UI.usecm) {var h=offsetHeight;UI.history_cm=CodeMirror.fromTextArea(this,{ matchBrackets: true,lineNumbers:true,viewportMargin: Infinity}); UI.history_cm.setCursor({line:0,ch:selectionStart});UI.history_cm.options.indentUnit=UI.python_mode?UI.python_indent:2; UI.prepare_cm(this,h,UI.history_cm);UI.changefontsize(UI.history_cm,16); UI.set_focused(UI.history_cm);} else UI.set_focused(this); UI.set_editline(this,true); UI.set_config_width(); parentNode.scrollIntoView();UI.moveCaret(UI.focused,1);UI.moveCaret(UI.focused,-1);" onselect="if (UI.getsel(this).length>0) UI.selection=UI.getsel(this);">' + textin + '</textarea>';
+      s += ' title="Enter: saut de ligne, Ctrl-Enter: eval" onkeypress="UI.ckenter(event,this)" onblur="UI.updatelevel(this);" onfocus="UI.set_micropy(this);if (UI.usecm) {var h=offsetHeight;UI.history_cm=CodeMirror.fromTextArea(this,{ matchBrackets: true,lineNumbers:true,viewportMargin: Infinity}); UI.history_cm.setCursor({line:0,ch:selectionStart});UI.history_cm.options.indentUnit=UI.python_mode?UI.python_indent:2; UI.prepare_cm(this,h,UI.history_cm);UI.changefontsize(UI.history_cm,16); UI.set_focused(UI.history_cm);} else UI.set_focused(this); UI.set_editline(this,true); UI.set_config_width(); parentNode.scrollIntoView();UI.moveCaret(UI.focused,1);UI.moveCaret(UI.focused,-1);" onselect="if (UI.getsel(this).length>0) UI.selection=UI.getsel(this);">' + textin + '</textarea>';
       s += '<span style="display:none">';
       s += '<button class="bouton" onmousedown="event.preventDefault()" onclick="UI.evallevel(this,true)" title="';
       s += UI.langue == -1 ? 'R&eacute;evaluer le niveau (Ctrl-Enter)' : 'Reeval level (Ctrl-Enter)';
-      s += '">&nbsp;&#x2705;&nbsp;&nbsp;</button>';
+      s += '">&nbsp;Ok&nbsp;&nbsp;</button>';
       s += '<button class="bouton" onmousedown="event.preventDefault()" onClick="UI.search(this,-1);" title="';
       s += UI.langue == -1 ? 'Donne une aide courte et quelques exemples d\'utilisation d\'une commande.' : 'Short help and examples on a command';
       s += '">&nbsp;?&nbsp;</button>';
@@ -3004,7 +4374,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       }
       s += '<button class="bouton" onmousedown="event.preventDefault()" onclick="UI.evallevel(this,false)" title="';
       s += UI.langue == -1 ? 'Abandonner' : 'Cancel';
-      s += '">&nbsp;&#x274C;</button>';
+      s += '">&nbsp;X</button>';
       s += '</span>';
       if (UI.qa) s += '</td>';
       if (is_svg || is_3d || is_gr2d) {
@@ -3075,8 +4445,28 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       }
     }
     if (delbut) s += '</tr>'; else s += UI.erase_button(!UI.qa);
-    // console.log(s);
+    //console.log(s);
     return s;
+  },
+  touch_handler:function(event){
+    var touches = event.changedTouches,
+        first = touches[0];
+    var s2=first.target.id;
+    var is_3d= s2.length>5 && s2.substr(0,4)=='gl3d';
+    var n3d='';
+    if (is_3d)
+      n3d = s2.substr(5, s2.length - 5);
+    event.preventDefault();
+    if (event.type=="touchstart"){
+      UI.canvas_pushed=true;
+      UI.canvas_lastx=first.clientX; UI.canvas_lasty=first.clientY;
+    }
+    if (event.type=="touchmove"){
+      UI.canvas_mousemove(first, n3d);
+    }
+    if (event.type=="touchend"){
+      UI.canvas_pushed=false;
+    }
   },
   giac_renderer: function (text) {
     var gr = Module.cwrap('_ZN4giac13giac_rendererEPKc', 'number', ['string']);
@@ -3086,7 +4476,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
     keyboardListeningElement.removeEventListener("keyup", SDL.receiveEvent);
     keyboardListeningElement.removeEventListener("keypress", SDL.receiveEvent);
   },
-  xcascmd: ["ACOSH", "ACOT", "ACSC", "ASEC", "ASIN", "ASINH", "ATAN", "ATANH", "Airy_Ai", "Airy_Bi", "Archive", "BesselJ", "BesselY", "Beta", "BlockDiagonal", "COND", "COS", "COSH", "COT", "CSC", "CST", "Celsius2Fahrenheit", "Ci", "Circle", "ClrDraw", "ClrGraph", "ClrIO", "Col", "CopyVar", "CyclePic", "DIGITS", "DOM_COMPLEX", "DOM_FLOAT", "DOM_FUNC", "DOM_IDENT", "DOM_INT", "DOM_LIST", "DOM_RAT", "DOM_STRING", "DOM_SYMBOLIC", "DOM_int", "DelFold", "DelVar", "Det", "Dialog", "Digits", "Dirac", "Disp", "DispG", "DispHome", "DrawFunc", "DrawInv", "DrawParm", "DrawPol", "DrawSlp", "DropDown", "DrwCtour", "ERROR", "EXP", "Ei", "EndDlog", "FALSE", "Factor", "Fahrenheit2Celsius", "False", "Fill", "GF", "Gamma", "Gcd", "GetFold", "Graph", "Heaviside", "IFTE", "Input", "InputStr", "Int", "Inverse", "JordanBlock", "LN", "LQ", "LSQ", "LU", "Li", "Line", "LineHorz", "LineTan", "LineVert", "NORMALD", "NewFold", "NewPic", "Nullspace", "Output", "Ox_2d_unit_vector", "Ox_3d_unit_vector", "Oy_2d_unit_vector", "Oy_3d_unit_vector", "Oz_3d_unit_vector", "Pause", "Phi", "Pi", "PopUp", "Psi", "QR", "Quo", "REDIM", "REPLACE", "RandSeed", "RclPic", "Rem", "Request", "Resultant", "Row", "RplcPic", "Rref", "SCALE", "SCALEADD", "SCHUR", "SIN", "SVD", "SVL", "SWAPCOL", "SWAPROW", "SetFold", "Si", "SortA", "SortD", "StoPic", "Store", "TAN", "TRUE", "TeX", "Text", "Title", "True", "UTPC", "UTPF", "UTPN", "UTPT", "Unarchiv", "VARS", "VAS", "VAS_positive", "WAIT", "Zeta", "a2q", "abcuv", "about", "abs", "abscissa", "accumulate_head_tail", "acos", "acos2asin", "acos2atan", "acosh", "acot", "acsc", "add", "additionally", "adjoint_matrix", "affix", "algsubs", "algvar", "alog10", "alors", "altitude", "and", "angle", "angle_radian", "angleat", "angleatraw", "animate", "animate3d", "animation", "ans", "append", "apply", "approx", "approx_mode", "arc", "arcLen", "arccos", "arccosh", "archive", "arclen", "arcsin", "arcsinh", "arctan", "arctanh", "area", "areaat", "areaatraw", "areaplot", "arg", "args", "array", "as_function_of", "asc", "asec", "asin", "asin2acos", "asin2atan", "asinh", "assert", "assign", "assume", "at", "atan", "atan2acos", "atan2asin", "atanh", "atrig2ln", "augment", "auto_correlation", "autosimplify", "avance", "avgRC", "axes", "back", "backquote", "backward", "baisse_crayon", "bar_plot", "bartlett_hann_window", "barycenter", "base", "basis", "batons", "begin", "bernoulli", "besselJ", "besselY", "betad", "betad_cdf", "betad_icdf", "bezier", "bezout_entiers", "binomial", "binomial_cdf", "binomial_icdf", "bisection_solver", "bisector", "bitand", "bitor", "bitxor", "black", "blackman_harris_window", "blackman_window", "bloc", "blockmatrix", "blue", "bohman_window", "border", "boxwhisker", "break", "breakpoint", "brent_solver", "by", "c1oc2", "c1op2", "cFactor", "cSolve", "cZeros", "cache_tortue", "camembert", "canonical_form", "cap", "cap_flat_line", "cap_round_line", "cap_square_line", "cas_setup", "case", "cat", "catch", "cauchy", "cauchy_cdf", "cauchy_icdf", "cauchyd", "cauchyd_cdf", "cauchyd_icdf", "cd", "cdf", "ceil", "ceiling", "center", "center2interval", "centered_cube", "centered_tetrahedron", "cfactor", "cfsolve", "changebase", "char", "charpoly", "chinrem", "chisquare", "chisquare_cdf", "chisquare_icdf", "chisquared", "chisquared_cdf", "chisquared_icdf", "chisquaret", "choice", "cholesky", "choosebox", "chr", "chrem", "circle", "circumcircle", "classes", "click", "close", "coeff", "coeffs", "col", "colDim", "colNorm", "colSwap", "coldim", "collect", "colnorm", "color", "colspace", "colswap", "comDenom", "comb", "combine", "comment", "common_perpendicular", "companion", "compare", "complex", "complex_mode", "complex_variables", "complexroot", "concat", "cond", "cone", "confrac", "conic", "conj", "conjugate_gradient", "cont", "contains", "content", "continue", "contourplot", "convert", "convertir", "convexhull", "convolution", "coordinates", "copy", "correlation", "cos", "cos2sintan", "cosh", "cosine_window", "cot", "cote", "count", "count_eq", "count_inf", "count_sup", "courbe_parametrique", "courbe_polaire", "covariance", "covariance_correlation", "cpartfrac", "crationalroot", "crayon", "cross", "crossP", "cross_correlation", "cross_point", "cross_ratio", "crossproduct", "csc", "csolve", "csv2gen", "cube", "cumSum", "cumsum", "cumulated_frequencies", "curl", "current_sheet", "curvature", "curve", "cyan", "cycle2perm", "cycleinv", "cycles2permu", "cyclotomic", "cylinder", "dash_line", "dashdot_line", "dashdotdot_line", "dayofweek", "de", "deSolve", "debug", "debut_enregistrement", "default", "degree", "del", "delcols", "delrows", "deltalist", "denom", "densityplot", "derive", "deriver", "desolve", "dessine_tortue", "det", "det_minor", "developper", "developper_transcendant", "dfc", "dfc2f", "diag", "diff", "dim", "display", "disque", "disque_centre", "distance", "distance2", "distanceat", "distanceatraw", "div", "divergence", "divide", "divis", "division_point", "divisors", "divmod", "divpc", "dnewton_solver", "do", "dodecahedron", "domain", "dot", "dotP", "dot_paper", "dotprod", "double", "droit", "droite_tangente", "dsolve", "e", "e2r", "ecart_type", "ecart_type_population", "ecris", "efface", "egcd", "egv", "egvl", "eigVc", "eigVl", "eigenvals", "eigenvalues", "eigenvectors", "eigenvects", "element", "elif", "eliminate", "ellipse", "else", "end", "end_for", "end_if", "end_while", "entry", "envelope", "epaisseur", "epaisseur_ligne_1", "epaisseur_ligne_2", "epaisseur_ligne_3", "epaisseur_ligne_4", "epaisseur_ligne_5", "epaisseur_ligne_6", "epaisseur_ligne_7", "epaisseur_point_1", "epaisseur_point_2", "epaisseur_point_3", "epaisseur_point_4", "epaisseur_point_5", "epaisseur_point_6", "epaisseur_point_7", "epsilon", "epsilon2zero", "equal", "equal2diff", "equal2list", "equation", "equilateral_triangle", "erase", "erase3d", "erf", "erfc", "error", "est_permu", "et", "euler", "euler_gamma", "eval", "eval_level", "evala", "evalb", "evalc", "evalf", "evalm", "even", "evolute", "exact", "exbisector", "excircle", "execute", "exp", "exp2list", "exp2pow", "exp2trig", "expand", "expexpand", "expln", "exponential", "exponential_cdf", "exponential_icdf", "exponential_regression", "exponential_regression_plot", "exponentiald", "exponentiald_cdf", "exponentiald_icdf", "expr", "expression", "extend", "extract_measure", "extrema", "ezgcd", "f2nd", "fMax", "fMin", "fPart", "faces", "facteurs_premiers", "factor", "factor_xn", "factorial", "factoriser", "factoriser_entier", "factoriser_sur_C", "factors", "fadeev", "faire", "false", "falsepos_solver", "fclose", "fcoeff", "fdistrib", "feuille", "ffaire", "ffonction", "fft", "fi", "fieldplot", "filled", "fin_enregistrement", "find", "findhelp", "fisher", "fisher_cdf", "fisher_icdf", "fisherd", "fisherd_cdf", "fisherd_icdf", "flatten", "float", "float2rational", "floor", "fonction	", "fonction_derivee", "fopen", "for", "format", "forward", "fourier_an", "fourier_bn", "fourier_cn", "fpour", "fprint", "frac", "fracmod", "frame_2d", "frame_3d", "frames", "frequencies", "frobenius_norm", "from", "froot", "fsi", "fsi", "fsolve", "ftantque", "fullparfrac", "func", "funcplot", "function", "function_diff", "fxnd", "gammad", "gammad_cdf", "gammad_icdf", "gauche", "gauss", "gauss15", "gauss_seidel_linsolve", "gaussian_window", "gaussjord", "gaussquad", "gbasis", "gcd", "gcdex", "genpoly", "geometric", "geometric_cdf", "geometric_icdf", "getDenom", "getKey", "getNum", "getType", "gl_ortho", "gl_quaternion", "gl_rotation", "gl_showaxes", "gl_shownames", "gl_texture", "gl_x", "gl_x_axis_color", "gl_x_axis_name", "gl_x_axis_unit", "gl_xtick", "gl_y", "gl_y_axis_color", "gl_y_axis_name", "gl_y_axis_unit", "gl_ytick", "gl_z", "gl_z_axis_color", "gl_z_axis_name", "gl_z_axis_unit", "gl_ztick", "gnuplot", "goto", "grad", "gramschmidt", "graph2tex", "graph3d2tex", "graphe", "graphe3d", "graphe_suite", "greduce", "green", "grid_paper", "groupermu", "hadamard", "half_cone", "half_line", "halftan", "halftan_hyp2exp", "halt", "hamdist", "hamming_window", "hann_poisson_window", "hann_window", "harmonic_conjugate", "harmonic_division", "has", "hasard", "head", "heading", "heapify", "heappop", "heappush", "hermite", "hessenberg", "hessian", "heugcd", "hexagon", "hidden_name", "highpass", "hilbert", "histogram", "hold", "homothety", "horner", "hybrid_solver", "hybridj_solver", "hybrids_solver", "hybridsj_solver", "hyp2exp", "hyperbola", "i", "iPart", "iabcuv", "ibasis", "ibpdv", "ibpu", "icdf", "ichinrem", "ichrem", "icontent", "icosahedron", "id", "identifier", "identity", "idivis", "idn", "iegcd", "if", "ifactor", "ifactors", "ifft", "ifte", "igamma", "igcd", "igcdex", "ihermite", "ilaplace", "im", "imag", "image", "implicitdiff", "implicitplot", "in", "inString", "in_ideal", "incircle", "indets", "index", "inequationplot", "inf", "infinity", "input", "inputform", "insert", "insmod", "int", "intDiv", "integer", "integrate", "integrer", "inter", "interactive_odeplot", "interactive_plotode", "interp", "intersect", "interval", "interval2center", "inv", "inverse", "inversion", "invisible_point", "invlaplace", "invztrans", "iquo", "iquorem", "iratrecon", "irem", "isPrime", "is_collinear", "is_concyclic", "is_conjugate", "is_coplanar", "is_cospheric", "is_cycle", "is_element", "is_equilateral", "is_harmonic", "is_harmonic_circle_bundle", "is_harmonic_line_bundle", "is_included", "is_inside", "is_isosceles", "is_orthogonal", "is_parallel", "is_parallelogram", "is_permu", "is_perpendicular", "is_prime", "is_pseudoprime", "is_rectangle", "is_rhombus", "is_square", "ismith", "isobarycenter", "isom", "isopolygon", "isosceles_triangle", "isprime", "ithprime", "jacobi_linsolve", "jacobi_symbol", "jordan", "jusqu_a", "jusqua", "jusque", "keep_algext", "keep_pivot", "ker", "kernel", "kill", "kolmogorovd", "kolmogorovt", "l1norm", "l2norm", "label", "labels", "lagrange", "laguerre", "laplace", "laplacian", "latex", "lcm", "lcoeff", "ldegree", "left", "left_rectangle", "legend", "legendre", "legendre_symbol", "len", "length", "leve_crayon", "lgcd", "lhs", "ligne_chapeau_carre", "ligne_chapeau_plat", "ligne_chapeau_rond", "ligne_polygonale", "ligne_polygonale_pointee", "ligne_tiret", "ligne_tiret_point", "ligne_tiret_pointpoint", "ligne_trait_plein", "limit", "limite", "lin", "line", "line_inter", "line_paper", "line_segments", "line_width_1", "line_width_2", "line_width_3", "line_width_4", "line_width_5", "line_width_6", "line_width_7", "linear_interpolate", "linear_regression", "linear_regression_plot", "lineariser", "lineariser_trigo", "linfnorm", "linsolve", "linspace", "lis", "lis_phrase", "list", "list2exp", "list2mat", "listplot", "lll", "ln", "lname", "lncollect", "lnexpand", "local", "locus", "log", "log10", "logarithmic_regression", "logarithmic_regression_plot", "logb", "logistic_regression", "logistic_regression_plot", "lower", "lowpass", "lp_assume", "lp_bestprojection", "lp_binary", "lp_binaryvariables", "lp_breadthfirst", "lp_depthfirst", "lp_depthlimit", "lp_firstfractional", "lp_gaptolerance", "lp_hybrid", "lp_initialpoint", "lp_integer", "lp_integertolerance", "lp_integervariables", "lp_interiorpoint", "lp_iterationlimit", "lp_lastfractional", "lp_maxcuts", "lp_maximize", "lp_method", "lp_mostfractional", "lp_nodelimit", "lp_nodeselect", "lp_nonnegative", "lp_nonnegint", "lp_pseudocost", "lp_simplex", "lp_timelimit", "lp_variables", "lp_varselect", "lp_verbose", "lpsolve", "lsmod", "lsq", "lu", "lvar", "mRow", "mRowAdd", "magenta", "makelist", "makemat", "makesuite", "makevector", "map", "maple2mupad", "maple2xcas", "maple_ifactors", "maple_mode", "markov", "mat2list", "mathml", "matpow", "matrix", "matrix_norm", "max", "maximize", "maxnorm", "mean", "median", "median_line", "member", "mgf", "mid", "middle_point", "midpoint", "min", "minimax", "minimize", "minus", "mkisom", "mksa", "mod", "modgcd", "mods", "montre_tortue", "moustache", "moyal", "moyenne", "mul", "mult_c_conjugate", "mult_conjugate", "multinomial", "multiplier_conjugue", "multiplier_conjugue_complexe", "multiply", "mupad2maple", "mupad2xcas", "nCr", "nDeriv", "nInt", "nPr", "nSolve", "ncols", "negbinomial", "negbinomial_cdf", "negbinomial_icdf", "newList", "newMat", "newton", "newton_solver", "newtonj_solver", "nextperm", "nextprime", "nlpsolve", "nodisp", "nom_cache", "non", "non_recursive_normal", "nop", "nops", "norm", "normal", "normal_cdf", "normal_icdf", "normald", "normald_cdf", "normald_icdf", "normalize", "normalt", "not", "nprimes", "nrows", "nuage_points", "nullspace", "numer", "octahedron", "od", "odd", "odeplot", "odesolve", "of", "op", "open", "open_polygon", "option", "or", "ord", "order_size", "ordinate", "orthocenter", "orthogonal", "osculating_circle", "otherwise", "ou", "output", "p1oc2", "p1op2", "pa2b2", "pade", "parabola", "parallel", "parallelepiped", "parallelogram", "parameq", "parameter", "paramplot", "parfrac", "pari", "part", "partfrac", "parzen_window", "pas", "pas_de_cote", "pcar", "pcar_hessenberg", "pcoef", "pcoeff", "pencolor", "pendown", "penup", "perimeter", "perimeterat", "perimeteratraw", "periodic", "perm", "perminv", "permu2cycles", "permu2mat", "permuorder", "perpen_bisector", "perpendicular", "peval", "pi", "piecewise", "pivot", "pixoff", "pixon", "plane", "playsnd", "plex", "plot", "plot3d", "plotarea", "plotcdf", "plotcontour", "plotdensity", "plotfield", "plotfunc", "plotimplicit", "plotinequation", "plotlist", "plotode", "plotparam", "plotpolar", "plotproba", "plotseq", "plus_point", "pmin", "point", "point2d", "point3d", "point_carre", "point_croix", "point_etoile", "point_invisible", "point_losange", "point_milieu", "point_plus", "point_point", "point_triangle", "point_width_1", "point_width_2", "point_width_3", "point_width_4", "point_width_5", "point_width_6", "point_width_7", "poisson", "poisson_cdf", "poisson_icdf", "poisson_window", "polar", "polar_coordinates", "polar_point", "polarplot", "pole", "poly2symb", "polyEval", "polygon", "polygone_rempli", "polygonplot", "polygonscatterplot", "polyhedron", "polynom", "polynomial_regression", "polynomial_regression_plot", "position", "poslbdLMQ", "posubLMQ", "potential", "pour", "pow", "pow2exp", "power_regression", "power_regression_plot", "powermod", "powerpc", "powexpand", "powmod", "prepend", "preval", "prevperm", "prevprime", "primpart", "print", "printf", "prism", "proc", "product", "program", "projection", "proot", "propFrac", "propfrac", "psrgcd", "ptayl", "purge", "pwd", "pyramid", "python_compat", "q2a", "qr", "quadrant1", "quadrant2", "quadrant3", "quadrant4", "quadric", "quadrilateral", "quantile", "quartile1", "quartile3", "quartiles", "quest", "quo", "quorem", "quote", "r2e", "radical_axis", "radius", "ramene", "rand", "randMat", "randNorm", "randPoly", "randbinomial", "randchisquare", "randexp", "randfisher", "randgeometric", "randint", "randmarkov", "randmatrix", "randmultinomial", "randnorm", "random", "randperm", "randpoisson", "randpoly", "randseed", "randstudent", "randvector", "range", "rank", "ranm", "ranv", "rassembler_trigo", "rat_jordan", "rational", "rationalroot", "ratnormal", "rcl", "rdiv", "re", "read", "readrgb", "readwav", "real", "realroot", "reciprocation", "rectangle", "rectangle_droit", "rectangle_gauche", "rectangle_plein", "rectangular_coordinates", "recule", "red", "redim", "reduced_conic", "reduced_quadric", "ref", "reflection", "regroup", "rem", "remain", "remove", "reorder", "repeat", "repete", "repeter", "replace", "residue", "resoudre", "resoudre_dans_C", "resoudre_systeme_lineaire", "restart", "resultant", "return", "reverse", "reverse_rsolve", "revert", "revlex", "revlist", "rhombus", "rhombus_point", "rhs", "riemann_window", "right", "right_rectangle", "right_triangle", "risch", "rm_a_z", "rm_all_vars", "rmbreakpoint", "rmmod", "rmwatch", "romberg", "rombergm", "rombergt", "rond", "root", "rootof", "roots", "rotate", "rotation", "round", "row", "rowAdd", "rowDim", "rowNorm", "rowSwap", "rowdim", "rownorm", "rowspace", "rowswap", "rref", "rsolve", "same", "sample", "sans_factoriser", "saute", "sauve", "save_history", "scalarProduct", "scalar_product", "scale", "scaleadd", "scatterplot", "schur", "sec", "secant_solver", "segment", "select", "semi_augment", "seq", "seqplot", "seqsolve", "series", "shift", "shift_phase", "shuffle", "si", "sign", "signature", "signe", "similarity", "simp2", "simplex_reduce", "simplifier", "simplify", "simpson", "simult", "sin", "sin2costan", "sincos", "single_inter", "sinh", "sinon", "size", "sizes", "slope", "slopeat", "slopeatraw", "smith", "smith", "smod", "snedecor", "snedecor_cdf", "snedecor_icdf", "snedecord", "snedecord_cdf", "snedecord_icdf", "solid_line", "solve", "somme", "sommet", "sort", "sorta", "sortd", "soundsec", "sphere", "spline", "split", "sq", "sqrfree", "sqrt", "square", "square_point", "srand", "sst", "sst_in", "stack", "star_point", "start", "stdDev", "stddev", "stddevp", "steffenson_solver", "step", "sto", "str", "string", "string", "student", "student_cdf", "student_icdf", "studentd", "studentt", "sturm", "sturmab", "sturmseq", "style", "subMat", "subs", "subsop", "subst", "substituer", "subtype", "sum", "sum_riemann", "suppress", "surd", "svd", "swapcol", "swaprow", "switch", "switch_axes", "sylvester", "symb2poly", "symbol", "syst2mat", "tCollect", "tExpand", "table", "tablefunc", "tableseq", "tabvar", "tail", "tan", "tan2cossin2", "tan2sincos", "tan2sincos2", "tangent", "tangente", "tanh", "tantque", "taux_accroissement", "taylor", "tchebyshev1", "tchebyshev2", "tcoeff", "tcollect", "tdeg", "test", "tetrahedron", "texpand", "textinput", "then", "thickness", "thiele", "threshold", "throw", "time", "title", "titre", "tlin", "to", "tourne_droite", "tourne_gauche", "tpsolve", "trace", "trames", "tran", "translation", "transpose", "trapeze", "trapezoid", "triangle", "triangle_paper", "triangle_plein", "triangle_point", "triangle_window", "trig2exp", "trigcos", "trigexpand", "triginterp", "trigsimplify", "trigsin", "trigtan", "trn", "true", "trunc", "truncate", "try", "tsimplify", "tukey_window", "type", "ufactor", "ugamma", "unapply", "unarchive", "unfactored", "uniform", "uniform_cdf", "uniform_icdf", "uniformd", "uniformd_cdf", "uniformd_icdf", "union", "unitV", "unquote", "until", "upper", "user_operator", "usimplify", "valuation", "vandermonde", "var", "variables_are_files", "variance", "vector", "vector", "vers", "version", "vertices", "vertices_abc", "vertices_abca", "vpotential", "watch", "weibull", "weibull_cdf", "weibull_icdf", "weibulld", "weibulld_cdf", "weibulld_icdf", "welch_window", "when", "while", "white", "widget_size", "wilcoxonp", "wilcoxons", "wilcoxont", "write", "writergb", "writewav", "wz_certificate", "xcas_mode", "xor", "xyztrange", "yellow", "zeros", "zip", "ztrans"],
+  xcascmd: ["!","!=","#","$","%","%/","%/","%{%}","&&","&*","&^","'","()","*","*=","+","+&","+=","+infinity","-","-<","-=","->","-infinity",".*",".+",".-","./",".^","/%","/=",":=","<","<=","=","=<","==","=>",">",">=","?","?","@","@@","ACOSH","ACOT","ACSC","ASEC","ASIN","ASINH","ATAN","ATANH","Airy_Ai","Airy_Bi","Archive","BesselJ","BesselY","Beta","BlockDiagonal","COND","COS","COSH","COT","CSC","CST","Celsius2Fahrenheit","Ci","Circle","ClrDraw","ClrGraph","ClrIO","Col","CopyVar","CyclePic","DIGITS","DOM_COMPLEX","DOM_FLOAT","DOM_FUNC","DOM_IDENT","DOM_INT","DOM_LIST","DOM_RAT","DOM_STRING","DOM_SYMBOLIC","DOM_int","DelFold","DelVar","Det","Dialog","Digits","Dirac","Disp","DispG","DispHome","DrawFunc","DrawInv","DrawParm","DrawPol","DrawSlp","DropDown","DrwCtour","ERROR","EXP","Ei","EndDlog","FALSE","Factor","Fahrenheit2Celsius","False","Fill","GF","Gamma","Gcd","GetFold","Graph","Heaviside","IFTE","Input","InputStr","Int","Inverse","JordanBlock","LN","LQ","LSQ","LU","LambertW","Li","Line","LineHorz","LineTan","LineVert","NORMALD","NewFold","NewPic","Nullspace","Output","Ox_2d_unit_vector","Ox_3d_unit_vector","Oy_2d_unit_vector","Oy_3d_unit_vector","Oz_3d_unit_vector","Pause","Phi","Pi","PopUp","Psi","QR","Quo","REDIM","REPLACE","RandSeed","RclPic","Rem","Request","Resultant","Row","RplcPic","Rref","SCALE","SCALEADD","SCHUR","SIN","SVD","SVL","SWAPCOL","SWAPROW","SetFold","Si","SortA","SortD","StoPic","Store","TAN","TRUE","TeX","Text","Title","True","UTPC","UTPF","UTPN","UTPT","Unarchiv","VARS","VAS","VAS_positive","WAIT","Zeta","[..]","^","_(cm/s)","_(ft/s)","_(m/s)","_(m/s^2)","_(rad/s)","_(rad/s^2)","_(tr/min)","_(tr/s)","_A","_Angstrom","_Bq","_Btu","_Ci","_F","_F_","_Fdy","_G_","_Gal","_Gy","_H","_Hz","_I0_","_J","_K","_Kcal","_MHz","_MW","_MeV","_N","_NA_","_Ohm","_P","_PSun_","_Pa","_R","_REarth_","_RSun_","_R_","_Rankine","_Rinfinity_","_S","_St","_StdP_","_StdT_","_Sv","_T","_V","_Vm_","_W","_Wb","_Wh","_a","_a0_","_acre","_alpha_","_angl_","_arcmin","_arcs","_atm","_au","_b","_bar","_bbl","_bblep","_bu","_buUS","_c3_","_c_","_cal","_cd","_chain","_cm","_cm^2","_cm^3","_ct","_cu","_d","_dB","_deg","_degreeF","_dyn","_eV","_epsilon0_","_epsilon0q_","_epsilonox_","_epsilonsi_","_erg","_f0_","_fath","_fbm","_fc","_fermi","_flam","_fm","_ft","_ft*lb","_ftUS","_ft^2","_ft^3","_g","_g_","_ga","_galC","_galUK","_galUS","_gf","_gmol","_gon","_grad","_grain","_h","_h_","_ha","_hbar_","_hp","_in","_inH20","_inHg","_in^2","_in^3","_j","_kWh","_k_","_kg","_kip","_km","_km^2","_knot","_kph","_kq_","_l","_lam","_lambda0_","_lambdac_","_lb","_lbf","_lbmol","_lbt","_lep","_liqpt","_lm","_lx","_lyr","_m","_mEarth_","_m^2","_m^3","_me_","_mho","_miUS","_miUS^2","_mi^2","_mil","_mile","_mille","_ml","_mm","_mmHg","_mn","_mol","_mp_","_mph","_mpme_","_mu0_","_muB_","_muN_","_oz","_ozUK","_ozfl","_ozt","_pc","_pdl","_ph","_phi_","_pk","_psi","_ptUK","_q_","_qe_","_qepsilon0_","_qme_","_qt","_rad","_rad_","_rd","_rem","_rod","_rpm","_s","_s","_sb","_sd_","_sigma_","_slug","_sr","_st","_syr_","_t","_tbsp","_tec","_tep","_tex","_therm","_ton","_tonUK","_torr","_tr","_tsp","_twopi_","_u","_yd","_yd^2","_yd^3","_yr","_µ","_Âµ","a2q","abcuv","about","abs","abscissa","accumulate_head_tail","acos","acos2asin","acos2atan","acosh","acot","acsc","acyclic","add","add_arc","add_edge","add_vertex","additionally","adjacency_matrix","adjoint_matrix","affix","algsubs","algvar","all_trig_solutions","allpairs_distance","alog10","alors","altitude","and","angle","angle_radian","angleat","angleatraw","animate","animate3d","animation","ans","antiprism_graph","append","apply","approx","approx_mode","arc","arcLen","arccos","arccosh","archive","arclen","arcsin","arcsinh","arctan","arctanh","area","areaat","areaatraw","areaplot","arg","args","array","arrivals","articulation_points","as_function_of","asc","asec","asin","asin2acos","asin2atan","asinh","assert","assign","assign_edge_weights","assume","at","atan","atan2acos","atan2asin","atanh","atrig2ln","augment","auto_correlation","autosimplify","avance","avgRC","axes","back","backquote","backward","baisse_crayon","bandwidth","bar_plot","bartlett_hann_window","barycenter","base","basis","batons","begin","bellman_ford","bernoulli","besselJ","besselY","betad","betad_cdf","betad_icdf","betavariate","bezier","bezout_entiers","biconnected_components","binomial","binomial_cdf","binomial_icdf","bins","bipartite","bipartite_matching","bisection_solver","bisector","bit_depth","bitand","bitor","bitxor","black","blackman_harris_window","blackman_window","bloc","blockmatrix","blue","bohman_window","border","boxwhisker","break","breakpoint","brent_solver","bvpsolve","by","c1oc2","c1op2","cFactor","cSolve","cZeros","cache_tortue","camembert","canonical_form","canonical_labeling","cap","cap_flat_line","cap_round_line","cap_square_line","cartesian_product","cas_setup","case","cat","catch","cauchy","cauchy_cdf","cauchy_icdf","cauchyd","cauchyd_cdf","cauchyd_icdf","cd","cdf","ceil","ceiling","center","center2interval","centered_cube","centered_tetrahedron","cfactor","cfsolve","changebase","channel_data","channels","char","charpoly","chinrem","chisquare","chisquare_cdf","chisquare_icdf","chisquared","chisquared_cdf","chisquared_icdf","chisquaret","choice","cholesky","choosebox","chr","chrem","chromatic_index","chromatic_number","chromatic_polynomial","circle","circumcircle","classes","clear","click","clique_cover","clique_cover_number","clique_number","clique_stats","close","clustering_coefficient","coeff","coeffs","col","colDim","colNorm","colSwap","coldim","collect","colnorm","color","colspace","colswap","comDenom","comb","combine","comment","common_perpendicular","companion","compare","complete_binary_tree","complete_graph","complete_kary_tree","complex","complex_mode","complex_variables","complexroot","concat","cond","cone","confrac","conic","conj","conjugate_equation","conjugate_gradient","connected","connected_components","cont","contains","content","continue","contourplot","contract_edge","convert","convertir","convex","convexhull","convolution","coordinates","copy","correlation","cos","cos2sintan","cosh","cosine_window","cot","cote","count","count_eq","count_inf","count_sup","courbe_parametrique","courbe_polaire","covariance","covariance_correlation","cpartfrac","crationalroot","crayon","createwav","cross","crossP","cross_correlation","cross_point","cross_ratio","crossproduct","csc","csolve","csv2gen","cube","cumSum","cumsum","cumulated_frequencies","curl","current_sheet","curvature","curve","cyan","cycle2perm","cycle_graph","cycleinv","cycles2permu","cyclotomic","cylinder","dash_line","dashdot_line","dashdotdot_line","dayofweek","dayofweek","de","deSolve","debug","debut_enregistrement","default","degree","degree_sequence","del","delcols","delete_arc","delete_edge","delete_vertex","delrows","deltalist","denom","densityplot","departures","derive","deriver","desolve","dessine_tortue","det","det_minor","developper","developper_transcendant","dfc","dfc2f","diag","diff","digraph","dijkstra","dim","directed","discard_edge_attribute","discard_graph_attribute","discard_vertex_attribute","disjoint_union","display","disque","disque_centre","distance","distance2","distanceat","distanceatraw","div","divergence","divide","divis","division_point","divisors","divmod","divpc","dnewton_solver","do","dodecahedron","domain","dot","dotP","dot_paper","dotprod","double","draw_arc","draw_circle","draw_graph","draw_line","draw_pixel","draw_polygon","draw_rectangle","droit","droite_tangente","dsolve","duration","e","e2r","ecart_type","ecart_type_population","ecm_factor","ecris","edge_connectivity","edges","efface","egcd","egv","egvl","eigVc","eigVl","eigenvals","eigenvalues","eigenvectors","eigenvects","element","elif","eliminate","ellipse","else","end","end_for","end_if","end_while","entry","envelope","epaisseur","epaisseur_ligne_1","epaisseur_ligne_2","epaisseur_ligne_3","epaisseur_ligne_4","epaisseur_ligne_5","epaisseur_ligne_6","epaisseur_ligne_7","epaisseur_point_1","epaisseur_point_2","epaisseur_point_3","epaisseur_point_4","epaisseur_point_5","epaisseur_point_6","epaisseur_point_7","epsilon","epsilon2zero","equal","equal2diff","equal2list","equation","equilateral_triangle","erase","erase3d","erf","erfc","error","est_permu","et","euler","euler_gamma","euler_lagrange","eval","eval_level","evala","evalb","evalc","evalf","evalm","even","evolute","exact","exbisector","excircle","execute","exp","exp2list","exp2pow","exp2trig","expand","expexpand","expln","exponential","exponential_cdf","exponential_icdf","exponential_regression","exponential_regression_plot","exponentiald","exponentiald_cdf","exponentiald_icdf","export_graph","expovariate","expr","expression","extend","extract_measure","extrema","ezgcd","f2nd","fMax","fMin","fPart","faces","facteurs_premiers","factor","factor_xn","factorial","factoriser","factoriser_entier","factoriser_sur_C","factors","fadeev","faire","false","falsepos_solver","fclose","fcoeff","fdistrib","feuille","ffaire","ffonction","fft","ffunction","fi","fieldplot","filled","fin_enregistrement","find","findhelp","fisher","fisher_cdf","fisher_icdf","fisherd","fisherd_cdf","fisherd_icdf","fitdistr","flatten","float","float2rational","floor","flow_polynomial","fmod","foldl","foldr","fonction	","fonction_derivee","fopen","for","format","forward","fourier_an","fourier_bn","fourier_cn","fpour","fprint","frac","fracmod","frame_2d","frame_3d","frames","frequencies","frobenius_norm","from","froot","fsi","fsi","fsolve","ftantque","fullparfrac","func","funcplot","function","function_diff","fxnd","gammad","gammad_cdf","gammad_icdf","gammavariate","gauche","gauss","gauss15","gauss_seidel_linsolve","gaussian_window","gaussjord","gaussquad","gbasis","gbasis_max_pairs","gbasis_simult_primes","gcd","gcdex","genpoly","geometric","geometric_cdf","geometric_icdf","getDenom","getKey","getNum","getType","get_edge_attribute","get_edge_weight","get_graph_attribute","get_vertex_attribute","girth","gl_ortho","gl_quaternion","gl_rotation","gl_showaxes","gl_shownames","gl_texture","gl_x","gl_x_axis_color","gl_x_axis_name","gl_x_axis_unit","gl_xtick","gl_y","gl_y_axis_color","gl_y_axis_name","gl_y_axis_unit","gl_ytick","gl_z","gl_z_axis_color","gl_z_axis_name","gl_z_axis_unit","gl_ztick","gnuplot","goto","grad","gramschmidt","graph","graph2tex","graph3d2tex","graph_automorphisms","graph_charpoly","graph_complement","graph_diameter","graph_equal","graph_join","graph_power","graph_rank","graph_spectrum","graph_union","graph_vertices","graphe","graphe3d","graphe_suite","greduce","greedy_color","green","grid_graph","grid_paper","groupermu","hadamard","half_cone","half_line","halftan","halftan_hyp2exp","halt","hamdist","hamming_window","hann_poisson_window","hann_window","harmonic_conjugate","harmonic_division","has","has_arc","has_edge","hasard","head","heading","heapify","heappop","heappush","hermite","hessenberg","hessian","heugcd","hexagon","hidden_name","highlight_edges","highlight_subgraph","highlight_trail","highlight_vertex","highpass","hilbert","histogram","hold","homothety","horner","hybrid_solver","hybridj_solver","hybrids_solver","hybridsj_solver","hyp2exp","hyperbola","hypercube_graph","i","iPart","i[]","iabcuv","ibasis","ibpdv","ibpu","icdf","ichinrem","ichrem","icomp","icontent","icosahedron","id","identifier","identity","idivis","idn","iegcd","if","ifactor","ifactors","ifft","ifte","igamma","igcd","igcdex","ihermite","ilaplace","im","imag","image","implicitdiff","implicitplot","import_graph","in","inString","in_ideal","incidence_matrix","incident_edges","incircle","increasing_power","independence_number","indets","index","induced_subgraph","inequationplot","inf","infinity","infnorm","input","inputform","insert","insmod","int","intDiv","integer","integrate","integrer","inter","interactive_odeplot","interactive_plotode","interp","intersect","interval","interval2center","interval_graph","inv","inverse","inversion","invisible_point","invlaplace","invztrans","iquo","iquorem","iratrecon","irem","isPrime","is_acyclic","is_arborescence","is_biconnected","is_bipartite","is_clique","is_collinear","is_concyclic","is_conjugate","is_connected","is_coplanar","is_cospheric","is_cut_set","is_cycle","is_directed","is_element","is_equilateral","is_eulerian","is_forest","is_graphic_sequence","is_hamiltonian","is_harmonic","is_harmonic_circle_bundle","is_harmonic_line_bundle","is_included","is_inside","is_integer_graph","is_isomorphic","is_isosceles","is_network","is_orthogonal","is_parallel","is_parallelogram","is_permu","is_perpendicular","is_planar","is_prime","is_pseudoprime","is_rectangle","is_regular","is_rhombus","is_square","is_strongly_connected","is_strongly_regular","is_tournament","is_tree","is_triconnected","is_two_edge_connected","is_vertex_colorable","is_weighted","ismith","isobarycenter","isom","isomorphic_copy","isopolygon","isosceles_triangle","isprime","ithprime","jacobi_equation","jacobi_linsolve","jacobi_symbol","jordan","jusqu_a","jusqua","jusque","kde","keep_algext","keep_pivot","ker","kernel","kernel_density","kill","kneser_graph","kolmogorovd","kolmogorovt","kovacicsols","l1norm","l2norm","label","labels","lagrange","laguerre","laplace","laplacian","laplacian_matrix","latex","lcf_graph","lcm","lcoeff","ldegree","left","left_rectangle","legend","legendre","legendre_symbol","len","length","leve_crayon","lgcd","lhs","ligne_chapeau_carre","ligne_chapeau_plat","ligne_chapeau_rond","ligne_polygonale","ligne_polygonale_pointee","ligne_tiret","ligne_tiret_point","ligne_tiret_pointpoint","ligne_trait_plein","limit","limite","lin","line","line_graph","line_inter","line_paper","line_segments","line_width_1","line_width_2","line_width_3","line_width_4","line_width_5","line_width_6","line_width_7","linear_interpolate","linear_regression","linear_regression_plot","lineariser","lineariser_trigo","linfnorm","linsolve","linspace","lis","lis_phrase","list","list2exp","list2mat","list_edge_attributes","list_graph_attributes","list_vertex_attributes","listplot","lll","ln","lname","lncollect","lnexpand","local","locus","log","log10","logarithmic_regression","logarithmic_regression_plot","logb","logistic_regression","logistic_regression_plot","lower","lowest_common_ancestor","lowpass","lp_assume","lp_bestprojection","lp_binary","lp_binaryvariables","lp_breadthfirst","lp_depthfirst","lp_depthlimit","lp_firstfractional","lp_gaptolerance","lp_hybrid","lp_initialpoint","lp_integer","lp_integertolerance","lp_integervariables","lp_interiorpoint","lp_iterationlimit","lp_lastfractional","lp_maxcuts","lp_maximize","lp_method","lp_mostfractional","lp_nodelimit","lp_nodeselect","lp_nonnegative","lp_nonnegint","lp_pseudocost","lp_simplex","lp_timelimit","lp_variables","lp_varselect","lp_verbose","lpsolve","lsmod","lsq","lu","lvar","mRow","mRowAdd","magenta","make_directed","make_weighted","makelist","makemat","makesuite","makevector","map","maple2mupad","maple2xcas","maple_ifactors","maple_mode","markov","mat2list","mathml","matpow","matrix","matrix_norm","max","maxflow","maximal_independent_set","maximize","maximum_clique","maximum_degree","maximum_independent_set","maximum_matching","maxnorm","mean","median","median_line","member","mgf","mid","middle_point","midpoint","min","minimal_edge_coloring","minimal_spanning_tree","minimal_vertex_coloring","minimax","minimize","minimum_degree","minus","mkisom","mksa","mod","modgcd","mods","montre_tortue","moustache","moyal","moyenne","mul","mult_c_conjugate","mult_conjugate","multinomial","multiplier_conjugue","multiplier_conjugue_complexe","multiply","mupad2maple","mupad2xcas","mycielski","nCr","nDeriv","nInt","nPr","nSolve","ncols","negbinomial","negbinomial_cdf","negbinomial_icdf","neighbors","network_transitivity","newList","newMat","newton","newton_solver","newtonj_solver","nextperm","nextprime","nlpsolve","nodisp","nom_cache","non","non_recursive_normal","nop","nops","norm","normal","normal_cdf","normal_icdf","normald","normald_cdf","normald_icdf","normalize","normalt","normalvariate","not","nprimes","nrows","nuage_points","nullspace","number_of_edges","number_of_spanning_trees","number_of_triangles","number_of_vertices","numer","octahedron","od","odd","odd_girth","odd_graph","odeplot","odesolve","of","op","open","open_polygon","option","or","ord","order","order_size","ordinate","orthocenter","orthogonal","osculating_circle","otherwise","ou","output","p1oc2","p1op2","pa2b2","pade","parabola","parallel","parallelepiped","parallelogram","parameq","parameter","paramplot","parfrac","pari","part","partfrac","parzen_window","pas","pas_de_cote","path_graph","pcar","pcar_hessenberg","pcoef","pcoeff","pencolor","pendown","penup","perimeter","perimeterat","perimeteratraw","periodic","perm","perminv","permu2cycles","permu2mat","permuorder","permute_vertices","perpen_bisector","perpendicular","petersen_graph","peval","pi","piecewise","pivot","pixoff","pixon","planar","plane","plane_dual","playsnd","plex","plot","plot3d","plotarea","plotcdf","plotcontour","plotdensity","plotfield","plotfunc","plotimplicit","plotinequation","plotlist","plotode","plotparam","plotpolar","plotproba","plotseq","plotspectrum","plotwav","plus_point","pmin","point","point2d","point3d","point_carre","point_croix","point_etoile","point_invisible","point_losange","point_milieu","point_plus","point_point","point_triangle","point_width_1","point_width_2","point_width_3","point_width_4","point_width_5","point_width_6","point_width_7","poisson","poisson_cdf","poisson_icdf","poisson_window","polar","polar_coordinates","polar_point","polarplot","pole","poly2symb","polyEval","polygon","polygone_rempli","polygonplot","polygonscatterplot","polyhedron","polynom","polynomial_regression","polynomial_regression_plot","position","poslbdLMQ","posubLMQ","potential","pour","pow","pow2exp","power_regression","power_regression_plot","powermod","powerpc","powexpand","powmod","prepend","preval","prevperm","prevprime","primpart","print","printf","prism","prism_graph","proc","product","program","projection","proot","propFrac","propfrac","psrgcd","ptayl","purge","pwd","pyramid","python_compat","q2a","qr","quadrant1","quadrant2","quadrant3","quadrant4","quadric","quadrilateral","quantile","quartile1","quartile3","quartiles","quest","quo","quorem","quote","r2e","radical_axis","radius","ramene","rand","randMat","randNorm","randPoly","randbetad","randbinomial","randchisquare","randexp","randfisher","randgammad","randgeometric","randint","randmarkov","randmatrix","randmultinomial","randnorm","random","random_bipartite_graph","random_digraph","random_graph","random_network","random_planar_graph","random_regular_graph","random_sequence_graph","random_tournament","random_tree","random_variable","randperm","randpoisson","randpoly","randseed","randstudent","randvar","randvector","randweibulld","range","rank","ranm","ranv","rassembler_trigo","rat_jordan","rational","rationalroot","ratnormal","rcl","rdiv","re","read","readrgb","readwav","real","realroot","reciprocation","rectangle","rectangle_droit","rectangle_gauche","rectangle_plein","rectangular_coordinates","recule","red","redim","reduced_conic","reduced_quadric","ref","reflection","regroup","relabel_vertices","reliability_polynomial","rem","remain","remove","reorder","repeat","repete","repeter","replace","resample","residue","resoudre","resoudre_dans_C","resoudre_systeme_lineaire","restart","resultant","return","reverse","reverse_graph","reverse_rsolve","revert","revlex","revlist","rgb","rhombus","rhombus_point","rhs","riemann_window","right","right_rectangle","right_triangle","risch","rm_a_z","rm_all_vars","rmbreakpoint","rmmod","rmwatch","romberg","rombergm","rombergt","rond","root","rootof","roots","rotate","rotation","round","row","rowAdd","rowDim","rowNorm","rowSwap","rowdim","rownorm","rowspace","rowswap","rref","rsolve","same","sample","samplerate","sans_factoriser","saute","sauve","save_history","scalarProduct","scalar_product","scale","scaleadd","scatterplot","schur","sec","secant_solver","segment","seidel_spectrum","seidel_switch","select","semi_augment","seq","seqplot","seqsolve","sequence_graph","series","set[]","set_edge_attribute","set_edge_weight","set_graph_attribute","set_pixel","set_vertex_attribute","set_vertex_positions","shift","shift_phase","shortest_path","show_pixels","shuffle","si","sierpinski_graph","sign","signature","signe","similarity","simp2","simplex_reduce","simplifier","simplify","simpson","simult","sin","sin2costan","sincos","single_inter","sinh","sinon","size","sizes","slope","slopeat","slopeatraw","smith","smith","smod","snedecor","snedecor_cdf","snedecor_icdf","snedecord","snedecord_cdf","snedecord_icdf","solid_line","solve","somme","sommet","sort","sorta","sortd","sorted","soundsec","spanning_tree","sphere","spline","split","spring","sq","sqrfree","sqrt","square","square_point","srand","sst","sst_in","st_ordering","stack","star_graph","star_point","start","stdDev","stddev","stddevp","steffenson_solver","step","stereo2mono","sto","str","string","string","strongly_connected_components","student","student_cdf","student_icdf","studentd","studentt","sturm","sturmab","sturmseq","style","subMat","subdivide_edges","subgraph","subs","subsop","subst","substituer","subtype","sum","sum_riemann","suppress","surd","svd","swapcol","swaprow","switch","switch_axes","sylvester","symb2poly","symbol","syst2mat","tCollect","tExpand","table","tablefunc","tableseq","tabvar","tail","tan","tan2cossin2","tan2sincos","tan2sincos2","tangent","tangente","tanh","tantque","taux_accroissement","taylor","tchebyshev1","tchebyshev2","tcoeff","tcollect","tdeg","tensor_product","test","tetrahedron","texpand","textinput","then","thickness","thiele","threshold","throw","time","title","titre","tlin","to","tonnetz","topologic_sort","topological_sort","torus_grid_graph","tourne_droite","tourne_gauche","tpsolve","trace","trail","trail2edges","trames","tran","transitive_closure","translation","transpose","trapeze","trapezoid","traveling_salesman","tree","tree_height","triangle","triangle_paper","triangle_plein","triangle_point","triangle_window","trig2exp","trigcos","trigexpand","triginterp","trigsimplify","trigsin","trigtan","trn","true","trunc","truncate","try","tsimplify","tuer","tukey_window","tutte_polynomial","two_edge_connected_components","type","ufactor","ugamma","unapply","unarchive","underlying_graph","unfactored","uniform","uniform_cdf","uniform_icdf","uniformd","uniformd_cdf","uniformd_icdf","union","unitV","unquote","until","upper","user_operator","usimplify","valuation","vandermonde","var","variables_are_files","variance","vector","vector","vers","version","vertex_connectivity","vertex_degree","vertex_distance","vertex_in_degree","vertex_out_degree","vertices","vertices_abc","vertices_abca","vpotential","watch","web_graph","weibull","weibull_cdf","weibull_icdf","weibulld","weibulld_cdf","weibulld_icdf","weibullvariate","weight_matrix","weighted","weights","welch_window","wheel_graph","when","while","white","widget_size","wilcoxonp","wilcoxons","wilcoxont","with_sqrt","write","writergb","writewav","wz_certificate","xcas_mode","xor","xyztrange","yellow","zeros","zip","ztrans","{}","|","||"],
   dicho_find: function (tableau, s) {
     var l = tableau.length, debut = 0, fin = l, milieu;
     if (l == 0) return false;
@@ -3221,7 +4611,10 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
   addhelp: function (prefixe, text) {
     $id('helptxt').value = text;
     var input = prefixe + text;
+    var mp=UI.micropy;
+    UI.micropy=0;
     var out = UI.eval(input, input);
+    UI.micropy=mp;
     var add = out;
     var helpoutput = $id('helpoutput');
     helpoutput.innerHTML += add;
@@ -3723,6 +5116,9 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       }
     }
   },
+  insert_focused:function(value){
+    UI.insert(UI.focused,value);
+  },
   insert: function (field, value) {
     var myValue = value.replace(/&quote;/g, '\"');
     //console.log('2',field);
@@ -4016,7 +5412,11 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       if (c < 0x17e)
         return UI.arc_en_ciel(c);
       //console.log('rgb('+Math.floor(c/(256*256))+','+(Math.floor(c/256) % 256)+','+(c%256)+')');
-      return 'rgb(' + Math.floor(c / (256 * 256)) + ',' + (Math.floor(c / 256) % 256) + ',' + (c % 256) + ')';
+      var r=8*((c>>11) & 0x1f);
+      var g=4*((c>>5) & 0x3f);
+      var b=8*(c & 0x1f);
+      return 'rgb(' + r + ',' + g + ',' + b + ')';
+      // return 'rgb(' + Math.floor(c / (256 * 256)) + ',' + (Math.floor(c / 256) % 256) + ',' + (c % 256) + ')';
     }
     return UI.color_list[c];
   },
@@ -4150,7 +5550,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
       ctx.fillText('t:' + prec[2], w - 40, 49);
       // v[i]=[x(0),y(1),cap(2),status(3),r(4),chaine(5)],
       // couleur=status >> 11
-      // longueur_tortue= (status>>3)&0xff
+      // epaisseur_tortue= (status>>3)&0xff
       // direct=status&4 (vrai si angle dans le sens trigo)
       // visible=status&2
       // crayon baisse=status&1
@@ -4161,7 +5561,9 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         prec = v[k - 1];
         var cur = v[k];
         var preccouleur = prec[3] >> 11; // -> FIXME colors
-        var curcouleur = prec[3] >> 11; // -> FIXME colors
+        var curcouleur = cur[3] >> 11; // -> FIXME colors
+	let turtlewidth =  (cur[3]>>3)&0xff;
+	ctx.lineWidth = turtlewidth;
         if (cur[5].length) {
           ctx.font = cur[4] + 'px serif';
           ctx.strokeStyle = ctx.fillStyle = UI.turtle_color(curcouleur);
@@ -4178,15 +5580,20 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
           theta1 = prec[2]+ ((radius >> 9) & 0x1ff);
           theta2 = prec[2] + ((radius >> 18) & 0x1ff);
           rempli = (radius >> 27) & 1;
+	  var seg = (radius >> 28) & 1;
           R = Math.floor(turtlezoom * r + .5);
           angle1 = Math.PI / 180 * (theta1 - 90);
           angle2 = Math.PI / 180 * (theta2 - 90);
           x = Math.floor(turtlezoom * (cur[0] - turtlex - r * Math.cos(angle2)) + .5);
           y = Math.floor(turtlezoom * (cur[1] - turtley - r * Math.sin(angle2)) + .5);
           ctx.beginPath();
-          ctx.moveTo(x, h - y);
-          ctx.lineTo(x2, h - y2);
-	  console.log(x,y,x1,y1,angle1,angle2);
+	  if (seg || !rempli)
+            ctx.moveTo(x2, h - y2);
+	  else {
+            ctx.moveTo(x, h - y);
+            ctx.lineTo(x2, h - y2);
+	  }
+	  //console.log(x,y,x1,y1,angle1,angle2);
           ctx.arc(x, h - y, R, -angle2,-angle1);
           ctx.closePath();
           ctx.strokeStyle = ctx.fillStyle = UI.turtle_color(curcouleur);
@@ -4230,7 +5637,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         var y = Math.floor(turtlezoom * (cur[1] - turtley) + .5);
         var cost = Math.cos(cur[2] * Math.PI / 180);
         var sint = Math.sin(cur[2] * Math.PI / 180);
-        var turtle_length = (cur[3] >> 3) & 0xff;
+        var turtle_length = 10; // (cur[3] >> 3) & 0xff;
         var Dx = Math.floor(turtlezoom * turtle_length * cost / 2 + .5);
         var Dy = Math.floor(turtlezoom * turtle_length * sint / 2 + .5);
         //console.log('tortue',cur,w,h,turtlezoom,x,y,Dx,Dy);
@@ -4253,6 +5660,7 @@ id="matr_case' + i + '_' + j + '">' + oldval + '</textarea><div class="matrixcel
         ctx.closePath();
         ctx.stroke();
       }
+      ctx.lineWidth = 1;
     }
   }
 }; // closing UI={

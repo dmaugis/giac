@@ -20,12 +20,30 @@ enum critical_point_classification {
     _CPCLASS_SADDLE=5
 };
 
+enum kernel_density_estimation_method {
+    _KDE_METHOD_EXACT,
+    _KDE_METHOD_PIECEWISE,
+    _KDE_METHOD_LIST
+};
+
+enum bandwidth_selection_method {
+    _KDE_BW_METHOD_DPI,
+    _KDE_BW_METHOD_ROT
+};
+
+enum bvp_output_type {
+    _BVP_LIST,
+    _BVP_DIFF,
+    _BVP_PIECEWISE,
+    _BVP_SPLINE
+};
+
 class ipdiff {
     /* IPDIFF CLASS (Implicit Partial DIFFerentiation)
      * This class is used for implicit differentiation of f with respect to g=0.
      * Here, f:R^(n+m)->R, g:R^(n+m)->R^m with rank(g')=m and J(x)=f(x,h(x)) where x in R^n and h is
-     * the implicit function guaranteed to exist by the Implicit Function Theorem if
-     * rank(g')=m. Function J may now be differentiated wrt x1,x2,...,xn. */
+     * the implicit function guaranteed to exist (in a neighborhood of some point x0) by the
+     * Implicit Function Theorem if rank(g')=m. Function J may now be differentiated wrt x1,x2,...,xn. */
 public:
     typedef std::vector<int> ivector;
     typedef ivector::const_iterator ivector_iter;
@@ -65,7 +83,7 @@ public:
     /* store all partial derivatives of the specified order to pd_map */
     void partial_derivatives(int order,pd_map &pdmap);
     /* return 1/k!*(sum(i=1)^n (xi-ai)*d/dxi)^k f(x)|a */
-    gen taylor_term(const vecteur &a,int k);
+    gen taylor_term(const vecteur &a,int k,bool shift=true);
     /* return the Taylor polynomial, with the specified order, of J in the vicinity of a */
     gen taylor(const vecteur &a,int order);
     /* store grad(J) as vector res */
@@ -101,6 +119,7 @@ public:
 };
 
 gen _implicitdiff(const gen &g,GIAC_CONTEXT);
+gen _box_constraints(const gen &g,GIAC_CONTEXT);
 gen _minimize(const gen &g,GIAC_CONTEXT);
 gen _maximize(const gen &g,GIAC_CONTEXT);
 gen _extrema(const gen &g,GIAC_CONTEXT);
@@ -109,8 +128,19 @@ gen _tpsolve(const gen &g,GIAC_CONTEXT);
 gen _nlpsolve(const gen &g,GIAC_CONTEXT);
 gen _thiele(const gen &g,GIAC_CONTEXT);
 gen _triginterp(const gen &g,GIAC_CONTEXT);
+gen _ratinterp(const gen &g,GIAC_CONTEXT);
+gen _kernel_density(const gen &g,GIAC_CONTEXT);
+gen _fitdistr(const gen &g,GIAC_CONTEXT);
+gen _bvpsolve(const gen &g,GIAC_CONTEXT);
+gen _euler_lagrange(const gen &g,GIAC_CONTEXT);
+gen _jacobi_equation(const gen &g,GIAC_CONTEXT);
+gen _conjugate_equation(const gen &g,GIAC_CONTEXT);
+gen _convex(const gen &g,GIAC_CONTEXT);
+gen _numdiff(const gen &g,GIAC_CONTEXT);
+gen _isolve(const gen &g,GIAC_CONTEXT);
 
 extern const unary_function_ptr * const at_implicitdiff;
+extern const unary_function_ptr * const at_box_constraints;
 extern const unary_function_ptr * const at_minimize;
 extern const unary_function_ptr * const at_maximize;
 extern const unary_function_ptr * const at_extrema;
@@ -119,6 +149,14 @@ extern const unary_function_ptr * const at_tpsolve;
 extern const unary_function_ptr * const at_nlpsolve;
 extern const unary_function_ptr * const at_thiele;
 extern const unary_function_ptr * const at_triginterp;
+extern const unary_function_ptr * const at_ratinterp;
+extern const unary_function_ptr * const at_kernel_density;
+extern const unary_function_ptr * const at_fitdistr;
+extern const unary_function_ptr * const at_bvpsolve;
+extern const unary_function_ptr * const at_euler_lagrange;
+extern const unary_function_ptr * const at_convex;
+extern const unary_function_ptr * const at_numdiff;
+extern const unary_function_ptr * const at_isolve;
 
 #ifndef NO_NAMESPACE_GIAC
 } // namespace giac

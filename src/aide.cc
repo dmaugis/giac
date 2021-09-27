@@ -3,6 +3,11 @@
 #include "config.h"
 #endif
 #include "first.h"
+#ifdef KHICAS
+int main(){
+  return 0;
+}
+#else
 /*
  *  Copyright (C) 2000 B. Parisse, Institut Fourier, 38402 St Martin d'Heres
  *
@@ -74,7 +79,7 @@ int main(int ARGC, char *ARGV[]){
     }
     return 0;
   }
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
   find_all_index(html_help_dir,mtt,mall);
 #endif
   for (int j=1;j<ARGC;++j){
@@ -84,7 +89,7 @@ int main(int ARGC, char *ARGV[]){
     aide cur_aide=helpon(current,v,language,count);
     string result=writehelp(cur_aide,language);
     cout << result;
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
     vector<string> v(html_help(mtt,current));
     vector<string>::const_iterator it=v.begin(),itend=v.end();
     for (;it!=itend;++it){
@@ -94,3 +99,4 @@ int main(int ARGC, char *ARGV[]){
   } 
   return 0;
 } // end main
+#endif

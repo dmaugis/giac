@@ -4,34 +4,30 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Bar graphs: bar_plot</title>
+<title>Drawing a 2D vertical line: LineVert
+</title>
 </head>
 <body >
 <a href="cascmd_en584.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en586.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec723" class="subsection">7.1.13  Bar graphs: <span style="font-family:monospace">bar_plot</span><a id="hevea_default928"></a></h3>
-<p>You can draw bar graphs with the <span style="font-family:monospace">bar_plot</span> command. You give
-it a list, whose elements are pairs of labels and values, and the
-result will be a bar graph with a bar for each label, whose height is
-given by the corresponding value. For example, if you enter
+<h3 id="sec758" class="subsection">8.7.3  Drawing a 2D vertical line: <span style="font-family:monospace">LineVert</span>
+<a id="hevea_default1072"></a></h3>
+<p>The <span style="font-family:monospace">LineVert</span> command draws a vertical line in ℝ<sup>2</sup>.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">LineVert</span> takes one argument:<br>
+ <span style="font-style:italic">a</span>, a number.
+</li><li class="li-itemize"><span style="font-family:monospace">LineVert(</span><span style="font-style:italic">a</span><span style="font-family:monospace">)</span> draws the vertical line <span style="font-style:italic">x</span>=<span style="font-style:italic">a</span>.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Example.</span><br>
+<span style="font-style:italic">Input:</span>
 </p><div class="center">
-<span style="font-family:monospace">bar_plot([["France", 6],["Germany", 12], ["Switzerland", 5]])
-</span></div><p>
-you will get
+<span style="font-family:monospace">LineVert(1)</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
 </p><div class="center">
-<img src="cascmd_en014.png">
-</div><p>If you have more than one set of values for each label, you can use
-<span style="font-family:monospace">bar_plot</span> to draw several bar graphs at the same time by
-including all values for each label, with a list of identifiers for
-the bar graphs given by the first argument. If you enter
-</p><div class="center">
-<span style="font-family:monospace">bar_plot([[2,"xyz","abc"],["A",2,5],["B",5,6],["C",6,6]])
-</span></div><p>
-you will get
-</p><div class="center">
-<img src="cascmd_en015.png">
+<img src="cascmd_en051.png">
 </div>
 <hr>
 <a href="cascmd_en584.html"><img src="previous_motif.gif" alt="Previous"></a>

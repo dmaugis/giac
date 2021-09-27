@@ -308,6 +308,8 @@ namespace giac {
   extern const unary_function_ptr * const  at_normalmod;
 
   symbolic symb_sto(const gen & a,gen & b,bool in_place=false);
+  symbolic parser_symb_sto(const gen & a_,gen & b,bool in_place=false);
+  // same as symb_sto but check if a is a vector, if so make a copy
   symbolic symb_sto(const gen & e);
   extern const unary_function_ptr * const  at_sto ;
   extern const unary_function_ptr * const  at_array_sto ;
@@ -317,6 +319,14 @@ namespace giac {
   extern const unary_function_ptr * const  at_divcrement;
   extern const unary_function_ptr * const  at_iquosto;
   extern const unary_function_ptr * const  at_iremsto;
+  extern const unary_function_ptr * const  at_andsto;
+  extern const unary_function_ptr * const  at_orsto;
+  extern const unary_function_ptr * const  at_xorsto;
+  extern const unary_function_ptr * const  at_shiftsto;
+  extern const unary_function_ptr * const  at_powsto;
+  gen _shiftsto(const gen & a,const context * contextptr);
+  extern const unary_function_ptr * const  at_rotatesto;
+  gen _rotatesto(const gen & a,const context * contextptr);
   gen sto(const gen & a,const gen & b,GIAC_CONTEXT);
   gen sto(const gen & a,const gen & b,bool in_place,GIAC_CONTEXT);  
   gen _sto(const gen & g,const context * contextptr);
@@ -491,6 +501,9 @@ namespace giac {
   extern const unary_function_ptr * const  at_Si;
   extern const unary_function_ptr * const  at_Ei ;
   extern const unary_function_ptr * const  at_Ei_f ;
+  extern const unary_function_ptr * const  at_LambertW;
+  extern const unary_function_ptr * const  at_LambertWs;
+  gen _LambertW(const gen & args,GIAC_CONTEXT);
 
   gen Psi(const gen & x,GIAC_CONTEXT);
   gen Psi(const gen & x,int n,GIAC_CONTEXT);
@@ -523,13 +536,23 @@ namespace giac {
   gen _Heaviside(const gen & args,GIAC_CONTEXT);
   gen _Dirac(const gen & args,GIAC_CONTEXT);
 
+#if defined(EMCC) || defined(EMCC2)
+#define gen_zero gen(0)
+#else
+#define gen_zero zero
+#endif
+
 #if defined(GIAC_GENERIC_CONSTANTS) // || (defined(VISUALC) && !defined(RTOS_THREADX)) || defined(x86_64)
   extern const gen zero;
   extern const gen plus_one;
   extern const gen minus_one;
   extern const gen plus_two;
   extern const gen plus_three;
+#if defined(EMCC) || defined(EMCC2)
+#define cst_i gen(0,1)
+#else
   extern const gen cst_i;
+#endif
 #else
   extern const alias_gen alias_zero;
   extern const gen & zero;

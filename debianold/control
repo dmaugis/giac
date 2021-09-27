@@ -2,14 +2,14 @@ Source: giac
 Section: math
 Priority: optional
 Maintainer: Carleos Artime <carleos@uniovi.es>
-Build-Depends: debhelper, libgmp3-dev, libreadline-dev, libgsl0-dev, hevea
+Build-Depends: debhelper, libgmp3-dev, libreadline-dev, libgsl0-dev, hevea, python3
 Standards-Version: 3.6.2
 
 Package: giac
 Section: math
 Architecture: any
 Depends: ${shlibs:Depends}
-Recommends: giac-doc, python3-giacpy, python-giacpy
+Recommends: giac-doc, python3-giacpy, python-giacpy, dfu-util
 Suggests: texmacs, menu
 Description: computer algebra system with nice GUI
  Giac Is A Cas (computer algebra system) library written in C++ by

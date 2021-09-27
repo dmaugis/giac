@@ -1,8 +1,14 @@
 /* config.h.  Generated from config.h.in by configure.  */
-/* config.h.in.  Generated from configure.in by autoheader.  */
+/* config.h.in.  Generated from configure.ac by autoheader.  */
+
+/* Define if building universal (internal helper macro) */
+/* #undef AC_APPLE_UNIVERSAL_BUILD */
+
+/* Replace GMP by libbf */
+/* #undef BF2GMP */
 
 /* Define if <unordered_map> header is available */
-/* #undef C11_UNORDERED_MAP */
+#define C11_UNORDERED_MAP 1
 
 /* Define to one of `_getb67', `GETB67', `getb67' for Cray-2 and Cray-YMP
    systems. This function is required for `alloca.c' support on those systems.
@@ -69,6 +75,9 @@
 /* Define to 1 if you have the declaration of `_snwprintf', and to 0 if you
    don't. */
 #define HAVE_DECL__SNWPRINTF 0
+
+/* Define to 1 if you have the <dfu_lib.h> header file. */
+/* #undef HAVE_DFU_LIB_H */
 
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #define HAVE_DLFCN_H 1
@@ -137,8 +146,14 @@
 /* Define to 1 if you have the `ao' library (-lao). */
 #define HAVE_LIBAO 1
 
+/* Define to 1 if you have the `bernmm' library (-lbernmm). */
+/* #undef HAVE_LIBBERNMM */
+
 /* Define to 1 if you have the `blas' library (-lblas). */
 #define HAVE_LIBBLAS 1
+
+/* Define to 1 if you have the `cliquer' library (-lcliquer). */
+#define HAVE_LIBCLIQUER 1
 
 /* Define to 1 if you have the `cocoa' library (-lcocoa). */
 /* #undef HAVE_LIBCOCOA */
@@ -146,8 +161,14 @@
 /* Define to 1 if you have the `curl' library (-lcurl). */
 /* #undef HAVE_LIBCURL */
 
+/* Define to 1 if you have the `dfu' library (-ldfu). */
+/* #undef HAVE_LIBDFU */
+
 /* Define to 1 if you have the `dl' library (-ldl). */
 #define HAVE_LIBDL 1
+
+/* Define to 1 if you have the `ecm' library (-lecm). */
+#define HAVE_LIBECM 1
 
 /* Define to 1 if you have the `fltk' library (-lfltk). */
 #define HAVE_LIBFLTK 1
@@ -198,7 +219,7 @@
 #define HAVE_LIBJPEG 1
 
 /* Define to 1 if you have the `lapack' library (-llapack). */
-/* #undef HAVE_LIBLAPACK */
+#define HAVE_LIBLAPACK 1
 
 /* Define to 1 if you have the `m' library (-lm). */
 #define HAVE_LIBM 1
@@ -208,6 +229,9 @@
 
 /* Define to 1 if you have the `mpfr' library (-lmpfr). */
 #define HAVE_LIBMPFR 1
+
+/* Define to 1 if you have the `nauty' library (-lnauty). */
+#define HAVE_LIBNAUTY 1
 
 /* Define to 1 if you have the `ntl' library (-lntl). */
 #define HAVE_LIBNTL 1
@@ -227,8 +251,14 @@
 /* Define to 1 if you have the `rt' library (-lrt). */
 #define HAVE_LIBRT 1
 
+/* Define to 1 if you have the `samplerate' library (-lsamplerate). */
+/* #undef HAVE_LIBSAMPLERATE */
+
 /* Define to 1 if you have the `tommath' library (-ltommath). */
 /* #undef HAVE_LIBTOMMATH */
+
+/* Define to 1 if you have the `usb-1.0' library (-lusb-1.0). */
+/* #undef HAVE_LIBUSB_1_0 */
 
 /* Define to 1 if you have the `X11' library (-lX11). */
 #define HAVE_LIBX11 1
@@ -240,7 +270,7 @@
 #define HAVE_LIBXFT 1
 
 /* Define to 1 if you have the `Xinerama' library (-lXinerama). */
-/* #undef HAVE_LIBXINERAMA */
+#define HAVE_LIBXINERAMA 1
 
 /* Define to 1 if you have the `z' library (-lz). */
 #define HAVE_LIBZ 1
@@ -280,6 +310,9 @@
 
 /* Define to 1 if you have the `munmap' function. */
 #define HAVE_MUNMAP 1
+
+/* Define to 1 if you have the <nauty/naututil.h> header file. */
+#define HAVE_NAUTY_NAUTUTIL_H 1
 
 /* Define to 1 if you have the <nl_types.h> header file. */
 #define HAVE_NL_TYPES_H 1
@@ -420,6 +453,9 @@
 /* Define if you have the 'unsigned long long' type. */
 #define HAVE_UNSIGNED_LONG_LONG 1
 
+/* Define to 1 if you have the <vcl1/vectorclass.h> header file. */
+/* #undef HAVE_VCL1_VECTORCLASS_H */
+
 /* Define if you have the 'wchar_t' type. */
 #define HAVE_WCHAR_T 1
 
@@ -461,7 +497,7 @@
 #define PACKAGE_NAME "giac"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "giac 1.4.9"
+#define PACKAGE_STRING "giac 1.7.0"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "giac"
@@ -470,7 +506,7 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "1.4.9"
+#define PACKAGE_VERSION "1.7.0"
 
 /* Define if <inttypes.h> exists and defines unusable PRI* macros. */
 /* #undef PRI_MACROS_BROKEN */
@@ -489,7 +525,7 @@
 
 /* Define as the maximum value of type 'size_t', if the system doesn't define
    it. */
-#define SIZE_MAX 18446744073709551615UL
+/* #undef SIZE_MAX */
 
 /* If using the C implementation of alloca, define if you know the
    direction of stack growth for your system; otherwise it will be
@@ -512,7 +548,19 @@
 /* #undef USE_OPENGL32 */
 
 /* Version number of package */
-#define VERSION "1.4.9"
+#define VERSION "1.7.0"
+
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+/* #  undef WORDS_BIGENDIAN */
+# endif
+#endif
 
 /* Define to 1 if the X Window System is missing or not being used. */
 /* #undef X_DISPLAY_MISSING */

@@ -18,6 +18,7 @@
 #ifndef _GIAC_MOYAL_H
 #define _GIAC_MOYAL_H
 #include "first.h"
+#include <complex>
 
 #ifndef NO_NAMESPACE_GIAC
 namespace giac {
@@ -38,6 +39,11 @@ namespace giac {
   gen Airy_Bi(const gen & a,const gen & b,const gen & vars,const gen & order);
   gen _Airy_Bi(const gen & args,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_Airy_Bi ;
+
+#ifndef USE_GMP_REPLACEMENTS
+  gen randdiscrete(const vecteur &m, GIAC_CONTEXT);
+  extern const unary_function_ptr * const  at_discreted ;
+#endif
 
   double randNorm(GIAC_CONTEXT);
   void randnorm2(double & r1,double & r2,GIAC_CONTEXT);
@@ -271,6 +277,14 @@ namespace giac {
   extern const unary_function_ptr * const  at_harmonic ;
 
   gen _constants_catalog(const gen & g,GIAC_CONTEXT);
+  std::complex<double> LambertW(std::complex<double> x,int n=0);
+#ifdef HAVE_LIBMPFR
+  gen LambertW(const gen & z,int n);
+#endif
+
+  // 0: not, 1: 1/2*asin, 2: 1/2*acos, 3: 1/2* atan
+  int is_half_atrig(const gen & x, gen & arg);
+
 
 #ifndef NO_NAMESPACE_GIAC
 } // namespace giac

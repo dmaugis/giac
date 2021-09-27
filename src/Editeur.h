@@ -5,11 +5,7 @@
 #include "config.h"
 #endif
 
-#ifndef IN_GIAC
-#include <giac/first.h>
-#else
 #include "first.h"
-#endif
 /*
  *  Copyright (C) 2002,2014 B. Parisse, Institut Fourier, 38402 St Martin d'Heres
  *
@@ -27,11 +23,8 @@
  *  along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef IN_GIAC
-#include <giac/gen.h>
-#else
 #include "gen.h"
-#endif
+#include "global.h"
 #include "Input.h"
 #include "Graph.h"
 #ifdef HAVE_LIBFLTK
@@ -48,6 +41,10 @@ namespace xcas {
 #endif // ndef NO_NAMESPACE_XCAS
 
 #ifdef HAVE_LIBFLTK
+  void editeur_insert(Fl_Text_Editor * e,const std::string & newfile,int mode);
+  void send_numworks(const std::string & name_,const std::string & res);
+  std::string select_nws(const giac::nws_map & m,bool pyonly,bool xwonly);
+  void cb_Editeur_Send_Numworks(Fl_Widget * m_ , void*) ;
 
   extern Fl_Menu_Item Editeur_menu[] ;
 
@@ -68,7 +65,8 @@ namespace xcas {
     Flv_Table_Gen * tableur;
     giac::gen _g;
     std::vector<Fl_Text_Display::Style_Table_Entry> styletable;
-    bool gchanged;
+    bool gchanged,locked;
+    int pythonjs;
     void set_gchanged();
     void clear_gchanged();
     giac::gen g() ;
@@ -106,7 +104,7 @@ namespace xcas {
   public:
     Log_Output * log ;
     Xcas_Text_Editor * editor;
-    Fl_Output * output;
+    Fl_Input * output;
     Fl_Menu_Bar * menubar;
     Fl_Button * button,*save_button,*nxt_button;
     Save_Focus_Button * exec_button;
@@ -125,6 +123,7 @@ namespace xcas {
   };
 
   std::string editeur_load(Fl_Text_Editor * e);
+  Fl_Text_Editor * find_editor(Fl_Widget * widget);
 
   // A button that does not take focus, useful for script exec
   class Save_Focus_Button:public Fl_Button {

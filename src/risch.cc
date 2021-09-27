@@ -47,10 +47,22 @@ namespace giac {
   static bool risch_poly_part(const vecteur & e,int shift,const identificateur & x,const vecteur & v,const gen & allowed_lnarg,gen & prim,gen & lncoeff,gen & remains_to_integrate,GIAC_CONTEXT);
   static bool risch_desolve(const gen & f,const gen & g,const identificateur & x,const vecteur & v,gen & y,bool f_is_derivative,GIAC_CONTEXT);
 
+  static gen ln_exp(const gen & g,GIAC_CONTEXT){
+    if (g.is_symb_of_sommet(at_exp))
+      return g._SYMBptr->feuille;
+    return symbolic(at_ln,g);
+  }
+
   // returns true & the tower of extension if g is elementary 
   // false otherwise
   static bool risch_tower(const identificateur & x,gen &g, vecteur & v,GIAC_CONTEXT){
     g=tsimplify(pow2expln(g,x,contextptr),contextptr);
+    // ln(exp(...))-> ...
+    vector<const unary_function_ptr *> vu;
+    vu.push_back(at_ln); 
+    vector <gen_op_context> vv;
+    vv.push_back(ln_exp);
+    g=ratnormal(subst(g,vu,vv,true,contextptr));
     v=rlvarx(g,x);
     const_iterateur it=v.begin(),itend=v.end();
     for (;it!=itend;++it){
@@ -330,21 +342,30 @@ namespace giac {
 	    alpha=giacmin(0,gamma-beta);
 	  else { // possible cancellation case depend of cst coeff of f
 	    vecteur vtmp(polynome2poly1(fnum,1));
-	    gen f0=r2sym(vtmp[0],lv1,contextptr);
+	    gen f0=r2sym(vtmp.back(),lv1,contextptr);
 	    vtmp=polynome2poly1(fdenred,1);
-	    f0=f0/r2sym(vtmp[0],lv1,contextptr);
+	    f0=f0/r2sym(vtmp.back(),lv1,contextptr);
+#if 1
+	    gen lnc=ratnormal(-f0/derive(Z._SYMBptr->feuille,x,contextptr),contextptr);
+	    if (lnc.type==_INT_)
+	      alpha=giacmin(lnc.val,alpha);
+#else // old code, seems wrong
 	    gen lnc,prim,remains;
 	    if (in_risch(f0,x,v1,Z._SYMBptr->feuille,prim,lnc,remains,contextptr)&&lnc.type==_INT_)
 	      alpha=giacmin(lnc.val,alpha);
+#endif
 	  }
 	}
       }
       if (gamma>=0 && beta==0){
 	// possible cancellation case depend of cst coeff of f
 	vecteur vtmp(polynome2poly1(fnum,1));
-	gen f0=r2sym(vtmp[0],lv1,contextptr);
-	if (f0.type==_INT_ && f0.val>0)
-	  alpha=-f0.val;
+	gen f0=r2sym(vtmp.back(),lv1,contextptr);
+	vtmp=polynome2poly1(fdenred,1);
+	f0=f0/r2sym(vtmp.back(),lv1,contextptr);
+	gen lnc=ratnormal(-f0/derive(Z._SYMBptr->feuille,x,contextptr),contextptr);
+	if (lnc.type==_INT_)
+	  alpha=giacmin(lnc.val,alpha);
       }
       D=polynome(monomial<gen>(plus_one,-alpha,1,ss)); // Z^(-alpha)
     }
@@ -531,7 +552,7 @@ namespace giac {
     int s=int(l.size());
     vecteur l1(l.begin()+1,l.end());
     gen r=e2r(coeff,l,contextptr),ar=e2r(a,l,contextptr);
-    // cout << "Int " << r << endl;
+    // cout << "Int " << r << '\n';
     gen r_num,r_den;
     fxnd(r,r_num,r_den);
     if (r_num.type==_EXT)
@@ -547,7 +568,7 @@ namespace giac {
     // int( ipnum/ipden*exp(a*x),x)
     int save=calc_mode(contextptr);
     calc_mode(0,contextptr);
-    prim += _integrate(gen(makevecteur(expax*r2sym(ipnum/ipden,l,contextptr),x),_SEQ__VECT),contextptr);
+    prim += _integrate(gen(makevecteur(expax*r2sym(ipnum,l,contextptr)/r2sym(ipden,l,contextptr),x),_SEQ__VECT),contextptr);
     calc_mode(save,contextptr);
     if (is_undef(prim)) return false;
     // Hermite reduction 
@@ -698,7 +719,7 @@ namespace giac {
       vl.push_back(e2r(vx[i],l,contextptr));
     vecteur l1(l.begin()+1,l.end());
     gen r=e2r(e,l,contextptr);
-    // cout << "Int " << r << endl;
+    // cout << "Int " << r << '\n';
     gen r_num,r_den;
     fxnd(r,r_num,r_den);
     if (r_num.type==_EXT){
@@ -759,7 +780,7 @@ namespace giac {
 	// Logarithmic part: compute resultant of num - t * den
 	polynome p1(s);
 	polynome pres=rothstein_trager_resultant(tmp.num,tmp.den,vl,p1,contextptr);
-	// Factorization, should return 1st order factor independant of
+	// Factorization, should return 1st order factor independent of
 	// the tower variables
 	factorization vden;
 	gen extra_div=1;
@@ -814,10 +835,26 @@ namespace giac {
     return true;
   }
 
-
   static gen risch_lin(const gen & e_orig,const identificateur & x,gen & remains_to_integrate,GIAC_CONTEXT){
-    vecteur v;
+    // check for fractional powers 
+    vecteur chk(rlvarx(e_orig,x)),chk1,chk2;
+    for (int i=0;i<chk.size();++i){
+      gen base,expo;
+      if (chk[i].is_symb_of_sommet(at_pow) && (expo=chk[i]._SYMBptr->feuille[1]).type==_FRAC){
+	if ((base=chk[i]._SYMBptr->feuille[0]).is_symb_of_sommet(at_pow)){
+	  chk1.push_back(chk[i]);
+	  chk2.push_back(symb_pow(base._SYMBptr->feuille[0],expo*base._SYMBptr->feuille[1]));
+	}
+	else {
+	  remains_to_integrate=e_orig;
+	  return 0;
+	}
+      }
+    }
     gen e=e_orig;
+    if (!chk1.empty())
+      e=complex_subst(e,chk1,chk2,contextptr);
+    vecteur v;
     vecteur vatan=lop(e,at_atan);
     vecteur vln;
     for (int i=0;i<int(vatan.size());++i){
@@ -834,7 +871,9 @@ namespace giac {
       vecteur tmpv=rlvarx(tmp,x);
       vecteur tmpw(tmpv.size());
       gen tmpcst=subst(tmp,tmpv,tmpw,false,contextptr);
-      v2[i]=exp(tmpcst,contextptr)*exp(ratnormal(tmp-tmpcst,contextptr),contextptr);
+      tmpcst=exp(tmpcst,contextptr)*exp(ratnormal(tmp-tmpcst,contextptr),contextptr);
+      if (!is_inf(tmpcst) && !is_undef(tmpcst))
+	v2[i]=tmpcst;
     }
     e=subst(e,v1,v2,false,contextptr);
 #else
@@ -885,7 +924,7 @@ namespace giac {
       remsum += rem;
     }
     res = res+risch_lin(remsum,x,remains_to_integrate,contextptr);
-    if (is_zero(res)){ // perhaps we should derive res and substract it from e_orig
+    if (is_zero(res)){ // perhaps we should derive res and subtract it from e_orig
       remains_to_integrate=e_orig;
     }
     else {

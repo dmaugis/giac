@@ -4,25 +4,57 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>The divisors of a number : idivis divisors</title>
+<title>Concatenating objects into a string: cat
+</title>
 </head>
 <body >
 <a href="cascmd_en084.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en086.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec118" class="subsection">5.6.9  The divisors of a number : <span style="font-family:monospace">idivis divisors</span></h3>
-<p> <a id="hevea_default123"></a><a id="hevea_default124"></a>
-<span style="font-family:monospace">idivis</span> or <span style="font-family:monospace">divisors</span> gives the list of the divisors of a 
-number (or of a list of numbers).<br>
-Input :
-</p><div class="center"><span style="font-family:monospace">idivis(36) </span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">[1,2,4,3,6,12,9,18,36] </span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">idivis([36,22]) </span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">[[1,2,4,3,6,12,9,18,36],[1,2,11,22]]</span></div>
+<h3 id="ssec:catobj" class="subsection">6.3.11  Concatenating objects into a string: <span style="font-family:monospace">cat</span><a id="hevea_default159"></a>
+</h3>
+<p>The <span style="font-family:monospace">cat</span> command transforms a sequence of objects into a
+string.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">cat</span> takes one argument:<br>
+ <span style="font-style:italic">seq</span>, a sequence of objects.
+</li><li class="li-itemize"><span style="font-family:monospace">cat(</span><span style="font-style:italic">seq</span><span style="font-family:monospace">)</span> returns the concatenation of the string
+representations of these objects as a single string.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Examples.</span>
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">cat("abcd",3,"d")</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  "abcd3d"
+</td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">c:=5</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">cat("abcd",c,"e")</span>
+</td></tr>
+</table>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  "abcd5e"
+</td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">purge(c)</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">cat(15,c,3)</span>
+</td></tr>
+</table>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  "15c3"
+</td></tr>
+</table>
+</li></ul>
 <hr>
 <a href="cascmd_en084.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

@@ -73,7 +73,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/codeset.m4 \
 	$(top_srcdir)/m4/uintmax_t.m4 $(top_srcdir)/m4/ulonglong.m4 \
 	$(top_srcdir)/m4/wchar_t.m4 $(top_srcdir)/m4/wint_t.m4 \
 	$(top_srcdir)/m4/xsize.m4 $(top_srcdir)/acinclude.m4 \
-	$(top_srcdir)/configure.in
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -137,6 +137,7 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BERNMM_LIBS = @BERNMM_LIBS@
 BUILD_INCLUDED_LIBINTL = @BUILD_INCLUDED_LIBINTL@
 CATOBJEXT = @CATOBJEXT@
 CC = @CC@
@@ -144,14 +145,17 @@ CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 COCOA_LIBS = @COCOA_LIBS@
 CONFIG_AO = @CONFIG_AO@
+CONFIG_BERNMM = @CONFIG_BERNMM@
 CONFIG_COCOA = @CONFIG_COCOA@
 CONFIG_CURL = @CONFIG_CURL@
 CONFIG_DOC_PROGS = @CONFIG_DOC_PROGS@
+CONFIG_ECM = @CONFIG_ECM@
 CONFIG_GLPK = @CONFIG_GLPK@
 CONFIG_GMPXX = @CONFIG_GMPXX@
 CONFIG_GSL = @CONFIG_GSL@
 CONFIG_NTL = @CONFIG_NTL@
 CONFIG_PARI = @CONFIG_PARI@
+CONFIG_SAMPLERATE = @CONFIG_SAMPLERATE@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CURL_LIBS = @CURL_LIBS@
@@ -169,6 +173,7 @@ DVIPS = @DVIPS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
+ECM_LIBS = @ECM_LIBS@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
@@ -238,6 +243,7 @@ PATH_SEPARATOR = @PATH_SEPARATOR@
 PDFLATEX = @PDFLATEX@
 POSUB = @POSUB@
 RANLIB = @RANLIB@
+SAMPLERATE_LIBS = @SAMPLERATE_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
@@ -314,10 +320,10 @@ HTML_DIRS_LOCAL = casinter cascmd_en tutoriel
 HTML_STAMPS = casinter.stamp cascmd_en.stamp tutoriel
 info_TEXINFOS = giac_us.texinfo
 AM_MAKEINFOHTMLFLAGS = --no-split
-EXTRA_DIST = $(TEX_LOCAL) $(PDF_LOCAL) $(DVI_LOCAL) $(PS_LOCAL) \
+EXTRA_DIST = $(TEX_LOCAL) $(PDF_LOCAL) \
 	     $(HTML_DIRS_LOCAL) $(HTML_LOCAL) $(HTML_STAMPS) \
 	     pgcd.cc pgcd.cpp giac_bassin.cpp .gdbinit cutting.* \
-	     x*.png   hevea.sty 
+	     x*.png sound*.png kde*.png rand*.png fit*.png catenoid*.png signal*.png hevea.sty 
 
 GIAC_HOMEPAGE = "http://www-fourier.ujf-grenoble.fr/~parisse/giac.html"
 GIAC_ADDRESS = <A HREF=$(LATEX2HTML_HOMEPAGE)>giac</A> documentation written
@@ -807,11 +813,11 @@ $(srcdir)/cascmd_en: cascmd_en.stamp
 $(srcdir)/casinter: casinter.stamp
 $(srcdir)/tutoriel: tutoriel.stamp
 
-install-data-local: $(HTML_STAMPS) $(PS_LOCAL) $(DVI_LOCAL) troussesurvie_en.pdf # $(PDF_LOCAL) 
+install-data-local: $(HTML_STAMPS) troussesurvie_en.pdf # $(PDF_LOCAL) # $(PS_LOCAL) $(DVI_LOCAL) 
 	$(install_sh) -d $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
 #	$(INSTALL_DATA) $(PDF_LOCAL) $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
 	$(INSTALL_DATA) troussesurvie_en.pdf $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
-	$(INSTALL_DATA) $(PS_LOCAL) $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
+#	$(INSTALL_DATA) $(PS_LOCAL) $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
 #	$(INSTALL_DATA) $(DVI_LOCAL) $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
 #	$(INSTALL_DATA) $(HTML_LOCAL) $(DESTDIR)$(prefix)/share/giac/doc/$(the_LANG)
 	for dd in $(HTML_DIRS_LOCAL); do \

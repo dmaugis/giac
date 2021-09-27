@@ -32,7 +32,8 @@
  */
 
 #include "config.h"
-#ifdef __APPLE__
+#define M_PI 3.14159265355 // required for -std=c99
+#if defined __APPLE__ || defined __MINGW_H
 #if !defined(HAVE_LIBGL) 
 #define HAVE_LIBGL 1
 #endif

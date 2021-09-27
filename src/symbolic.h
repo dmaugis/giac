@@ -43,6 +43,9 @@ namespace giac {
 
   // find the "size" of g but limited by max
   unsigned taille(const gen & g,unsigned max);
+  vecteur tailles(const gen & g);
+  void tailles(const gen &g,std::vector<int> & v);
+  int bytesize(const gen & g);
   // find number of symbolic embeddings, limited to max, initial value add
   unsigned depth(const gen & g,unsigned add,unsigned max);
   extern int print_max_depth;

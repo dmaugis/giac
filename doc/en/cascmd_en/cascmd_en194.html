@@ -4,72 +4,102 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Discrete summation: sum</title>
+<title>Substituting a variable by a value (Maple and Mupad compatibility): subs
+</title>
 </head>
 <body >
 <a href="cascmd_en193.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en195.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec247" class="subsection">5.18.2  Discrete summation: <span style="font-family:monospace">sum</span></h3>
-<p><a id="hevea_default332"></a>
-<span style="font-family:monospace">sum</span> takes two or four arguments :
+<h3 id="sec237" class="subsection">6.12.20  Substituting a variable by a value (Maple and Mupad compatibility): <span style="font-family:monospace">subs</span>
+<a id="hevea_default325"></a></h3>
+<p>In <span style="font-family:monospace">Maple</span> and in <span style="font-family:monospace">Mupad</span>, you would use the
+<span style="font-family:monospace">subs</span> command to substitute a variable by a value in an
+expression. But the order of the arguments differ between
+<span style="font-family:monospace">Maple</span> and <span style="font-family:monospace">Mupad</span>. Therefore, to achieve
+compatibility, in <span style="font-family:monospace">Xcas</span>, the <span style="font-family:monospace">subs</span> command arguments
+order depends on the mode (see Section <a href="cascmd_en022.html#ssec%3Alang">3.5.2</a>).</p><p>In <span style="font-family:monospace">Maple</span> mode:
 </p><ul class="itemize"><li class="li-itemize">
-four arguments<br>
-an expression, the name of the variable (for 
-example <span style="font-family:monospace">n</span>), and the bounds (for example <span style="font-family:monospace">a</span> and <span style="font-family:monospace">b</span>).<br>
-<span style="font-family:monospace">sum</span> returns the discrete sum of this expression with respect to
-the variable from <span style="font-style:italic">a</span> to <span style="font-style:italic">b</span>.<br>
-Input :
-<div class="center"><span style="font-family:monospace">sum(1,k,-2,n) </span></div>
-Output :
-<div class="center"><span style="font-family:monospace">n+1+2</span></div>
-Input :
-<div class="center"><span style="font-family:monospace">normal(sum(2*k-1,k,1,n))</span></div>
-Output :
-<div class="center"><span style="font-family:monospace">n</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2</span></div>
-Input :
-<div class="center"><span style="font-family:monospace">sum(1/(n</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2),n,1,10)</span></div>
-Output :
-<div class="center"><span style="font-family:monospace">1968329/1270080</span></div> 
-Input :
-<div class="center"><span style="font-family:monospace">sum(1/(n</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2),n,1,+(infinity)) </span></div>
-Output :
-<div class="center"><span style="font-family:monospace">pi</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2/6</span></div>
-Input :
-<div class="center"><span style="font-family:monospace">sum(1/(n</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-n),n,2,10) </span></div>
-Output :
-<div class="center"><span style="font-family:monospace">27/110</span></div> 
-Input :
-<div class="center"><span style="font-family:monospace">sum(1/(n</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-n),n,1,+(infinity)) </span></div>
-Output :
-<div class="center"><span style="font-family:monospace">1/4</span></div>
-This result comes from the decomposition of <span style="font-family:monospace">1/(</span><span style="font-family:monospace"><span style="font-style:italic">n</span></span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-</span><span style="font-family:monospace"><span style="font-style:italic">n</span></span><span style="font-family:monospace">)</span>.<br>
-Input :
-<div class="center"><span style="font-family:monospace">partfrac(1/(n</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-n)) </span></div>
-Output :
-<div class="center"><span style="font-family:monospace">1/(2*(n+1))-1/n+1/(2*(n-1))</span></div>
-Hence :<br>
- ∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span></sup> −1/<span style="font-style:italic">n</span>=−∑<sub><span style="font-style:italic">n</span>=1</sub><sup><span style="font-style:italic">N</span>−1</sup> 1/<span style="font-style:italic">n</span>+1=−1/2−∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span>−2</sup> 1/<span style="font-style:italic">n</span>+1−1/<span style="font-style:italic">N</span><br>
- 1/2*∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span></sup> 1/<span style="font-style:italic">n</span>−1=1/2*(∑<sub><span style="font-style:italic">n</span>=0</sub><sup><span style="font-style:italic">N</span>−2</sup> 1/<span style="font-style:italic">n</span>+1)=1/2*(1+1/2+∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span>−2</sup>1/<span style="font-style:italic">n</span>+1)<br>
- 1/2*∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span></sup> 1/<span style="font-style:italic">n</span>+1=1/2*(∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span>−2</sup> 1/<span style="font-style:italic">n</span>+1+1/<span style="font-style:italic">N</span>+1/<span style="font-style:italic">N</span>+1)<br>
-After simplification by ∑<sub><span style="font-style:italic">n</span>=2</sub><sup><span style="font-style:italic">N</span>−2</sup>, it remains :<br>
-  −1/2+1/2*(1+1/2)−1/<span style="font-style:italic">N</span>+1/2*(1/<span style="font-style:italic">N</span>+1/<span style="font-style:italic">N</span>+1)=1/4−1/2<span style="font-style:italic">N</span>(<span style="font-style:italic">N</span>+1)<br>
-Therefore :
+<span style="font-family:monospace">subs</span> takes two arguments:
 <ul class="itemize"><li class="li-itemize">
-for <span style="font-style:italic">N</span>=10 the sum is equal to : 1/4−1/220=27/110
-</li><li class="li-itemize">for <span style="font-style:italic">N</span>=+∞ the sum is equal to : 1/4 because 1/2<span style="font-style:italic">N</span>(<span style="font-style:italic">N</span>+1) 
-approaches zero when <span style="font-style:italic">N</span> approaches infinity.
-</li></ul></li><li class="li-itemize">two arguments <br>
-an expression of one variable (for example <span style="font-style:italic">f</span>) and the name of this
-variable (for example <span style="font-style:italic">x</span>).<br>
-<span style="font-family:monospace">sum</span> returns the discrete antiderivative of this expression, i.e. 
-an expression <span style="font-style:italic">G</span> such that <span style="font-style:italic">G</span><sub>|<span style="font-style:italic">x</span>=<span style="font-style:italic">n</span>+1</sub>−<span style="font-style:italic">G</span><sub>|<span style="font-style:italic">x</span>=<span style="font-style:italic">n</span></sub>=<span style="font-style:italic">f</span><sub>|<span style="font-style:italic">x</span>=<span style="font-style:italic">n</span></sub>.<br>
-Input :
-<div class="center"><span style="font-family:monospace">sum(1/(x*(x+1)),x)</span></div>
-Output :
-<div class="center"><span style="font-family:monospace">-1/x</span></div>
+<span style="font-style:italic">eq</span>, an equality or list of equalities of the form
+<span style="font-style:italic">var</span><span style="font-family:monospace">=</span><span style="font-style:italic">value</span>.
+</li><li class="li-itemize"><span style="font-style:italic">expr</span>, an expression.
 </li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">subs(</span><span style="font-style:italic">eq</span><span style="font-family:monospace">,</span><span style="font-style:italic">expr</span><span style="font-family:monospace">)</span>
+returns the expression with the variables replaced by their given
+values.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Examples.</span>
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">Input in </span><span style="font-style:italic"><span style="font-family:monospace">Maple</span></span><span style="font-style:italic"> mode (if the variable </span><span style="font-style:italic"><span style="font-family:monospace">a</span></span><span style="font-style:italic"> is purged,
+otherwise first enter </span><span style="font-style:italic"><span style="font-family:monospace">purge(a)</span></span><span style="font-style:italic">):</span>
+<div class="center">
+<span style="font-family:monospace">subs(a=2,a^2+1)</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  5
+</td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input in </span><span style="font-style:italic"><span style="font-family:monospace">Maple</span></span><span style="font-style:italic"> mode (if the variables </span><span style="font-style:italic"><span style="font-family:monospace">a</span></span><span style="font-style:italic"> and
+</span><span style="font-style:italic"><span style="font-family:monospace">b</span></span><span style="font-style:italic"> are purged, otherwise first enter </span><span style="font-style:italic"><span style="font-family:monospace">purge(a,b)</span></span><span style="font-style:italic">):</span>
+<div class="center">
+<span style="font-family:monospace">subs([a=2,b=1],a^2+b)</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  5
+</td></tr>
+</table>
+</li></ul><p>In <span style="font-family:monospace">Mupad</span> or <span style="font-family:monospace">Xcas</span> or <span style="font-family:monospace">TI</span> modes, <span style="font-family:monospace">subs</span>
+behaves like <span style="font-family:monospace">subst</span> (see Section <a href="cascmd_en192.html#ssec%3Asubst">6.12.18</a>).
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">subst</span> takes two or three arguments.
+<ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">expr</span>, an expression.
+</li><li class="li-itemize"><span style="font-style:italic">eqs</span>, an equality of the form <span style="font-style:italic">var</span><span style="font-family:monospace">=</span><span style="font-style:italic">value</span>
+or a list of such equalities, or<br>
+ <span style="font-style:italic">vars,vals</span>, a variable or list of variables followed by a
+value or a list of values for substitution.
+</li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">subs(</span><span style="font-style:italic">expr</span><span style="font-family:monospace">,</span><span style="font-style:italic">eqs</span>) or
+<span style="font-family:monospace">subs(</span><span style="font-style:italic">expr</span><span style="font-family:monospace">,</span><span style="font-style:italic">vars</span><span style="font-family:monospace">,</span><span style="font-style:italic">vals</span><span style="font-family:monospace">)</span>
+returns the expression with the variables replaced by their given
+values.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Examples.</span>
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">Input in </span><span style="font-style:italic"><span style="font-family:monospace">Mupad</span></span><span style="font-style:italic"> or </span><span style="font-style:italic"><span style="font-family:monospace">Xcas</span></span><span style="font-style:italic"> or </span><span style="font-style:italic"><span style="font-family:monospace">TI</span></span><span style="font-style:italic"> modes (if the
+variable </span><span style="font-style:italic"><span style="font-family:monospace">a</span></span><span style="font-style:italic"> is purged, otherwise first enter </span><span style="font-style:italic"><span style="font-family:monospace">purge(a)</span></span><span style="font-style:italic">):</span>
+<div class="center">
+<span style="font-family:monospace">subs(a^2+1,a=2)</span>
+</div>
+<span style="font-style:italic">or:</span>
+<div class="center">
+<span style="font-family:monospace">subs(a^2+1,a,2)</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  5
+</td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input in </span><span style="font-style:italic"><span style="font-family:monospace">Mupad</span></span><span style="font-style:italic"> or </span><span style="font-style:italic"><span style="font-family:monospace">Xcas</span></span><span style="font-style:italic"> or </span><span style="font-style:italic"><span style="font-family:monospace">TI</span></span><span style="font-style:italic"> modes (if the
+variables </span><span style="font-style:italic"><span style="font-family:monospace">a</span></span><span style="font-style:italic"> and </span><span style="font-style:italic"><span style="font-family:monospace">b</span></span><span style="font-style:italic"> are purged, otherwise first enter
+</span><span style="font-style:italic"><span style="font-family:monospace">purge(a,b)</span></span><span style="font-style:italic"> first):</span>
+<div class="center">
+<span style="font-family:monospace">subs(a^2+b,[a=2,b=1])</span>
+</div>
+<span style="font-style:italic">or:</span>
+<div class="center">
+<span style="font-family:monospace">subs(a^2+b,[a,b],[2,1])</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">  5
+</td></tr>
+</table>
+</li></ul><p>Note that <span style="font-family:monospace">subs</span> does not quote its argument, hence in a normal
+evaluation process, the substitution variable should be purged
+otherwise it will be replaced by its assigned value before
+substitution is done.</p>
 <hr>
 <a href="cascmd_en193.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

@@ -4,39 +4,64 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Incrementing variables</title>
+<title>Sets: set[]
+</title>
 </head>
 <body >
 <a href="cascmd_en048.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en050.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec73" class="subsection">4.6.5  Incrementing variables</h3>
-<p>You can increase the value of a variable <span style="font-family:monospace">a</span> by <span style="font-family:monospace">4</span>, for
-example, with
+<h3 id="ssec:sets" class="subsection">5.3.2  Sets: <span style="font-family:monospace">set[]</span>
+<a id="hevea_default61"></a><a id="hevea_default62"></a></h3>
+<p>To define a set of elements, put the elements separated by commas,
+with delimiters <span style="font-family:monospace">%{</span> and <span style="font-family:monospace">%}</span> or <span style="font-family:monospace">set[</span> and
+<span style="font-family:monospace">]</span>.<br>
+<span style="font-style:italic">Input:</span>
 </p><div class="center">
-<span style="font-family:monospace">a := a + 4</span>
+<span style="font-family:monospace">set[1,2,3,4]</span>
 </div><p>
-If beforehand <span style="font-family:monospace">a</span> were equal to <span style="font-family:monospace">4</span>, it would now be
-equal to <span style="font-family:monospace">8</span>. A shorthand way of doing this is with the
-<span style="font-family:monospace">+=</span><a id="hevea_default25"></a> operator;
+<span style="font-style:italic">or:</span>
 </p><div class="center">
-<span style="font-family:monospace">a += 4</span>
+<span style="font-family:monospace">%{1,2,3,4%}</span>
 </div><p>
-will also increase the value of <span style="font-family:monospace">a</span> by <span style="font-family:monospace">4</span>.</p><p>Similar shorthands exist for subtraction, multiplication and division.
-If <span style="font-family:monospace">a</span> is equal to <span style="font-family:monospace">8</span> and you enter
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">⟦ 1,2,3,4⟧
+</td></tr>
+</table><p>
+In the <span style="font-family:monospace">Xcas</span> output, the set delimiters are displayed
+as ⟦ and ⟧ in order
+not to confuse sets with lists (see Section <a href="cascmd_en050.html#ssec%3Alstbasics">5.3.3</a>).
+For example, ⟦1,2,3 ⟧is the set <span style="font-family:monospace">%{1,2,3%}</span>,
+unlike [1,2,3] (normal brackets) which is the list <span style="font-family:monospace">[1,2,3]</span>.<br>
+<span style="font-style:italic">Input:</span>
 </p><div class="center">
-<span style="font-family:monospace">a -= 2</span><a id="hevea_default26"></a>
+<span style="font-family:monospace">A:=%{1,2,3,4%}</span>
 </div><p>
-then <span style="font-family:monospace">a</span> will be equal to <span style="font-family:monospace">6</span>. If you follow this with
+<span style="font-style:italic">or:</span>
 </p><div class="center">
-<span style="font-family:monospace">a *= 3</span><a id="hevea_default27"></a>
+<span style="font-family:monospace">A:=set[1,2,3,4]</span>
 </div><p>
-then <span style="font-family:monospace">a</span> will be equal to <span style="font-family:monospace">18</span>, and finally
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">⟦ 1,2,3,4⟧
+</td></tr>
+</table><p>
+<span style="font-style:italic">Input:</span>
 </p><div class="center">
-<span style="font-family:monospace">a /= 9</span><a id="hevea_default28"></a>
+<span style="font-family:monospace">B:=%{5,5,6,3,4%}</span>
 </div><p>
-will end with <span style="font-family:monospace">a</span> equal to <span style="font-family:monospace">2</span>.</p>
+<span style="font-style:italic">or:</span>
+</p><div class="center">
+<span style="font-family:monospace">B:=set[5,5,6,3,4]</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">     ⟦ 5,6,3,4 ⟧
+</td></tr>
+</table><p><br>
+</p><p><span style="font-weight:bold">Remark.</span><br>
+The order in a set is not significant and the elements in a set are
+all distinct. If you input <span style="font-family:monospace">B:=%{5,5,6,3,4%}</span> and
+<span style="font-family:monospace">C:=%{3,4,5,3,6%}</span>, then <span style="font-family:monospace">B==C</span> will return <span style="font-family:monospace">true</span>.</p><p>See Section <a href="index.html#sec%3Asetops">6.41</a> for operations on sets.</p>
 <hr>
 <a href="cascmd_en048.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

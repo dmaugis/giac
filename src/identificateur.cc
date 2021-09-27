@@ -19,7 +19,9 @@
  */
 using namespace std;
 #include <cmath>
+#if !defined GIAC_HAS_STO_38 && !defined NSPIRE && !defined FXCG 
 #include <fstream>
+#endif
 #include <string>
 //#include <unistd.h> // For reading arguments from file
 #include "identificateur.h"
@@ -58,14 +60,6 @@ namespace giac {
     const char * s;
     short int b;
     bool s_dynalloc;
-  };
-
-  struct alias_identificateur {
-    int * ref_count;
-    gen * value;
-    const char * id_name;
-    vecteur * localvalue;
-    short int * quoted;
   };
 
 #ifdef DOUBLEVAL // #ifdef GIAC_GENERIC_CONSTANTS
@@ -134,7 +128,7 @@ namespace giac {
 
 #endif // GIAC_GENERIC_CONSTANTS
 
-#if defined GIAC_HAS_STO_38 || defined NSPIRE || defined NSPIRE_NEWLIB
+#if defined GIAC_HAS_STO_38 || defined NSPIRE || defined NSPIRE_NEWLIB || defined KHICAS
 #if 0
   static const alias_identificateur alias_identificateur_a38={0,0,"A",0,0};
   const identificateur & a__IDNT=* (const identificateur *) &alias_identificateur_a38;
@@ -816,7 +810,7 @@ namespace giac {
 #ifndef NO_STDEXCEPT
     }
     catch (std::runtime_error & e){
-      cerr << e.what() << endl;
+      cerr << e.what() << '\n';
       // eval_level(level,contextptr);
     }
 #endif
@@ -845,7 +839,7 @@ namespace giac {
 #ifndef NO_STDEXCEPT
     }
     catch (std::runtime_error & e){
-      cerr << e.what() << endl;
+      cerr << e.what() << '\n';
       // eval_level(level,contextptr);
     }
 #endif
@@ -996,10 +990,10 @@ namespace giac {
 #endif
 
   gen identificateur::eval(int level,const gen & orig,const context * contextptr) {
-    if (!ref_count)
+    if (!ref_count && !contextptr)
       return orig;
     gen evaled;
-    // cerr << "idnt::eval " << *this << " " << level << endl;
+    // cerr << "idnt::eval " << *this << " " << level << '\n';
     if (level<=0){
       if (level==0) 
 	return orig;
@@ -1068,7 +1062,7 @@ namespace giac {
   void printsymtab(sym_tab * ptr){
     sym_tab::const_iterator it=ptr->begin(),itend=ptr->end();
     for (;it!=itend;++it)
-      CERR << it->first << ":" << it->second << endl;
+      CERR << it->first << ":" << it->second << '\n';
   }
 
   bool identificateur::in_eval(int level,const gen & orig,gen & evaled,const context * contextptr, bool No38Lookup) {
@@ -1145,7 +1139,7 @@ namespace giac {
 	evaled.subtype=_GLOBAL__EVAL;
       return true;
     }
-#if !defined NSPIRE && !defined FXCG
+#if !defined NSPIRE && !defined FXCG && !defined GIAC_HAS_STO_38
     // set current value
     ifstream inf((name()+string(cas_suffixe)).c_str());
     evaled=read1arg_from_stream(inf,contextptr);
@@ -1166,7 +1160,12 @@ namespace giac {
 
   const char * identificateur::print(GIAC_CONTEXT) const{
     if (!strcmp(id_name,string_pi)){
+#ifdef NUMWORKS
+      return string_pi;
+#endif
+#if !defined KHICAS 
       if (abs_calc_mode(contextptr)==38)
+#endif
 	return "π";
       switch (xcas_mode(contextptr)){
       case 1:

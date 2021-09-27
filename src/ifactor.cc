@@ -1,10 +1,22 @@
 // -*- mode:C++ ; compile-command: "g++-3.4 -I.. -g -c ifactor.cc -DHAVE_CONFIG_H -DIN_GIAC" -*-
 #include "giacPCH.h"
-#ifndef __MINGW_H
+#if defined NSPIRE_NEWLIB || !defined KHICAS
 #define GIAC_MPQS // define if you want to use giac for sieving 
 #endif
 
+#ifdef BF2GMP_H
+#undef HAVE_LIBECM
+#undef HAVE_LIBBERNMM
+#endif
 
+#if defined HAVE_LIBECM 
+#include <ecm.h>
+#endif
+
+#if defined HAVE_LIBBERNMM 
+#include <bern_modp.h>
+#include <bern_rat.h>
+#endif
 
 #include "path.h"
 /*
@@ -195,7 +207,7 @@ namespace giac {
     for (;pos<cs;++pos){
       if (crible[pos/32] & (1<<(pos%32))){
 	pos=2*pos+1;
-	// if (pos!=nextprime(int(p)).val) CERR << "error " << p << endl;
+	// if (pos!=nextprime(int(p)).val) CERR << "error " << p << '\n';
 	return pos;
       }
     }
@@ -224,7 +236,7 @@ namespace giac {
 	os << (((v[c] >> s & 1)==1)?1:0) << " ";
       }
     }
-    os << endl;
+    os << '\n';
   }
 
   template<class T>
@@ -248,7 +260,7 @@ namespace giac {
 	os << (((v[c] >> s & 1)==1)?1:0) << " ";
       }
     }
-    os << endl;
+    os << '\n';
   }
 
   void printbool(ostream & os,const vector< vector<unsigned> > & m,int L=32){
@@ -416,10 +428,10 @@ namespace giac {
   typedef unsigned short int short_t;
 #endif
 
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 #include <map>
 #endif
-#if (defined EMCC || defined(HASH_MAP_NAMESPACE)) && defined(PRIMES32)
+#if (defined EMCC || defined EMCC2 || defined(HASH_MAP_NAMESPACE)) && defined(PRIMES32)
 #define ADDITIONAL_PRIMES_HASHMAP
 #endif
 #endif // RTOS_THREADX || BESTA_OS
@@ -455,7 +467,7 @@ namespace giac {
 #endif
 
 #ifdef ADDITIONAL_PRIMES_HASHMAP
-#ifdef EMCC // container does not seem to be important for <= 70 digits
+#if defined(EMCC) || defined(EMCC2) // container does not seem to be important for <= 70 digits
   typedef map<unsigned,axbinv> additional_map_t;
 #else
   typedef HASH_MAP_NAMESPACE::hash_map<unsigned,axbinv,hash_function_unsigned_object > additional_map_t ;
@@ -698,11 +710,11 @@ namespace giac {
     if (nbits>70)
       up_to += (0.8*(nbits-70))/70;
     if (debug_infolevel>7)
-      *logptr(contextptr) << CLOCK() << gettext("Sieve tolerance factor ") << up_to << endl;
+      *logptr(contextptr) << CLOCK() << gettext("Sieve tolerance factor ") << up_to << '\n';
     unsigned char logB=(unsigned char) (nbits-int(up_to*sizeinbase2(basis.back().p)+.5));
     // unsigned char logB=(unsigned char) (nbits-int(up_to*std::log(double(basis.back().p))/std::log(2.0)+.5));
     if (debug_infolevel>6)
-      *logptr(contextptr) << CLOCK() << gettext(" reset") << endl;
+      *logptr(contextptr) << CLOCK() << gettext(" reset") << '\n';
     // assumes slice type is size 1 byte and multiple of 32
 #ifdef x86_64
     ulonglong * ptr=(ulonglong *) &slice[0];
@@ -721,7 +733,7 @@ namespace giac {
     }
 #endif
     if (debug_infolevel>8)
-      *logptr(contextptr) << CLOCK() << gettext(" end reset, nbits ") << nbits << endl;
+      *logptr(contextptr) << CLOCK() << gettext(" end reset, nbits ") << nbits << '\n';
     // now for all primes p in basis move in slice from p to p
     // decrease slice[] by number of bits in p
     // determines the first prime used in basis
@@ -750,7 +762,7 @@ namespace giac {
       int p=basis[bstart].p;
       if (p>next){
 	if (debug_infolevel>7)
-	  *logptr(contextptr) << gettext("Sieve first prime ") << p << " nbits " << nbits << endl;
+	  *logptr(contextptr) << gettext("Sieve first prime ") << p << " nbits " << nbits << '\n';
 	break;
       }
 #ifdef LP_SMALL_PRIMES 
@@ -780,7 +792,7 @@ namespace giac {
     }
     next *= 2;
     if (debug_infolevel>8)
-      *logptr(contextptr) << CLOCK() << gettext(" sieve begin ") << endl;
+      *logptr(contextptr) << CLOCK() << gettext(" sieve begin ") << '\n';
     // bool sameroot; // Should be there to avoid counting twice the same root but it's faster to ignore it..;
 #ifdef LP_SMALL_PRIMES
     small_basis_t * bit=&small_basis[bstart], * bitend=&small_basis[0]+small_basis.size();
@@ -800,7 +812,7 @@ namespace giac {
       const lp_entry_t * lpit=&lp_tab[0],*lpitend=lpit+lp_tab.size(),*lpitend1=lpitend-8;
       if (lpitend-lpit>8){
 	for (;lpit<lpitend1;lpit+=8){
-	  PREFETCH(lpit + 16);
+	  //PREFETCH(lpit + 16);
 	  slice[lpit->pos] -= 16;
 	  slice[lpit[1].pos] -= 16;
 	  slice[lpit[2].pos] -= 16;
@@ -819,7 +831,7 @@ namespace giac {
     if (debug_infolevel>6)
       cl=CLOCK();
     if (debug_infolevel>8)
-      *logptr(contextptr) << cl << gettext("relations ") << endl;
+      *logptr(contextptr) << cl << gettext("relations ") << '\n';
     // now find relations
     st=slice; stend=slice+ss;
 #ifdef x86_64
@@ -855,7 +867,7 @@ namespace giac {
 	gen tmp=shiftpos;
 	tmp=(a*tmp+2*bvals.back())*tmp+c;
 	tmp.uncoerce(); mpz_set(z1,*tmp._ZINTptr);
-	*logptr(contextptr) << tmp << endl;
+	*logptr(contextptr) << tmp << '\n';
 #else 
 	mpz_set_si(z1,shiftpos);
 	mpz_mul(z2,z1,*a._ZINTptr);
@@ -1019,7 +1031,7 @@ namespace giac {
 	if (mpz_cmp_si(z1,1)==0){ // is_one(tmp)){
 	  ++nrelations;
 	  if (debug_infolevel>6)
-	    *logptr(contextptr) << CLOCK() << gettext(" true relation ") << endl;
+	    *logptr(contextptr) << CLOCK() << gettext(" true relation ") << '\n';
 	  axbmodn.push_back(axbinv(int(sqrtavals.size())-1,shiftpos,int(bvals.size())-1,int(puissancesptr-puissancesbegin),int(puissancesptr-puissancesbegin)+int(curpuissances.size())));	
 	  for (unsigned i=0;i<curpuissances.size();++puissancesptr,++i){
 	    if (puissancesptr>=puissancesend)
@@ -1036,7 +1048,7 @@ namespace giac {
 #endif
 	  if (mpz_cmp_ui(z1,param2)>0){
 	    if (debug_infolevel>6)
-	      *logptr(contextptr) << gen(z1) << gettext(" Sieve large remainder:") << endl;
+	      *logptr(contextptr) << gen(z1) << gettext(" Sieve large remainder:") << '\n';
 	  }
 	  else {
 #ifdef GIAC_ADDITIONAL_PRIMES
@@ -1044,7 +1056,7 @@ namespace giac {
 	    // if (int(P)>2*int(basis.back())) continue;
 	    // if (debug_infolevel>5)
 	    if (debug_infolevel>6)
-	      *logptr(contextptr) << CLOCK() << " " << P << " remain " << endl;
+	      *logptr(contextptr) << CLOCK() << " " << P << " remain " << '\n';
 #ifdef ADDITIONAL_PRIMES_HASHMAP
 	    // add relation
 	    ++nrelations;
@@ -1069,7 +1081,7 @@ namespace giac {
 	    int Ppos=_equalposcomp(additional_primes,P); // this is in O(additional^2)=o(B^3)
 	    if (Ppos){
 	      if (debug_infolevel>6)
-		*logptr(contextptr) << P << gettext(" already additional") << endl;
+		*logptr(contextptr) << P << gettext(" already additional") << '\n';
 	      --Ppos;
 	      additional_primes_twice[Ppos]=true;
 	    } else {
@@ -1106,7 +1118,7 @@ namespace giac {
     } // end for loop on slice array
     if (debug_infolevel>6){
       unsigned cl2=CLOCK();
-      *logptr(contextptr) << cl2 << gettext(" end relations ") << cl2-cl << endl;
+      *logptr(contextptr) << cl2 << gettext(" end relations ") << cl2-cl << '\n';
     }
     return nrelations;
   }
@@ -1233,7 +1245,7 @@ namespace giac {
       a=-a;
     a=(b==1)?a:0;
     // if ((a-res)%p)
-    //  CERR << "error" << endl;
+    //  CERR << "error" << '\n';
     return a;
 #else // i386
 
@@ -1357,13 +1369,13 @@ namespace giac {
     }
     if (debug_infolevel>6){
       for (unsigned i=0;i<nmult;++i){
-	*logptr(contextptr) << gettext("multiplier ") << int(mult[i]) << " score " << scores[i] << endl;
+	*logptr(contextptr) << gettext("multiplier ") << int(mult[i]) << " score " << scores[i] << '\n';
       }
     }
     if (pos){
       delta=minscore-scores[0];
       if (debug_infolevel)
-	*logptr(contextptr) << gettext("Using multiplier ") << int(mult[pos]) << " delta-score " << delta << endl;
+	*logptr(contextptr) << gettext("Using multiplier ") << int(mult[pos]) << " delta-score " << delta << '\n';
     }
     return mult[pos];
   }
@@ -1397,7 +1409,7 @@ namespace giac {
 	// k must be == curpui.size()-1
 	// find p in additional_primes and position
 	int Ppos=_equalposcomp(additional_primes,p);
-	// *logptr(contextptr) << p << " " << Ppos+bs << " " << relations.size() << endl;
+	// *logptr(contextptr) << p << " " << Ppos+bs << " " << relations.size() << '\n';
 	relations[bs+Ppos].tab[j/32] |= (1 << (j %32));	  
 #endif
 	break;
@@ -1913,7 +1925,7 @@ namespace giac {
 #endif
 #endif
     if (debug_infolevel)
-      *logptr(contextptr) << "" << CLOCK() << gettext(" sieve on ") << N << endl << gettext("Number of primes ") << B << endl;
+      *logptr(contextptr) << "" << CLOCK() << gettext(" sieve on ") << N << '\n' << gettext("Number of primes ") << B << '\n';
     // first compute the prime basis and sqrt(N) mod p, p in basis
     vector<basis_t> basis;
     basis.reserve(unsigned(B));
@@ -1939,7 +1951,7 @@ namespace giac {
 	break;
       ushort_t j=giac_primes[i];
       if (debug_infolevel>6 && (i%500==99))
-	*logptr(contextptr) << CLOCK() << gettext(" sieve current basis size ") << basis.size() << endl;
+	*logptr(contextptr) << CLOCK() << gettext(" sieve current basis size ") << basis.size() << '\n';
 #if 1 // def USE_GMP_REPLACEMENTS
       // int n=fastsmod_compute(N256,j);
       int n=modulo(*N._ZINTptr,j),s;
@@ -1995,7 +2007,7 @@ namespace giac {
       }
 #endif
       if (debug_infolevel>6 && (i%500==99))
-	*logptr(contextptr) << CLOCK() << gettext(" sieve current basis size ") << basis.size() << endl;
+	*logptr(contextptr) << CLOCK() << gettext(" sieve current basis size ") << basis.size() << '\n';
 #if 1 // def USE_GMP_REPLACEMENTS
       // int n=fastsmod_compute(N256,jp);
       int n=modulo(*N._ZINTptr,jp),s;
@@ -2048,7 +2060,7 @@ namespace giac {
     unsigned maxadditional=3*basis.back().p*ps;
 #endif
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << gettext(" sieve basis OK, size ") << basis.size() << " largest prime in basis " << basis.back().p << " large prime " << maxadditional << " Mtarget " << Mtarget << endl ;
+      *logptr(contextptr) << CLOCK() << gettext(" sieve basis OK, size ") << basis.size() << " largest prime in basis " << basis.back().p << " large prime " << maxadditional << " Mtarget " << Mtarget << '\n' ;
     int bs=int(basis.size());
     gen isqrtN=isqrt(N);
     isqrtN.uncoerce(); 
@@ -2149,8 +2161,8 @@ namespace giac {
     }
 #endif // OLD_AFACT
     if (debug_infolevel){
-      *logptr(contextptr) << gettext("Using ") << afact << " square factors per a coefficient in polynomials" << endl;
-      *logptr(contextptr) << afixed << gettext(" fixed begin at ") << basis[pos0].p << " and " << afact-afixed << " variables at " << basis[pos1].p << endl; 
+      *logptr(contextptr) << gettext("Using ") << afact << " square factors per a coefficient in polynomials" << '\n';
+      *logptr(contextptr) << afixed << gettext(" fixed begin at ") << basis[pos0].p << " and " << afact-afixed << " variables at " << basis[pos1].p << '\n'; 
     }
     vector<ushort_t> isqrtN256;
     // fastsmod_prepare(isqrtN,zx,zy,zr,isqrtN256);
@@ -2194,7 +2206,7 @@ namespace giac {
     vecteur sqrtavals,bvals;
 #ifdef GIAC_ADDITIONAL_PRIMES
 #ifdef ADDITIONAL_PRIMES_HASHMAP
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
     additional_map_t additional_primes_map;
 #else
     additional_map_t additional_primes_map(8*bs);
@@ -2244,7 +2256,7 @@ namespace giac {
       Mval=Mval*basis[pos[i]].p;
     Mval=std::sqrt(2*Nd)/(Mval*Mval);
     if (debug_infolevel)
-      *logptr(contextptr) << gettext("First M ") << Mval << endl;
+      *logptr(contextptr) << gettext("First M ") << Mval << '\n';
     Mtarget=Mval;
     int avar=afact-afixed;
     int end_pos1=2*pos1;
@@ -2331,7 +2343,7 @@ namespace giac {
 	    for (;i<afact;++i)
 	      pos[i]=pos[i-1]+1;
 	  }
-	  // CERR << pos << endl;
+	  // CERR << pos << '\n';
 	}
       }
       // finished?
@@ -2363,7 +2375,7 @@ namespace giac {
       a.uncoerce();
       int M=int(std::floor(std::sqrt(Nd*2)/evalf_double(a,1,contextptr)._DOUBLE_val));
       if (debug_infolevel>6)
-	*logptr(contextptr) << CLOCK() << gettext(" initial value for M= ") << M << endl;
+	*logptr(contextptr) << CLOCK() << gettext(" initial value for M= ") << M << '\n';
       int nslices=int(std::ceil((2.*M)/slicesize));
       M=(nslices*slicesize)/2;
       bvalues.clear();
@@ -2381,7 +2393,7 @@ namespace giac {
 	r=(r*invmod(2*s,p))%p;
 	// overflow should not happen because p is a factor of a hence choosen
 	// in the 1000 range (perhaps up to 10 000, but not much larger)
-	// if ((longlong(r)*p)!=r*p) CERR << "overflow" << endl;
+	// if ((longlong(r)*p)!=r*p) CERR << "overflow" << '\n';
 	s += p*r;
 #ifdef PRIMES32
 	if (afact>afact0){
@@ -2418,7 +2430,7 @@ namespace giac {
       } // end for
       // compute inverse of a modulo p (will set to 0 if not invertible)
       if (debug_infolevel>6)
-	*logptr(contextptr) << CLOCK() << gettext(" Computing inverses mod p of the basis ") << endl;
+	*logptr(contextptr) << CLOCK() << gettext(" Computing inverses mod p of the basis ") << '\n';
       // fastsmod_prepare(a,zx,zy,zr,a256);
       gen b;
       for (int i=0;i< (1<<(afact-1));++i){
@@ -2435,7 +2447,7 @@ namespace giac {
 	if (axbmodn.size()>=todo_rel)
 	  break;
 	if (debug_infolevel>6)
-	  *logptr(contextptr) << CLOCK() << gettext(" Computing c ") << endl;
+	  *logptr(contextptr) << CLOCK() << gettext(" Computing c ") << '\n';
 #ifdef PRIMES32
 	int bv=1,be=-1;
 	if (afact>afact0){
@@ -2479,7 +2491,7 @@ namespace giac {
 	  }
 	bvals.push_back(b);
 	if (debug_infolevel>6)
-	  *logptr(contextptr) << CLOCK() << gettext(" Computing roots mod the basis ") << endl;
+	  *logptr(contextptr) << CLOCK() << gettext(" Computing roots mod the basis ") << '\n';
 	// fastsmod_prepare(b,zx,zy,zr,b256);
 #ifdef PRIMES32 
 	if (i && afact>afact0)
@@ -2506,7 +2518,7 @@ namespace giac {
 	  unsigned cl;
 	  if (debug_infolevel>3){
 	    cl=CLOCK();
-	    *logptr(contextptr) << cl << gettext(" Init large prime hashtables ") << endl;
+	    *logptr(contextptr) << cl << gettext(" Init large prime hashtables ") << '\n';
 	  }
 	  int total=(nslices << (afact-1));
 	  if (int(lp_map.size()) < total)
@@ -2515,7 +2527,7 @@ namespace giac {
 	    lp_map[k].clear();
 	  if (lp_basis_pos){
 	    for (int k=0;;){
-	      basis_t * bit=&basis[lp_basis_pos], * bitend=&basis[0]+bs;
+	      basis_t * bit=&basis[0]+lp_basis_pos, * bitend=&basis[0]+bs;
 	      unsigned endpos=nslices*slicesize;
 	      lp_tab_t * ptr=&lp_map[0]+k*nslices;
 	      for (;bit!=bitend;++bit){
@@ -2533,7 +2545,7 @@ namespace giac {
 	      if (k== (1 << (afact-1))){
 		if (debug_infolevel>3){
 		  unsigned cl2=CLOCK();
-		  *logptr(contextptr) << cl2 << gettext(" End large prime hashtables ") << cl2-cl << endl;
+		  *logptr(contextptr) << cl2 << gettext(" End large prime hashtables ") << cl2-cl << '\n';
 		}
 		break;
 	      }
@@ -2541,7 +2553,7 @@ namespace giac {
 	      // switch roots to next polynomial
 	      int * bvpos=&bainv2[(bv-1)*bs],* bvposend=bvpos+bs;
 	      bvpos += lp_basis_pos;
-	      basis_t * basisptr=&basis[lp_basis_pos];
+	      basis_t * basisptr=&basis[0]+lp_basis_pos;
 	      if (be>0){
 		for (;bvpos<bvposend;++basisptr,++bvpos){
 		  register unsigned p=basisptr->p;
@@ -2578,7 +2590,7 @@ namespace giac {
 	for (int k=0;k< nslices;++k)
 	  lp_map[k].clear();
 	if (lp_basis_pos){
-	  basis_t * bit=&basis[lp_basis_pos], * bitend=&basis[0]+bs;
+	  basis_t * bit=&basis[0]+lp_basis_pos, * bitend=&basis[0]+bs;
 	  unsigned endpos=nslices*slicesize;
 	  for (;bit!=bitend;++bit){
 	    register ushort_t p=bit->p;
@@ -2608,7 +2620,7 @@ namespace giac {
 	if (debug_infolevel>5){
 	  *logptr(contextptr) << CLOCK();
 	  *logptr(contextptr) << gettext(" Polynomial a,b,M=") << a << "," << b << "," << M << " (" << pos << ")" ;
-	  *logptr(contextptr) << CLOCK() << endl;
+	  *logptr(contextptr) << CLOCK() << '\n';
 	}
 #endif  
 	int nrelationsb=0;
@@ -2652,7 +2664,7 @@ namespace giac {
 #endif
 				    contextptr);
 	  if (slicerelations==-1){
-	    *logptr(contextptr) << gettext("Sieve error: Not enough memory ") << endl;
+	    *logptr(contextptr) << gettext("Sieve error: Not enough memory ") << '\n';
 	    break;
 	  }
 	  nrelationsb += slicerelations;
@@ -2674,7 +2686,7 @@ namespace giac {
 	++count_print;
 	if (count_print%4==0)
 #endif
-	  *logptr(contextptr) << axbmodn.size() << " of " << todo_rel << " (" << 100-100*(todo_rel-axbmodn.size())/double(bs+marge) << "%)" << endl;
+	  *logptr(contextptr) << axbmodn.size() << " of " << todo_rel << " (" << 100-100*(todo_rel-axbmodn.size())/double(bs+marge) << "%)" << '\n';
       }
 #endif
       if (nrelationsa==0){
@@ -2682,11 +2694,11 @@ namespace giac {
       }
 #if !defined(RTOS_THREADX) && !defined(BESTA_OS) && !defined NSPIRE
       if (debug_infolevel>1)
-	*logptr(contextptr) << CLOCK()<< gettext(" sieved : ") << axbmodn.size() << " of " << todo_rel << " (" << 100-100*(todo_rel-axbmodn.size())/double(bs+marge) << "%), M=" << M << endl;
+	*logptr(contextptr) << CLOCK()<< gettext(" sieved : ") << axbmodn.size() << " of " << todo_rel << " (" << 100-100*(todo_rel-axbmodn.size())/double(bs+marge) << "%), M=" << M << '\n';
 #endif
     } // end sieve loop
     if (debug_infolevel)
-      *logptr(contextptr) << gettext("Polynomials a,b in use: #a ") << sqrtavals.size() << " and #b " << bvals.size() << endl;
+      *logptr(contextptr) << gettext("Polynomials a,b in use: #a ") << sqrtavals.size() << " and #b " << bvals.size() << '\n';
     delete [] slice;
 #ifdef TIMEOUT
     control_c();
@@ -2699,7 +2711,7 @@ namespace giac {
     }
     // We have enough relations, make matrix, reduce it then find x^2=y^2 mod n congruences
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << gettext(" sieve done: used ") << (puissancesptr-puissancestab)*0.002 << " K for storing relations (of " << puissancestablength*0.002 << ")" << endl;
+      *logptr(contextptr) << CLOCK() << gettext(" sieve done: used ") << (puissancesptr-puissancestab)*0.002 << " K for storing relations (of " << puissancestablength*0.002 << ")" << '\n';
     release_memory(isqrtNmodp);
 #ifdef GIAC_ADDITIONAL_PRIMES 
 #ifdef ADDITIONAL_PRIMES_HASHMAP
@@ -2713,7 +2725,7 @@ namespace giac {
     sort(additional_primes.begin(),additional_primes.end()); // for binary search later
 #else
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << gettext(" removing additional primes") << endl;
+      *logptr(contextptr) << CLOCK() << gettext(" removing additional primes") << '\n';
     // remove relations with additional primes which are used only once
     int lastp=int(axbmodn.size())-1,lasta=int(additional_primes.size())-1;
     for (int i=0;i<=lastp;++i){
@@ -2736,7 +2748,7 @@ namespace giac {
       if (!pos)
 	continue;
       if (pos>lasta){
-	// *logptr(contextptr) << cur << endl;
+	// *logptr(contextptr) << cur << '\n';
 	continue;
       }
       --pos;
@@ -2752,7 +2764,7 @@ namespace giac {
     axbmodn.resize(lastp+1);
     additional_primes.resize(lasta+1);
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << gettext(" end removing additional primes") << endl;
+      *logptr(contextptr) << CLOCK() << gettext(" end removing additional primes") << '\n';
 #endif // ADDTIONAL_PRIMES_HASHMAP
 #endif // GIAC_ADDITIONAL_PRIMES
     // Make relations matrix (currently dense, FIXME improve to sparse and Lanczos algorithm)
@@ -2798,14 +2810,14 @@ namespace giac {
 	  cout << "-1";
 	else {
 	  if (i<=bs)
-	    cout << basis[i-1].p << " " << relations[i].count << endl;
+	    cout << basis[i-1].p << " " << relations[i].count << '\n';
 	  else
-	    cout << endl;
+	    cout << '\n';
 	}
       }
     }
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << " begin rref size " << relations.size() << "x" << l32 << " K " << 0.004*relations.size()*C32 << ", " << count0 << " null lines, " << count1 << " 1-line" << endl;
+      *logptr(contextptr) << CLOCK() << " begin rref size " << relations.size() << "x" << l32 << " K " << 0.004*relations.size()*C32 << ", " << count0 << " null lines, " << count1 << " 1-line" << '\n';
 #if 0 // debug only
     for (int i=0;i<relations.size();++i){
       cout << i << ", p=";
@@ -2813,23 +2825,23 @@ namespace giac {
 	cout << "-1";
       else {
 	if (i<=bs)
-	  cout << basis[i-1].p << " " << relations[i].count << endl;
+	  cout << basis[i-1].p << " " << relations[i].count << '\n';
 	else
-	  cout << endl;
+	  cout << '\n';
       }
     }
 #endif
     sort(relations.begin(),relations.end()); // put 0 lines at end, otherwise asc. sort
 #else // RREF_SORT
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << " begin rref size " << relations.size() << "x" << l32 << " K " << 0.004*relations.size()*C32 << endl;
+      *logptr(contextptr) << CLOCK() << " begin rref size " << relations.size() << "x" << l32 << " K " << 0.004*relations.size()*C32 << '\n';
     reverse(relations.begin(),relations.end());
 #endif // RREF_SORT
     // rref(relations,relations.size(),C32,0);
     rref(relations,int(relations.size()),C32,1);
     rref(relations,int(relations.size()),C32,2);
     if (debug_infolevel)
-      *logptr(contextptr) << CLOCK() << " end rref" << endl;
+      *logptr(contextptr) << CLOCK() << " end rref" << '\n';
     // printbool(*logptr(contextptr),relations);
     // move pivots on the diagonal by inserting 0 lines
     vector< unsigned * > relations2(l32);
@@ -2869,7 +2881,7 @@ namespace giac {
       } // end for unsigned j=0; j<l32
       for (int i=0;i<bs;++i){
 	if (p[i] % 2)
-	  *logptr(contextptr) << gettext("error, odd exponent for prime ") << basis[i].p << endl;
+	  *logptr(contextptr) << gettext("error, odd exponent for prime ") << basis[i].p << '\n';
 	if (p[i]){
 #if 1
 	  mpz_set_ui(alloc1,basis[i].p);
@@ -2896,7 +2908,7 @@ namespace giac {
       }
       for (unsigned i=0;i<additional_primes.size();++i){
 	if (add_p[i] % 2)
-	  *logptr(contextptr) << gettext("error") << i << endl;
+	  *logptr(contextptr) << gettext("error") << i << '\n';
 	if (add_p[i]){
 #if 1
 	  mpz_set_ui(alloc1,additional_primes[i]);
@@ -2927,7 +2939,7 @@ namespace giac {
 #endif
       cur=gcd(x-y,n_orig);
       if (debug_infolevel>6)
-	*logptr(contextptr) << CLOCK() << gettext("checking gcd") << cur << " " << N << endl;
+	*logptr(contextptr) << CLOCK() << gettext("checking gcd") << cur << " " << N << '\n';
       if ( (cur.type==_INT_ && cur.val>7) || 
 	   (cur.type==_ZINT && is_strictly_greater(n_orig,cur,contextptr))){
 	pn=cur;
@@ -2944,6 +2956,220 @@ namespace giac {
     delete [] tab;
     return false;
   }
+
+  // elliptic curve method, 
+  // http://math.univ-lyon1.fr/~roblot/resources/factorisation.pdf
+  // This is a very naive implementation
+  // It does not use Montgomery representation and only phase 1
+  // For professional implementations, cf.
+  // https://members.loria.fr/PZimmermann/papers/ecm-submitted.pdf
+  // https://pdfs.semanticscholar.org/e8eb/13b75292b15dd63c3e7e4b1c8dc334d278ba.pdf
+  // ecm will be used if available
+#define ECM_MAXITER 1000
+  static gen L(double alpha,double beta,double N){
+    double lnN=std::log(N);
+    return std::exp(beta*std::pow(lnN,alpha)*std::pow(std::log(lnN),1-alpha));
+  }
+
+
+#ifndef USE_GMP_REPLACEMENTS
+  // addition in elliptic curve, returns 1 on success or 0 and m=a divisor of n
+  int ecm_add(const mpz_t &x1,const mpz_t &y1,const mpz_t & x2,const mpz_t &y2,const mpz_t & a,const mpz_t & n,mpz_t & m,mpz_t & x,mpz_t &y){
+    if (mpz_cmp(x1,x2)){
+      mpz_sub(x,x2,x1); // x=x2-x1
+      int res=mpz_invert(m,x,n); // m=inv(x2-x1) mod n
+      if (res==0){ // not invertible
+	mpz_gcd(m,x,n);
+	return 0; // m has non trivial gcd with n
+      }
+      mpz_sub(y,y2,y1);
+      mpz_mul(m,m,y); // m=(y2-y1)*invmod(x2-x1,n);
+    }
+    else {
+      mpz_mul_ui(y,y1,2);
+      int res=mpz_invert(m,y,n); // m=inv(2*y) mod n
+      if (res==0){ // not invertible
+	mpz_gcd(m,y,n);
+	return 0; // m has non trivial gcd with n
+      }
+      mpz_mul(x,x1,x1);
+      mpz_mul_ui(x,x,3);
+      mpz_add(x,x,a);
+      mpz_mul(m,m,x); // m=(3*x1*x1+a)*invmod(2*y1,n);
+    }
+    mpz_fdiv_r(m,m,n); // m=mod(m,n);
+    mpz_mul(x,m,m);
+    mpz_sub(x,x,x1);
+    mpz_sub(x,x,x2);
+    mpz_fdiv_r(x,x,n); // x=mod(m*m-x1-x2,n);
+    mpz_sub(y,x1,x);
+    mpz_mul(y,m,y);
+    mpz_sub(y,y,y1);
+    mpz_fdiv_r(y,y,n); // y=mod(m*(x1-x)-y1,n);
+    // smod x and y
+    mpz_add(m,x,x);
+    if (mpz_cmp(m,n)>0)
+      mpz_sub(x,x,n);
+    mpz_add(m,y,y);
+    if (mpz_cmp(m,n)>0)
+      mpz_sub(y,y,n);
+    return 1;
+  }
+#endif
+
+  gen ecm_add(const gen &x1,const gen &y1,const gen & x2,const gen &y2,const gen & a,const gen & n,gen & m,gen & x,gen &y){
+    if (is_inf(x1)){
+      x=x2; y=y2; return 1;
+    }
+    if (is_inf(x2)){
+      x=x1; y=y1; return 1;
+    }
+    if (y1+y2==0){
+      y=x=unsigned_inf; return 1;
+    }
+#ifndef USE_GMP_REPLACEMENTS
+    if (x1.type==_ZINT && y1.type==_ZINT && x2.type==_ZINT && y2.type==_ZINT && a.type==_ZINT && n.type==_ZINT ){
+      m=gen(1LL<<33);
+      x=gen(1LL<<33);
+      y=gen(1LL<<33);
+      if (!ecm_add(*x1._ZINTptr,*y1._ZINTptr,*x2._ZINTptr,*y2._ZINTptr,*a._ZINTptr,*n._ZINTptr,*m._ZINTptr,*x._ZINTptr,*y._ZINTptr)){
+	return gen(*m._ZINTptr);
+      }
+      return 1;
+    }
+#endif
+    if (x1!=x2){
+      m=gcd(x2-x1,n);
+      if (m!=1)
+	return m;
+      m=(y2-y1)*invmod(x2-x1,n);
+    }
+    else {
+      m=gcd(y1,n);
+      if (m!=1)
+	return m;
+      m=(3*x1*x1+a)*invmod(2*y1,n);
+    }
+    m=smod(m,n);
+    x=smod(m*m-x1-x2,n);
+    y=smod(m*(x1-x)-y1,n);
+    return 1;
+  }
+  // multiplication in elliptic curve,
+  gen ecm_mult(const gen &x1,const gen &y1,ulonglong m,const gen & a,const gen & n,gen & x,gen &y){
+    gen x2(x1),y2(y1),xtmp,ytmp,g,M;
+    y=x=plus_inf;
+    while (m){
+      if (m%2){
+	g=ecm_add(x,y,x2,y2,a,n,M,xtmp,ytmp);
+	if (g!=1) 
+	  return g;
+	swapgen(x,xtmp); swapgen(y,ytmp);// x=xtmp; y=ytmp;
+      }
+      m/=2;
+      g=ecm_add(x2,y2,x2,y2,a,n,M,xtmp,ytmp); // improve: ecmdup
+      if (g!=1) 
+	return g;
+      swapgen(x2,xtmp);swapgen(y2,ytmp);// x2=xtmp; y2=ytmp;
+    }
+    return 1;
+  }
+  gen _ecm_factor(const gen &n_,GIAC_CONTEXT){
+    gen B,n(n_);
+    int maxiter(ECM_MAXITER);
+    if (n.type==_VECT && n._VECTptr->size()>=2){
+      const vecteur & v=*n._VECTptr;
+      B=v[1];
+      if (v.size()>=3 && v[2].type==_INT_)
+	maxiter=giacmax(1,v[2].val);
+      n=v.front();
+    }
+    if (!is_integer(n) || is_positive(-n,contextptr))
+      return gensizeerr(contextptr);
+    if (_isprime(n,contextptr)!=0)
+      return n;
+    double logp=.5*std::log(evalf_double(n,1,contextptr)._DOUBLE_val);
+#ifdef HAVE_LIBECM
+    double epsilon=.02; // to be adjusted
+#else
+    double epsilon=.45; // to be adjusted
+#endif
+    if (logp>80) // research factors of size not exceeding 35 digits
+      logp=80;
+    if (B==0)
+      B=L(.5,0.707+epsilon,std::exp(logp));
+    // B=1000;
+    B=_ceil(B,contextptr);
+#ifdef HAVE_LIBECM
+    *logptr(contextptr) << "ECM-GMP factor n="<< n << " , B=" << B << ", #curves <=" << maxiter << '\n';
+    n.uncoerce();
+    double B1=evalf_double(B,1,contextptr)._DOUBLE_val;
+    /* From ECM README, table of optimal values of B1
+       digits D  optimal B1   default B2           expected curves
+                                                       N(B1,B2,D)
+                                              -power 1         default poly
+          20       11e3         1.9e6             74               74 [x^1]
+          25        5e4         1.3e7            221              214 [x^2]
+          30       25e4         1.3e8            453              430 [D(3)]
+          35        1e6         1.0e9            984              904 [D(6)]
+          40        3e6         5.7e9           2541             2350 [D(6)]
+          45       11e6        3.5e10           4949             4480 [D(12)]
+          50       43e6        2.4e11           8266             7553 [D(12)]
+          55       11e7        7.8e11          20158            17769 [D(30)]
+          60       26e7        3.2e12          47173            42017 [D(30)]
+          65       85e7        1.6e13          77666            69408 [D(30)]
+
+     */
+    int res;
+    gen F(1LL<<33);
+    for (int i=0;i<maxiter;++i){
+      res=ecm_factor(*F._ZINTptr, *n._ZINTptr, B1, 0);
+      if (res!=0) break;
+    }
+    if (res==0) return undef;
+    return F;
+#else
+    *logptr(contextptr) << "ECM naive factor n="<< n << " , B=" << B << ", #curves <=" << maxiter << '\n';
+    for (int i=0;i<maxiter;++i){
+      gen a,x,y,b,d,g;
+      a= rand_interval(makevecteur(0,n-1),true,contextptr);// a=1078104638; 
+      x= smod(rand_interval(makevecteur(0,n-1),true,contextptr),n);// 317359960;
+      y= smod(rand_interval(makevecteur(0,n-1),true,contextptr),n);// 983830906;
+      b=smod(y*y-x*x*x-a*x,n);
+      if (debug_infolevel)
+	COUT << CLOCK()*1e-6 << " Factor "<< n << " ECM curve " << i << ", B="<<B << ", a=" << a << ", x=" << x << ", y=" << y << '\n';
+      d=4*a*a*a-27*b*b;
+      g=gcd(d,n);
+      if (g==n)
+	continue;
+      if (g!=1)
+	return g;
+      gen p(2),pe,tmp,xm,ym;
+      for (;is_greater(B,pe=p*p,contextptr);p=nextprime(p+1)){
+	int e=2;
+	while (is_greater(B,tmp=pe*p,contextptr)){
+	  ++e;
+	  pe=tmp;
+	}
+	tmp=evalf_double(pe,1,contextptr);
+	if (pe==tmp){
+	  g=ecm_mult(x,y,ulonglong(tmp._DOUBLE_val),a,n,xm,ym);
+	  if (g!=1){
+	    if (debug_infolevel)
+	      COUT << CLOCK()*1e-6 << " ECM success p=" << p << ", p^e=" << pe << '\n';
+	    return g;
+	  }
+	  swapgen(x,xm); swapgen(y,ym); // x=xm;y=ym;
+	}
+      }
+      B=_floor(1.001*B,contextptr)+1; // to be adjusted
+    } // end maxiter loop
+    return undef;
+#endif
+  }
+  static const char _ecm_factor_s []="ecm_factor";
+  static define_unary_function_eval (__ecm_factor,&_ecm_factor,_ecm_factor_s);
+  define_unary_function_ptr5( at_ecm_factor ,alias_at_ecm_factor,&__ecm_factor,0,true);
 
   // Pollard-rho algorithm
   const int POLLARD_GCD=64;
@@ -3027,10 +3253,10 @@ namespace giac {
 				 (1<<18)
 #endif
 				 )==0))
-	  *logptr(contextptr) << CLOCK() << gettext(" Pollard-rho try ") << m << endl;
+	  *logptr(contextptr) << CLOCK() << gettext(" Pollard-rho try ") << m << '\n';
 	if (m > maxiter ){
 	  if (debug_infolevel)	  
-	    *logptr(contextptr) << CLOCK() << gettext(" Pollard-rho failure, ntries ") << m << endl;
+	    *logptr(contextptr) << CLOCK() << gettext(" Pollard-rho failure, ntries ") << m << '\n';
 	  mpz_clear(alloc5);
 	  mpz_clear(alloc4);
 	  mpz_clear(alloc3);
@@ -3110,7 +3336,7 @@ namespace giac {
     }
     //g<>1 ds le paquet de POLLARD_GCD
     if (debug_infolevel>5)
-      CERR << CLOCK() << " Pollard-rho nloops " << m << endl;
+      CERR << CLOCK() << " Pollard-rho nloops " << m << '\n';
     mpz_set(x,y); // x=y;
     mpz_set(x1,y1); // x1=y1;
     mpz_set_si(g,1); // g=1;
@@ -3406,7 +3632,7 @@ namespace giac {
 
   bool is_divisible_by(const gen & n,unsigned long a){
     if (n.type==_ZINT){
-#ifdef USE_GMP_REPLACEMENTS
+#if defined USE_GMP_REPLACEMENTS 
       mp_digit c;
       mp_mod_d(n._ZINTptr, a, &c);
       return c==0;
@@ -3458,7 +3684,7 @@ namespace giac {
 	    break;
 	  mp_exch(&cur->z,&q);
 	}
-	// *logptr(contextptr) << "Factor " << prime << " " << p << endl;
+	// *logptr(contextptr) << "Factor " << prime << " " << p << '\n';
 	if (p){
 	  u.push_back(prime);
 	  u.push_back(p);
@@ -3472,7 +3698,7 @@ namespace giac {
 	      break;
 	    mpz_swap(cur->z,q);
 	  }
-	  // *logptr(contextptr) << "Factor " << prime << " " << p << endl;
+	  // *logptr(contextptr) << "Factor " << prime << " " << p << '\n';
 	  u.push_back(prime);
 	  u.push_back(p);
 	}
@@ -3497,7 +3723,7 @@ namespace giac {
 	  p=p+1;
 	}
 	if (p!=0){
-	  // *logptr(contextptr) << "Factor " << a << " " << p << endl;
+	  // *logptr(contextptr) << "Factor " << a << " " << p << '\n';
 	  u.push_back(a);
 	  u.push_back(p);
 	}
@@ -3538,18 +3764,18 @@ namespace giac {
     return b;
   }
   static gen pollardsieve(const gen &a,gen k,bool & do_pollard,GIAC_CONTEXT){
-#if defined( GIAC_HAS_STO_38) || defined(EMCC) || defined NSPIRE
+#if defined( GIAC_HAS_STO_38) || defined(EMCC) || defined(EMCC2) || defined NSPIRE
     int debug_infolevel_=debug_infolevel;
 #if defined RTOS_THREADX || defined NSPIRE
     debug_infolevel=2;
     if (do_pollard)
-      *logptr(contextptr) << gettext("Pollard-rho on ") << a << endl; 
+      *logptr(contextptr) << gettext("Pollard-rho on ") << a << '\n'; 
 #else
     debug_infolevel=0;
 #endif
 #endif
     gen res=inpollardsieve(a,k,do_pollard,contextptr);
-#if defined( GIAC_HAS_STO_38) || defined(EMCC) || defined NSPIRE
+#if defined( GIAC_HAS_STO_38) || defined(EMCC) || defined (EMCC2) || defined NSPIRE
     debug_infolevel=debug_infolevel_;
 #ifdef GIAC_HAS_STO_38
     Calc->Terminal.MakeUnvisible();
@@ -3563,10 +3789,25 @@ namespace giac {
 #ifdef TIMEOUT
     control_c();
 #endif
+#ifdef HAVE_LIBECM
+    if (is_greater(a,1e60,context0) && b==-1  && !ctrl_c && !interrupted && _isprime(a,contextptr)==0){ 
+      int res;
+      gen F(1LL<<33);
+      for (int i=0;i<200;++i){ // searching factors of size about 20 digits
+	res=ecm_factor(*F._ZINTptr, *a._ZINTptr, 11e3, 0);
+	if (res!=0) break;
+      }
+      if (res!=0) 
+	b=F;
+    }
+#endif
 #ifdef GIAC_MPQS
     if (b==-1 && !ctrl_c && !interrupted){ 
       do_pollard=false;
       if (msieve(a,b,contextptr)) return b; else return -1; }
+#else
+    if (b==-1)
+      *logptr(contextptr) << "Integer too large for factorization algorithm\n";
 #endif
     if (b==-1)
       b=a;
@@ -3633,7 +3874,7 @@ namespace giac {
       return v;
     }
     if (debug_infolevel>5)
-      CERR << "Pollard begin " << CLOCK() << endl;
+      CERR << "Pollard begin " << CLOCK() << '\n';
     bool do_pollard=true;
     gen a=ifactor2(n,v,do_pollard,contextptr);
     if (a==-1)
@@ -3725,7 +3966,7 @@ namespace giac {
       if (k==3) k=5;
     }
     //f=pfacprem(n,false,contextptr);
-    //cout<<n<<" "<<f<<endl;
+    //cout<<n<<" "<<f<<'\n';
     while (n!=1) {
       g=facprem(n,contextptr);
       if (is_undef(g))
@@ -3756,27 +3997,61 @@ namespace giac {
       return giac_ifactors(n0,contextptr);
     if (n0.type==_VECT && !n0._VECTptr->empty())
       return giac_ifactors(n0._VECTptr->front(),contextptr);
-#ifdef HAVE_LIBPARI
-#ifdef __APPLE__
-    return vecteur(1,gensizeerr(gettext("(Mac OS) Large number, you can try pari(); pari_factor(")+n0.print(contextptr)+")"));
-#endif
     if (!is_integer(n0) || is_zero(n0))
       return vecteur(1,gensizeerr(gettext("ifactors")));
     if (is_one(n0))
       return vecteur(0);
-    gen g(pari_ifactor(n0),contextptr); 
-    if (g.type==_VECT){
-      matrice m(mtran(*g._VECTptr));
-      vecteur res;
-      const_iterateur it=m.begin(),itend=m.end();
-      for (;it!=itend;++it){
-	if (it->type!=_VECT) return vecteur(1,gensizeerr(gettext("ifactor.cc/ifactors")));
-	res.push_back(it->_VECTptr->front());
-	res.push_back(it->_VECTptr->back());
+    if (_isprime(n0,contextptr)!=0)
+      return makevecteur(n0,1);
+#if 1 // set to 0 to disable ecm and pari, using giac sieve only
+    bool ifactor_pari=true;
+#ifdef HAVE_LIBECM
+    int res;
+    gen F(1LL<<33);
+    double B1=1e6;
+    int nbits=sizeinbase2(n0);
+    int maxiter=ECM_MAXITER;
+    if (nbits<242)
+      maxiter = 32;
+    else if (nbits<244)
+      maxiter = 64;
+    else if (nbits<246)
+      maxiter = 128;
+    else if (nbits<248)
+      maxiter = 256;
+    else if (nbits<250)
+      maxiter = 512;
+    for (int i=0;i<maxiter;++i){
+      res=ecm_factor(*F._ZINTptr, *n0._ZINTptr, B1, 0);
+      if (res!=0) break;
+    }
+    if (res!=0){
+      vecteur tmp=ifactors1(n0/F,contextptr);
+      tmp=mergevecteur(tmp,ifactors1(F,contextptr));
+      return tmp;
+    }
+    ifactor_pari=nbits>=256;
+#endif
+#ifdef HAVE_LIBPARI
+    if (ifactor_pari){
+#ifdef __APPLE__
+      return vecteur(1,gensizeerr(gettext("(Mac OS) Large number, you can try pari(); pari_factor(")+n0.print(contextptr)+")"));
+#endif
+      gen g(pari_ifactor(n0),contextptr); 
+      if (g.type==_VECT){
+	matrice m(mtran(*g._VECTptr));
+	vecteur res;
+	const_iterateur it=m.begin(),itend=m.end();
+	for (;it!=itend;++it){
+	  if (it->type!=_VECT) return vecteur(1,gensizeerr(gettext("ifactor.cc/ifactors")));
+	  res.push_back(it->_VECTptr->front());
+	  res.push_back(it->_VECTptr->back());
+	}
+	return res;
       }
-      return res;
     }
 #endif // LIBPARI
+#endif
     return giac_ifactors(n0,contextptr);
   }
 
@@ -3873,6 +4148,13 @@ namespace giac {
 
   gen _ifactors(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG && args.subtype==-1) return  args;
+    if (args.type==_VECT && args.subtype==_SEQ__VECT && args._VECTptr->size()==2 && args._VECTptr->back()==at_matrix){
+      gen g=args._VECTptr->front();
+      g=_ifactors(g,contextptr);
+      if (g.type!=_VECT || g._VECTptr->size()%2)
+	return g;
+      return _matrix(makesequence(g._VECTptr->size()/2,2,g),contextptr);
+    }
     if (args.type==_VECT)
       return apply(args,_ifactors,contextptr);
     gen g(args);
@@ -3965,9 +4247,37 @@ namespace giac {
       return res;
     return in_factors1(res,contextptr);
   }
+  vecteur sqff_factors(const gen & g,GIAC_CONTEXT){
+    gen gf=_sqrfree(g,contextptr);
+    return in_factors(gf,contextptr);
+  }
   static const char _factors_s []="factors";
-  gen _factors(const gen & args,GIAC_CONTEXT){
+  gen _factors(const gen & args,GIAC_CONTEXT){ 
     if ( args.type==_STRNG && args.subtype==-1) return  args;
+    if (args.type==_VECT && args.subtype==_SEQ__VECT && args._VECTptr->size()>=2 && args._VECTptr->back()==at_matrix){
+      gen g;
+      if (args._VECTptr->size()==2)
+	g=args._VECTptr->front();
+      else 
+	g=gen(vecteur(args._VECTptr->begin(),args._VECTptr->end()-1),_SEQ__VECT);
+      g=_factors(g,contextptr);
+      if (g.type!=_VECT || g._VECTptr->size()%2)
+	return g;
+      return _matrix(makesequence(g._VECTptr->size()/2,2,g),contextptr);
+    }
+    if (args.type==_VECT && args.subtype==_POLY1__VECT){
+      gen x(identificateur("xfactors"));
+      gen res=_poly2symb(makesequence(args,x),contextptr);
+      res=_factors(res,contextptr);
+      if (res.type==_VECT && res._VECTptr->size()==2){
+	vecteur v(*res._VECTptr);
+	for (size_t i=0;i<v.size();i+=2){
+	  v[i]=_symb2poly(makesequence(v[i],x),contextptr);
+	}
+	return v;
+      }
+      return res;
+    }
     if (args.type==_VECT && args.subtype==_SEQ__VECT && args._VECTptr->size()==2){
       gen j=args._VECTptr->back();
       gen res=_factors(args._VECTptr->front()*j,contextptr);
@@ -4404,6 +4714,288 @@ namespace giac {
   static const char _fxnd_s []="fxnd";
   static define_unary_function_eval (__fxnd,&_fxnd,_fxnd_s);
   define_unary_function_ptr5( at_fxnd ,alias_at_fxnd,&__fxnd,0,true); 
+
+  int generator(int p,const vecteur & v){
+    vector<int> w;
+    for (int i=0;i<v.size();i+=2){
+      if (v[i].type!=_INT_)
+	return 0;
+      w.push_back((p-1)/v[i].val);
+    }
+    for (int a=2;a<p;++a){
+      int r=0;
+      for (int i=0;i<w.size();i++){
+	r=powmod(a,w[i],p);
+	if (r==1)
+	  break;
+      }
+      if (r!=1)
+	return a;
+    }
+    return 0; // p is not prime!
+  }
+
+  // p assumed to be prime, find a generator of (Z/pZ^*,*)
+  int generator(int p){
+    vecteur v=ifactors(p-1,context0);
+    return generator(p,v);
+  }
+
+  gen _znprimroot(const gen & p,GIAC_CONTEXT){
+    if (p.type==_INT_ && is_probab_prime_p(p))
+      return makemod(generator(p.val),p);
+#ifdef HAVE_LIBPARI
+    if (!is_integer(p))
+      return gentypeerr(contextptr);
+    return _pari(makesequence(string2gen("znprimroot",false),p),contextptr);
+#endif
+    if (p.type!=_INT_ || !is_probab_prime_p(p))
+      return gentypeerr("PARI not compiled in => currently, znprimroot(k) expects a prime<2^31");
+    return makemod(generator(p.val),p);
+  }
+  static const char _znprimroot_s []="znprimroot";
+  static define_unary_function_eval (__znprimroot,&_znprimroot,_znprimroot_s);
+  define_unary_function_ptr5( at_znprimroot ,alias_at_znprimroot,&__znprimroot,0,true); 
+
+  int znorder(int k,int p,int phi,const vecteur & v){
+    int o=1;
+    for (int i=0;i<v.size();i+=2){
+      int pi=v[i].val;
+      int mi=v[i+1].val;
+      int pimi=pow((unsigned) pi,(unsigned) mi).val;
+      int a=powmod(k,phi/pimi,p);
+      while (a!=1){
+	o *= pi;
+	a=powmod(a,pi,p);
+      }
+    }
+    return o;
+  }
+
+  int znorder(int k,int p){
+    k %= p;
+    if (gcd(k,p)!=1)
+      return 0;
+    if (k==1)
+      return 1;
+    int phi=euler(p,context0).val;
+    vecteur v=ifactors(phi,context0);
+    return znorder(k,p,phi,v);
+  }
+
+  gen _znorder(const gen & args,GIAC_CONTEXT){
+    if (args.type==_MOD)
+      return _znorder(makevecteur(*args._MODptr,*(args._MODptr+1)),contextptr);
+    if (args.type!=_VECT || args._VECTptr->size()!=2)
+      return gensizeerr(contextptr);
+    gen k=args._VECTptr->front(),p=args._VECTptr->back();
+#ifdef HAVE_LIBPARI
+    if (gcd(p,k)!=1)
+      return 0;
+    return _pari(makesequence(string2gen("znorder",false),makemod(k,p)),contextptr);
+#endif
+    if (k.type!=_INT_ || p.type!=_INT_  || p.val<2)
+      return gentypeerr("PARI not compiled in => currently, znorder(k,p) expects integers<2^31");
+    return znorder(k.val,p.val);
+  }
+  static const char _znorder_s []="znorder";
+  static define_unary_function_eval (__znorder,&_znorder,_znorder_s);
+  define_unary_function_ptr5( at_znorder ,alias_at_znorder,&__znorder,0,true); 
+
+  // b1 *= m mod p
+  //  m += (m>>31) &p;
+  //  int msurp=((1LL<<31)*m)/p+1;
+  inline int precond_mulmod31(int b1,int m,int p,int msurp){
+    // b1 += (b1>>31) &p;
+    int t=longlong(b1)*m-((longlong(b1)*msurp)>>31)*p;
+    // t += (t>>31)&p; // t positive (or at least t-p is valid)
+    return t;
+  }
+
+  // Harvey algorithm for Bernoulli numbers
+  // https://arxiv.org/pdf/0807.1347.pdf
+  // k must be even and p prime
+  // https://web.maths.unsw.edu.au/~davidharvey/code/bernmm/index.html
+  // bernmm lib
+  int bernoulli_mod(int k,int p){
+#ifdef HAVE_LIBBERNMM
+    return bernmm::bern_modp(p,k);
+#endif
+    if (k>p-3){
+      int m=k % (p-1); // now m<p-1 is even therefore <=p-3
+      int bm=bernoulli_mod(m,p);
+      // bk/k=bm/m mod p
+      return ( ( (longlong(bm)*k) %p)*invmod(m,p) )%p;
+    }
+    vecteur v=ifactors(p-1,context0);
+    int g=generator(p,v),r=powmod(g,k-1,p),u;
+    int N=p>11?znorder(2,p,p-1,v):0;
+    if (debug_infolevel)
+      CERR << CLOCK()*1e-6 << " end generator/znorder \n";
+    if (N>4 && k%N){
+      // faster summation is possible
+      int n=(N%2)?N:N/2;
+      int m=(p-1)/2/n;
+      // twokm1=2^(k-1), gi=g^i, gkm1i=(g^(k-1))^i
+      longlong S=0,twokm1=powmod(2,(k-1)%N,p),gi=1,gkm1i=1;
+      int msurp=((1LL<<31)*twokm1)/p+1;
+      for (int i=0;i<m;++i){
+	longlong s=0,pow2=1;
+	int gi2j=gi; // g^i*2^j
+	for (int j=0;j<n;++j){
+#if 1
+	  gi2j = (gi2j<<1) -p;
+	  s -= (1+ ((gi2j>>31)<<1))*pow2;// (2*(1+(gi2j>>31))-1)*pow2;
+	  gi2j -= (gi2j>>31)*p;
+	  pow2=precond_mulmod31(pow2,twokm1,p,msurp);// (pow2*twokm1)%p;
+#else	  
+	  gi2j <<= 1;
+	  if (gi2j>=p){
+	    gi2j -= p;
+	    // f=-1
+	    s -= pow2;
+	    if (s<0)
+	      s += p;
+	  }
+	  else {
+	    // f=1
+	    s += pow2;
+	    if (s>=p)
+	      s -= p;
+	  }
+	  pow2=(pow2*twokm1)%p;
+#endif
+	}
+	// update g^i for next i iteration
+	gi=(gi*g)%p;
+	// s*(g^(k-1))^i
+	s=((s%p)*gkm1i)%p;
+	S += s;
+	if (S>=p)
+	  S -=p;
+	// update (g^(k-1))^i for next i iteration
+	gkm1i=(gkm1i*r)%p;
+      }
+      // final answer k/(2^(-(k-1))-2)*S
+      S=(S*k)%p;
+      S=(S*invmod(invmod(twokm1,p)-2,p))%p;
+      return S;
+    }
+    if (g%2)
+      u=(g-1)/2;
+    else
+      u=(longlong(g-1)*invmod(2,p))%p;
+    int S=0,X=1,Y=r;
+    for (int i=1;i<=p/2;i++){
+      int q=(longlong(g)*X)/p;
+      S=(S+(longlong(u)-q)*Y) % p;
+      X=(longlong(g)*X) % p;
+      Y=(longlong(r)*Y) % p;
+    }
+    int res=(2*longlong(k)*S)%p;
+    res=(longlong(res)*invmod(1-powmod(g,k,p),p))%p;
+    return res;
+  }
+
+#ifndef USE_GMP_REPLACEMENTS
+  void ichinrem_inplace(int r,int m,gen & res,const gen & pim,int & proba,mpz_t & tmpz){
+    if (pim.type==_ZINT && res.type==_ZINT){
+      longlong amodm=mpz_fdiv_ui(*res._ZINTptr,m);
+      if (amodm!=r){
+	gen u,v,d; longlong U;
+	egcd(pim,m,u,v,d);
+	if (u.type==_ZINT)
+	  U=mpz_fdiv_ui(*u._ZINTptr,m);
+	else
+	  U=u.val;
+	if (d==-1){ U=-U; v=-v; d=1; }
+	mpz_mul_si(tmpz,*pim._ZINTptr,(U*(r-amodm))%m);
+	mpz_add(*res._ZINTptr,*res._ZINTptr,tmpz);
+	proba=0;
+      }
+      else ++proba;
+    }
+  }
+#endif
+
+
+  // Inspired by David Harvey code (bernmm)
+  gen bernoulli_rat(int k){
+    long bound1 = (long) std::ceil((k + 0.5) * std::log(double(k)) /M_LN2);
+    if (bound1<37)
+      bound1=37;
+    // Computes the denominator of B_k using Clausen/von Staudt.
+    // loop through factors of k
+    gen D=1;
+    for (int f=1; f*f<=k; f++){
+      // if f divides k....
+      if (k % f == 0){
+	// ... then both f + 1 and k/f + 1 are candidates for primes
+	// dividing the denominator of B_k
+	if (is_probab_prime_p(f+1))
+	  D = (f+1)*D; 
+	if (f*f != k){
+	  int tmp=k/f+1;
+	  if (is_probab_prime_p(tmp))
+	    D = tmp*D;
+	}
+      }
+    }
+    double bits= (k+0.5)*std::log(double(k))/M_LN2 - 4.094*k + 2.470 +
+      std::log(evalf_double(D,1,context0)._DOUBLE_val)/M_LN2 ;
+    gen res(0.0),pip=1;
+    mpz_t tmpz; mpz_init(tmpz);
+    for (int p = 5; ; p = nextprime(p+1).val){
+      if (k % (p-1) == 0)
+	continue;
+      if (debug_infolevel)
+	COUT << CLOCK()*1e-6 << " start bernoulli_mod " << p << '\n';
+      int cur=bernoulli_mod(k,p);
+      if (debug_infolevel)
+	COUT << CLOCK()*1e-6 << " end bernoulli_mod " << p << '\n';
+      if (res.type==_DOUBLE_)
+	res=cur;
+      else {
+#ifndef USE_GMP_REPLACEMENTS
+	if (res.type==_ZINT && pip.type==_ZINT){
+	  int proba=0; // not used
+	  ichinrem_inplace(cur,p,res,pip,proba,tmpz);
+	} else
+#endif
+	  res=ichinrem(gen(cur),res,gen(p),pip);
+      }
+      pip = p*pip;
+      bits -= std::log(p)/M_LN2;
+      if (bits<-1)
+	break;
+    }
+    mpz_clear(tmpz);
+    res=smod(res*D,pip);
+    int s=fastsign(res,context0);
+    if (k%4==2){
+      if (s==-1)
+	res += pip;
+    }
+    else {
+      if (s==1)
+	res -= pip;
+    }
+    //COUT << _evalf(makesequence(res/pip,30),context0) << '\n';
+    return res/D;
+  }
+  
+  gen _bernoulli_mod(const gen & args,GIAC_CONTEXT){
+    if (args.type!=_VECT || args._VECTptr->size()!=2)
+      return gensizeerr(contextptr);
+    gen k=args._VECTptr->front(),p=args._VECTptr->back();
+    if (k.type!=_INT_ || k.val<2 || k.val%2 || p.type!=_INT_  || !is_probab_prime_p(p) )
+      return gentypeerr(contextptr);
+    return bernoulli_mod(k.val,p.val);
+  }
+  static const char _bernoulli_mod_s []="bernoulli_mod";
+  static define_unary_function_eval (__bernoulli_mod,&_bernoulli_mod,_bernoulli_mod_s);
+  define_unary_function_ptr5( at_bernoulli_mod ,alias_at_bernoulli_mod,&__bernoulli_mod,0,true); 
+
 
 #ifndef NO_NAMESPACE_GIAC
 } // namespace giac

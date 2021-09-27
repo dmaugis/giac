@@ -1,4 +1,10 @@
-/* config.h.in.  Generated from configure.in by autoheader.  */
+/* config.h.in.  Generated from configure.ac by autoheader.  */
+
+/* Define if building universal (internal helper macro) */
+#undef AC_APPLE_UNIVERSAL_BUILD
+
+/* Replace GMP by libbf */
+#undef BF2GMP
 
 /* Define if <unordered_map> header is available */
 #undef C11_UNORDERED_MAP
@@ -69,6 +75,9 @@
    don't. */
 #undef HAVE_DECL__SNWPRINTF
 
+/* Define to 1 if you have the <dfu_lib.h> header file. */
+#undef HAVE_DFU_LIB_H
+
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #undef HAVE_DLFCN_H
 
@@ -136,8 +145,14 @@
 /* Define to 1 if you have the `ao' library (-lao). */
 #undef HAVE_LIBAO
 
+/* Define to 1 if you have the `bernmm' library (-lbernmm). */
+#undef HAVE_LIBBERNMM
+
 /* Define to 1 if you have the `blas' library (-lblas). */
 #undef HAVE_LIBBLAS
+
+/* Define to 1 if you have the `cliquer' library (-lcliquer). */
+#undef HAVE_LIBCLIQUER
 
 /* Define to 1 if you have the `cocoa' library (-lcocoa). */
 #undef HAVE_LIBCOCOA
@@ -145,8 +160,14 @@
 /* Define to 1 if you have the `curl' library (-lcurl). */
 #undef HAVE_LIBCURL
 
+/* Define to 1 if you have the `dfu' library (-ldfu). */
+#undef HAVE_LIBDFU
+
 /* Define to 1 if you have the `dl' library (-ldl). */
 #undef HAVE_LIBDL
+
+/* Define to 1 if you have the `ecm' library (-lecm). */
+#undef HAVE_LIBECM
 
 /* Define to 1 if you have the `fltk' library (-lfltk). */
 #undef HAVE_LIBFLTK
@@ -229,8 +250,14 @@
 /* Define to 1 if you have the `rt' library (-lrt). */
 #undef HAVE_LIBRT
 
+/* Define to 1 if you have the `samplerate' library (-lsamplerate). */
+#undef HAVE_LIBSAMPLERATE
+
 /* Define to 1 if you have the `tommath' library (-ltommath). */
 #undef HAVE_LIBTOMMATH
+
+/* Define to 1 if you have the `usb-1.0' library (-lusb-1.0). */
+#undef HAVE_LIBUSB_1_0
 
 /* Define to 1 if you have the `X11' library (-lX11). */
 #undef HAVE_LIBX11
@@ -425,6 +452,9 @@
 /* Define if you have the 'unsigned long long' type. */
 #undef HAVE_UNSIGNED_LONG_LONG
 
+/* Define to 1 if you have the <vcl1/vectorclass.h> header file. */
+#undef HAVE_VCL1_VECTORCLASS_H
+
 /* Define if you have the 'wchar_t' type. */
 #undef HAVE_WCHAR_T
 
@@ -518,6 +548,18 @@
 
 /* Version number of package */
 #undef VERSION
+
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
 
 /* Define to 1 if the X Window System is missing or not being used. */
 #undef X_DISPLAY_MISSING

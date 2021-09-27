@@ -26,13 +26,19 @@ namespace giac {
   class gen;
   class identificateur;
   struct unary_function_ptr;
+  void restorepurge(const gen & xval,const gen & x,GIAC_CONTEXT);
+  gen assumeeval(const gen & x,GIAC_CONTEXT);
+  // auto-assumptions assuming g is real-defined
+  // if an assumption is already made on a variable, it is ignored
+  vecteur autoassume(const gen & g_,const gen & x,GIAC_CONTEXT);
+
   gen complex_subst(const gen & e,const vecteur & substin,const vecteur & substout,GIAC_CONTEXT);
   gen complex_subst(const gen & e,const gen & x,const gen & newx,GIAC_CONTEXT);
   vecteur lvarxwithinv(const gen &e,const gen & x,GIAC_CONTEXT);
   bool is_constant_wrt(const gen & e,const gen & x,GIAC_CONTEXT);
   bool is_linear_wrt(const gen & e,const gen &x,gen & a,gen & b,GIAC_CONTEXT);
   bool is_quadratic_wrt(const gen & e,const gen &x,gen & a,gen & b,gen & c,GIAC_CONTEXT);
-  gen linear_apply(const gen & e,const gen & x,gen & remains, GIAC_CONTEXT, gen (* f)(const gen &,const gen &,gen &,const context *));
+  gen linear_apply(const gen & e,const gen & x,gen & remains, int mode,GIAC_CONTEXT, gen (* f)(const gen &,const gen &,gen &,int,const context *));
   gen lnabs(const gen & x,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_surd ;
   gen surd(const gen & c,int n,GIAC_CONTEXT);
@@ -59,10 +65,10 @@ namespace giac {
   // int(ratfrac,x=-inf..inf)
   bool intgab_ratfrac(const gen & e,const gen & x,gen & value,GIAC_CONTEXT);
   // integr. of rat. fcns.
-  gen integrate_gen_rem(const gen & e, const gen & x, gen & remains_to_integrate,GIAC_CONTEXT);
+  gen integrate_gen_rem(const gen & e, const gen & x, gen & remains_to_integrate,int intmode,GIAC_CONTEXT);
   gen integrate_id_rem(const gen & e, const gen & x, gen & remains_to_integrate,GIAC_CONTEXT,int intmode); // intmode bit 0 is used for sqrt int control, bit 1 control step/step info
-  gen integrate_id_rem(const gen & e, const gen & x, gen & remains_to_integrate,GIAC_CONTEXT);
-  gen linear_integrate(const gen & e,const gen & x,gen & remains_to_integrate,GIAC_CONTEXT);
+  gen integrate_id_rem(const gen & e, const gen & x, gen & remains_to_integrate,GIAC_CONTEXT,int intmode);
+  gen linear_integrate(const gen & e,const gen & x,gen & remains_to_integrate,int intmode,GIAC_CONTEXT);
   gen integrate_id(const gen & e,const identificateur & x,GIAC_CONTEXT);
   gen integrate_gen(const gen & e,const gen & f,GIAC_CONTEXT);
   gen _integrate(const gen & args,GIAC_CONTEXT);
@@ -141,6 +147,8 @@ namespace giac {
   extern const unary_function_ptr * const  at_fourier_cn ;
 
   void comprim(vecteur & v);
+  extern const gen_op_context invpowtan2_tab[];
+  gen remove_nop(const gen & g,const gen & x,GIAC_CONTEXT);
 
 #ifndef NO_NAMESPACE_GIAC
 } // namespace giac

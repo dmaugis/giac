@@ -21,6 +21,7 @@
 #include "vector.h"
 #include <iostream>
 #include <string>
+#include <cassert>
 
 //////////////////////////////////////////
 /// this commented and the old put back due to build issues... temporary change to get build going
@@ -99,6 +100,7 @@ namespace giac {
   inline bool operator >= (const index_t & a, const index_t & b){ return all_sup_equal(a,b); }
   bool all_inf_equal (const index_t & a, const index_t & b);
   inline bool operator <= (const index_t & a, const index_t & b){ return all_inf_equal(a,b); }
+  void index_gcd(const index_t & a,const index_t & b,index_t & res);
   index_t index_gcd(const index_t & a,const index_t & b);
   index_t index_lcm(const index_t & a,const index_t & b);
   inline index_t index_min(const index_t & a,const index_t & b){ return index_gcd(a,b); }
@@ -251,7 +253,7 @@ namespace giac {
   // capacity of deg_t by direct addressing
   const int POLY_VARS=POLY_VARS_DIRECT+POLY_VARS_OTHER-1;
 
-#if defined(GIAC_NO_OPTIMIZATIONS) || ((defined(VISUALC) || defined(__APPLE__)) && !defined(GIAC_VECTOR)) || defined __clang__ // || defined(NSPIRE) || defined FXCG
+#if defined(GIAC_NO_OPTIMIZATIONS) || ((defined(VISUALC) || defined(__APPLE__)) && !defined(GIAC_VECTOR)) || defined __clang__ || defined S390X // || defined(NSPIRE) || defined FXCG
   class index_m {
   public:
     ref_index_t * riptr;
@@ -310,6 +312,15 @@ namespace giac {
     size_t size() const { return riptr->i.size(); }
     bool is_zero() const ; 
     size_t total_degree() const ;
+#ifdef KHICAS
+    friend stdostream & operator << (stdostream & os,const index_m & m ){
+      os << ":index_m:[ " ;
+      for (index_t::const_iterator it=m.begin();it!=m.end();++it)
+	os << *it << " ";
+      os << "] " ;
+      return(os);
+    }
+#endif
 #ifdef NSPIRE
     template<class T> friend nio::ios_base<T> & operator << (nio::ios_base<T> & os,const index_m & m ){
       os << ":index_m:[ " ;
@@ -328,7 +339,7 @@ namespace giac {
     }
 #endif
     void dbgprint() const {
-      COUT << *this << std::endl;
+      COUT << *this << '\n';
     }
     // set first index element to 0
     index_m set_first_zero() const { index_t i(riptr->i); i[0]=0; return i; }
@@ -505,6 +516,15 @@ namespace giac {
     size_t size() const ;
     bool is_zero() const ;
     size_t total_degree() const ;
+#ifdef KHICAS
+    friend stdostream & operator << (stdostream & os,const index_m & m ){
+      os << ":index_m:[ " ;
+      for (index_t::const_iterator it=m.begin();it!=m.end();++it)
+	os << *it << " ";
+      os << "] " ;
+      return(os);
+    }
+#endif
 #ifdef NSPIRE
     template<class T> friend nio::ios_base<T> & operator << (nio::ios_base<T> & os,const index_m & m ){
       os << ":index_m:[ " ;
@@ -523,7 +543,7 @@ namespace giac {
     }
 #endif
     void dbgprint() const {
-      COUT << *this << std::endl;
+      COUT << *this << '\n';
     }
     // set first index element to 0
     index_m set_first_zero() const;

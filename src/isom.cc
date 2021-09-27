@@ -45,16 +45,13 @@ namespace giac {
     //I.push_back(li);
     //}
     I=midn(n);
-    gen b;
-    if (recursive_normal(mtran(M)*M,contextptr)==I){
+    gen b=mmult(mtran(M),M);
+    b=b-I;
+    if (is_zero(recursive_normal(b,contextptr))){
       b=mdet(M,contextptr);
     } 
-    else {
-      b=gen(0);
-    }
-    if (is_zero(b)) { 
-      return(makevecteur(b));
-    }
+    else 
+      return makevecteur(b);
     if (M==-I) {
       //on a une symetrie centrale
       return(makevecteur(cst_pi,b));
@@ -271,7 +268,7 @@ namespace giac {
 	A.push_back(li);
 	// A*sqrt(norme2) pour avoir la matrice prod vect(n,ei) avec norme(n)=1;
 	A=multvecteur(sqrt(norme2,contextptr),A);
-	//cout<<A<<endl;
+	//cout<<A<<'\n';
 	gen theta=n[1];
 	R=*(recursive_normal(multvecteur(cos(theta,contextptr),midn(3))+multvecteur(1-cos(theta,contextptr),ntn)+multvecteur(sin(theta,contextptr),A),contextptr)._VECTptr); 
       }

@@ -6,11 +6,8 @@
 #endif
 #include "vector.h"
 #include <string>
-#ifndef IN_GIAC
-#include <giac/giac.h>
-#else
+#include "giacPCH.h"
 #include "giac.h"
-#endif
 #ifdef HAVE_LIBFLTK
 #include <FL/Fl_Window.H>
 #include <FL/Fl_Menu.H>
@@ -23,11 +20,7 @@
 #ifdef HAVE_LC_MESSAGES
 #include <locale.h>
 #endif
-#ifndef IN_GIAC
-#include <giac/giacintl.h>
-#else
 #include "giacintl.h"
-#endif
 
 #ifndef NO_NAMESPACE_XCAS
 namespace xcas {
