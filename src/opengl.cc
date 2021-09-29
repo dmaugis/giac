@@ -58,7 +58,7 @@
 using namespace std;
 using namespace giac;
 
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 // missing from emscripten
 void glPointSize(GLint){ }
 void glColorMaterial(GLenum,GLint){}
@@ -2040,7 +2040,7 @@ namespace giac {
     return i;
   }
 
-  void tran4(double * colmat){
+  void tran4double(double * colmat){
     giac::swapdouble(colmat[1],colmat[4]);
     giac::swapdouble(colmat[2],colmat[8]);
     giac::swapdouble(colmat[3],colmat[12]);
@@ -2099,6 +2099,7 @@ namespace giac {
       return;
     vecteur & v = *f._VECTptr;
     gen v0=v[0];
+    v0=evalf(v0,1,contextptr);
     bool est_hyperplan=v0.is_symb_of_sommet(at_hyperplan);
     string legende;
     vecteur style(get_style(v,legende));
@@ -2132,7 +2133,7 @@ namespace giac {
     }
     else 
       glDisable(GL_COLOR_MATERIAL);
-#ifndef EMCC
+#if !defined(EMCC) && !defined(EMCC2)
     GLfloat tab[4]={0,0,0,1};
     glMaterialfv(GL_FRONT_AND_BACK,GL_EMISSION,tab);
     glMaterialf(GL_FRONT_AND_BACK,GL_SHININESS,50);
@@ -2228,10 +2229,10 @@ namespace giac {
 	  glGetLightfv(GL_LIGHT0+i,GL_POSITION,posf);
 	  glGetLightfv(GL_LIGHT0+i,GL_SPOT_DIRECTION,direcf);
 	  direcf[3]=0;
-	  mult4(model_inv,posf,pos);
-	  tran4(model);
-	  mult4(model,direcf,direc);
-	  tran4(model);
+	  mult4dfd(model_inv,posf,pos);
+	  tran4double(model);
+	  mult4dfd(model,direcf,direc);
+	  tran4double(model);
 	  glGetLightfv(GL_LIGHT0+i,GL_AMBIENT,ambient);
 	  glGetLightfv(GL_LIGHT0+i,GL_DIFFUSE,diffuse);
 	  glGetLightfv(GL_LIGHT0+i,GL_SPECULAR,specular);
@@ -2826,8 +2827,9 @@ namespace giac {
 	    double xC,yC,zC,xD,yD,zD;
 	    find_xyz(iC,jC,depthB,xC,yC,zC);
 	    find_xyz(iD,jD,depthB,xD,yD,zD);
-	    glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
-	    glBegin(GL_POLYGON);
+	    //glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+	    //glBegin(GL_POLYGON);
+	    glBegin(GL_LINE_LOOP);
 	    glVertex3d(xB,yB,zB);
 	    glVertex3d(xC,yC,zC);
 	    glVertex3d(xD,yD,zD);
@@ -2892,30 +2894,30 @@ namespace giac {
       indraw(*it);
   }
 
-  void mult4(double * colmat,double * vect,double * res){
+  void mult4ddd(double * colmat,double * vect,double * res){
     res[0]=colmat[0]*vect[0]+colmat[4]*vect[1]+colmat[8]*vect[2]+colmat[12]*vect[3];
     res[1]=colmat[1]*vect[0]+colmat[5]*vect[1]+colmat[9]*vect[2]+colmat[13]*vect[3];
     res[2]=colmat[2]*vect[0]+colmat[6]*vect[1]+colmat[10]*vect[2]+colmat[14]*vect[3];
     res[3]=colmat[3]*vect[0]+colmat[7]*vect[1]+colmat[11]*vect[2]+colmat[15]*vect[3];
   }
 
-  void mult4(double * colmat,float * vect,double * res){
+  void mult4dfd(double * colmat,float * vect,double * res){
     res[0]=colmat[0]*vect[0]+colmat[4]*vect[1]+colmat[8]*vect[2]+colmat[12]*vect[3];
     res[1]=colmat[1]*vect[0]+colmat[5]*vect[1]+colmat[9]*vect[2]+colmat[13]*vect[3];
     res[2]=colmat[2]*vect[0]+colmat[6]*vect[1]+colmat[10]*vect[2]+colmat[14]*vect[3];
     res[3]=colmat[3]*vect[0]+colmat[7]*vect[1]+colmat[11]*vect[2]+colmat[15]*vect[3];
   }
 
-  void mult4(double * c,double k,double * res){
+  void mult4d(double * c,double k,double * res){
     for (int i=0;i<16;i++)
       res[i]=k*c[i];
   }
   
-  double det4(double * c){
+  double det4d(double * c){
     return c[0]*c[5]*c[10]*c[15]-c[0]*c[5]*c[14]*c[11]-c[0]*c[9]*c[6]*c[15]+c[0]*c[9]*c[14]*c[7]+c[0]*c[13]*c[6]*c[11]-c[0]*c[13]*c[10]*c[7]-c[4]*c[1]*c[10]*c[15]+c[4]*c[1]*c[14]*c[11]+c[4]*c[9]*c[2]*c[15]-c[4]*c[9]*c[14]*c[3]-c[4]*c[13]*c[2]*c[11]+c[4]*c[13]*c[10]*c[3]+c[8]*c[1]*c[6]*c[15]-c[8]*c[1]*c[14]*c[7]-c[8]*c[5]*c[2]*c[15]+c[8]*c[5]*c[14]*c[3]+c[8]*c[13]*c[2]*c[7]-c[8]*c[13]*c[6]*c[3]-c[12]*c[1]*c[6]*c[11]+c[12]*c[1]*c[10]*c[7]+c[12]*c[5]*c[2]*c[11]-c[12]*c[5]*c[10]*c[3]-c[12]*c[9]*c[2]*c[7]+c[12]*c[9]*c[6]*c[3];
   }
 
-  void inv4(double * c,double * res){
+  void inv4d(double * c,double * res){
     res[0]=c[5]*c[10]*c[15]-c[5]*c[14]*c[11]-c[10]*c[7]*c[13]-c[15]*c[9]*c[6]+c[14]*c[9]*c[7]+c[11]*c[6]*c[13];
     res[1]=-c[1]*c[10]*c[15]+c[1]*c[14]*c[11]+c[10]*c[3]*c[13]+c[15]*c[9]*c[2]-c[14]*c[9]*c[3]-c[11]*c[2]*c[13];
     res[2]=c[1]*c[6]*c[15]-c[1]*c[14]*c[7]-c[6]*c[3]*c[13]-c[15]*c[5]*c[2]+c[14]*c[5]*c[3]+c[7]*c[2]*c[13];
@@ -2932,14 +2934,14 @@ namespace giac {
     res[13]=c[0]*c[9]*c[14]-c[0]*c[13]*c[10]-c[9]*c[2]*c[12]-c[14]*c[8]*c[1]+c[13]*c[8]*c[2]+c[10]*c[1]*c[12];
     res[14]=-c[0]*c[5]*c[14]+c[0]*c[13]*c[6]+c[5]*c[2]*c[12]+c[14]*c[4]*c[1]-c[13]*c[4]*c[2]-c[6]*c[1]*c[12];
     res[15]=c[0]*c[5]*c[10]-c[0]*c[9]*c[6]-c[5]*c[2]*c[8]-c[10]*c[4]*c[1]+c[9]*c[4]*c[2]+c[6]*c[1]*c[8];
-    double det=det4(c);
-    mult4(res,1/det,res);
+    double det=det4d(c);
+    mult4d(res,1/det,res);
   }
 
   void dim32dim2(double * view,double * proj,double * model,double x0,double y0,double z0,double & i,double & j,double & dept){
     double vect[4]={x0,y0,z0,1},res1[4],res2[4];
-    mult4(model,vect,res1);
-    mult4(proj,res1,res2);
+    mult4ddd(model,vect,res1);
+    mult4ddd(proj,res1,res2);
     i=res2[0]/res2[3]; // x and y are in [-1..1]
     j=res2[1]/res2[3];
     dept=res2[2]/res2[3];
@@ -2957,8 +2959,8 @@ namespace giac {
     i=(i-view[0])*2/view[2]-1;
     j=(j-view[1])*2/view[3]-1;
     double res2[4]={i,j,depth_,1},res1[4],vect[4];
-    mult4(proj_inv,res2,res1);
-    mult4(model_inv,res1,vect);
+    mult4ddd(proj_inv,res2,res1);
+    mult4ddd(model_inv,res1,vect);
     x=vect[0]/vect[3];
     y=vect[1]/vect[3];
     z=vect[2]/vect[3];
@@ -3136,7 +3138,7 @@ void freeglutStrokeCharacter( int character )
 
   void Opengl3d::current_normal(double & a,double & b,double & c) {
     double res1[4]={0,0,1,1},vect[4];
-    mult4(model_inv,res1,vect);
+    mult4ddd(model_inv,res1,vect);
     a=vect[0]/vect[3]-(window_xmax+window_xmin)/2;
     b=vect[1]/vect[3]-(window_ymax+window_ymin)/2;
     c=vect[2]/vect[3]-(window_zmax+window_zmin)/2;
@@ -3176,7 +3178,7 @@ void freeglutStrokeCharacter( int character )
     }
     glShadeModel((display_mode & 0x10)?GL_FLAT:GL_SMOOTH);
     bool lighting=display_mode & 0x8;
-    if (lighting)
+    if (lighting || default_color(contextptr)==FL_WHITE)
       glClearColor(0, 0, 0, 0);
     else
       glClearColor(1, 1, 1, 1);
@@ -3236,16 +3238,16 @@ void freeglutStrokeCharacter( int character )
     proj[10]=-proj[0];
     proj[15]=1;
     */
-    inv4(proj,proj_inv);
+    inv4d(proj,proj_inv);
     glGetDoublev(GL_MODELVIEW_MATRIX,model); // modelview matrix in columns
-    inv4(model,model_inv);
+    inv4d(model,model_inv);
     glGetDoublev(GL_VIEWPORT,view);
     if (debug_infolevel>=2){
       double check[16];
-      mult4(model,&model_inv[0],&check[0]);
-      mult4(model,&model_inv[4],&check[4]);
-      mult4(model,&model_inv[8],&check[8]);
-      mult4(model,&model_inv[12],&check[12]);
+      mult4ddd(model,&model_inv[0],&check[0]);
+      mult4ddd(model,&model_inv[4],&check[4]);
+      mult4ddd(model,&model_inv[8],&check[8]);
+      mult4ddd(model,&model_inv[12],&check[12]);
       for (int i=0;i<16;++i){
 	cout << model[i] << ",";
 	if (i%4==3) cout << endl;
@@ -3584,10 +3586,10 @@ void freeglutStrokeCharacter( int character )
 	  glGetLightfv(GL_LIGHT0+i,GL_POSITION,posf);
 	  glGetLightfv(GL_LIGHT0+i,GL_SPOT_DIRECTION,direcf);
 	  direcf[3]=0;
-	  mult4(model_inv,posf,pos);
-	  tran4(model);
-	  mult4(model,direcf,direc);
-	  tran4(model);
+	  mult4dfd(model_inv,posf,pos);
+	  tran4double(model);
+	  mult4dfd(model,direcf,direc);
+	  tran4double(model);
 	  glGetLightfv(GL_LIGHT0+i,GL_AMBIENT,ambient);
 	  glGetLightfv(GL_LIGHT0+i,GL_DIFFUSE,diffuse);
 	  glGetLightfv(GL_LIGHT0+i,GL_SPECULAR,specular);
@@ -3658,9 +3660,9 @@ void freeglutStrokeCharacter( int character )
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glGetDoublev(GL_PROJECTION_MATRIX,proj); // projection matrix in columns
-    inv4(proj,proj_inv);
+    inv4d(proj,proj_inv);
     glGetDoublev(GL_MODELVIEW_MATRIX,model); // modelview matrix in columns
-    inv4(model,model_inv);
+    inv4d(model,model_inv);
     glGetDoublev(GL_VIEWPORT,view);
     if (display_mode & 0x8)
       glColor3f(0,0,0);
@@ -4134,7 +4136,7 @@ void freeglutStrokeCharacter( int character )
     return 0;
   }
   
-  int giac_renderer(const char * ch){
+int giac_renderer(const char * ch){
     // COUT << "giac_renderer " << ch << endl;
     int i=0,s=strlen(ch),w=400,h=250,fs=1,no=-1;
     if (s==0) return -1;
@@ -4150,6 +4152,7 @@ void freeglutStrokeCharacter( int character )
     }
     if (!openglptr)
       openglptr = new Opengl3d (400,250);
+    //openglptr->contextptr=contextptr;
     if (s){
       no=atoi(ch)-1;
       // COUT << no << " " << v3d.size() << endl;
@@ -4256,6 +4259,7 @@ void freeglutStrokeCharacter( int character )
       int w=0,h=0,fs;
       if (!openglptr)
 	openglptr = new Opengl3d (400,250);
+      openglptr->contextptr=contextptr;
       fs=init_screen(w,h,-1);
       if (fs)
 	return fs;
@@ -4310,7 +4314,7 @@ void freeglutStrokeCharacter( int character )
 } // namespace giac
 #endif // ndef NO_NAMESPACE_GIAC
 
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 #ifdef GIAC_GGB
 const char * gettext(const char * s) { 
   return s;
@@ -4353,6 +4357,62 @@ const char * gettext(const char * s) {
   }
   return s;
 }
+
+int xcas_python_eval=0;
+char * python_heap=0;
+#ifdef MICROPY_LIB
+extern "C" {
+  int do_file(const char *file){
+    return 0;
+  }
+  char * mp_js_init(int heap_size);
+  char * micropy_init(int stack_size,int heap_size){
+    return mp_js_init(heap_size);
+  }
+  int mp_js_do_str(const char *code);
+  int micropy_eval(const char * line){
+    return mp_js_do_str(line);
+  }
+  void  mp_deinit();
+  void mp_stack_ctrl_init();
+  extern int parser_errorline,parser_errorcol;
+  int micropy_ck_eval(const char *line);
+  int mp_token(const char * line);
+  void console_output(const char *s,int i);  
+}
+
+void python_free(){
+  if (!python_heap) return;
+  mp_deinit(); free(python_heap); python_heap=0;
+}
+
+int python_init(int stack_size,int heap_size){
+#if 1 // defined NUMWORKS
+  python_free();
+  python_heap=micropy_init(stack_size,heap_size);
+  if (!python_heap)
+    return 0;
+#endif
+  return 1;
+}
+
+int micropy_ck_eval(const char *line){
+#if 1 // def NUMWORKS
+  if (python_heap && line[0]==0)
+    return 1;
+  if (!python_heap){
+    python_init(pythonjs_stack_size,pythonjs_heap_size);
+  }
+  if (!python_heap){
+    console_output("Memory full",11);
+    return RAND_MAX;
+  }
+#endif
+  return micropy_eval(line);
+}
+#endif
+
+
 #endif // GIAC_GGB
 #endif // EMCC
 

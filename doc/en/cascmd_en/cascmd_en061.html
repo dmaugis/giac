@@ -4,46 +4,60 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Boolean operators : or xor and not</title>
+<title>The CST variable
+
+</title>
 </head>
 <body >
 <a href="cascmd_en060.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en062.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec90" class="subsection">5.2.3  Boolean operators : <span style="font-family:monospace">or xor and not</span></h3>
-<p><a id="hevea_default84"></a><a id="hevea_default85"></a><a id="hevea_default86"></a><a id="hevea_default87"></a><a id="hevea_default88"></a><a id="hevea_default89"></a><a id="hevea_default90"></a>
-<span style="font-family:monospace">or</span> (or <span style="font-family:monospace">||</span>), <span style="font-family:monospace">xor</span>, <span style="font-family:monospace">and</span> (or <span style="font-family:monospace">&amp;&amp;</span>) are infixed 
-operators.<br>
-<span style="font-family:monospace">not</span> is a prefixed operators.<br>
-If <span style="font-family:monospace">a</span> and <span style="font-family:monospace">b</span> are two booleans :<br>
-<span style="font-family:monospace">(a or b)</span> <span style="font-family:monospace">(a || b)</span> returns <span style="font-family:monospace">0</span> (or <span style="font-family:monospace">false</span>) if <span style="font-family:monospace">a</span> and
-<span style="font-family:monospace">b</span> are equal to 0 and returns <span style="font-family:monospace">1</span> (or <span style="font-family:monospace">true</span>) otherwise.<br>
-<span style="font-family:monospace">(a xor b)</span> returns <span style="font-family:monospace">1</span> if <span style="font-family:monospace">a</span> is equal to 1 and <span style="font-family:monospace">b</span> is
-equal to 0 or if <span style="font-family:monospace">a</span> is equal to 0 and <span style="font-family:monospace">b</span> is equal to 1 and returns 0
-if <span style="font-family:monospace">a</span> and <span style="font-family:monospace">b</span> are equal to 0
-or if <span style="font-family:monospace">a</span> and <span style="font-family:monospace">b</span> are equal to 1 (it is the "exclusive or").<br>
-<span style="font-family:monospace">(a and b)</span> or <span style="font-family:monospace">(a &amp;&amp; b)</span> returns <span style="font-family:monospace">1</span> (or <span style="font-family:monospace">true</span>) if <span style="font-family:monospace">a</span>
-and <span style="font-family:monospace">b</span> are equal to 1 and <span style="font-family:monospace">0</span> (or <span style="font-family:monospace">false</span>) otherwise.<br>
-<span style="font-family:monospace">not(a)</span> returns <span style="font-family:monospace">1</span> (or <span style="font-family:monospace">true</span>) if <span style="font-family:monospace">a</span> is equal to 0 (or 
-<span style="font-family:monospace">false</span>), and <span style="font-family:monospace">0</span> (or <span style="font-family:monospace">false</span>) if <span style="font-family:monospace">a</span> is equal to 1 (or 
-<span style="font-family:monospace">true</span>).<br>
-Input :
-</p><div class="center"><span style="font-family:monospace">1&gt;=0 or 1&lt;0</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">1</span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">1&gt;=0 xor 1&gt;0</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">0</span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">1&gt;=0 and 1&gt;0</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">1</span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">not(0==0)</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">0</span></div>
+<h3 id="ssec:CST" class="subsection">5.4.10  The <span style="font-family:monospace">CST</span> variable
+<a id="hevea_default97"></a>
+</h3>
+<p>The menu available with the <span style="font-family:monospace">cust</span> button in the bandeau on the
+onscreen keyboard (see Section <a href="index.html#sec%3Aswin">3.2</a>, item <a href="index.html#enum%3Akbd">3.2</a>) is
+defined with the <span style="font-family:monospace">CST</span> variable. It is a list where each list
+item determines a menu item; a list item is either a builtin command
+name or a list itself consisting of a string to be displayed in the
+menu and the input to be entered when the item is selected.</p><p>For example, to create a custom defined menu with the builtin function
+<span style="font-family:monospace">diff</span>, a user defined function <span style="font-family:monospace">foo</span>, and a menu item
+to insert the number 22/7, you can:<br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">CST:= [diff,["foo",foo],["My pi approx",22/7]]</span>
+</div><p>Note that if the input to be entered is a variable and the variable
+has a value when <span style="font-family:monospace">CST</span> is defined, then <span style="font-family:monospace">CST</span> will
+contain the value of the variable. For example,<br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">app:= 22/7</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">CST:= [diff,["foo",foo],["My pi approx",app]]</span>
+</td></tr>
+</table>
+</div><p>
+will be equivalent to the previous definition of <span style="font-family:monospace">CST</span>.
+However, if the variable does not have a value when <span style="font-family:monospace">CST</span> is
+defined, for example:<br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">CST:= [diff,["foo",foo],["My pi approx",app]]</span></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" > <span style="font-family:monospace">app:= 22/7</span>
+</td></tr>
+</table>
+</div><p>
+then <span style="font-family:monospace">CST</span> will behave as the previous values to begin with,
+but in this case if the variable <span style="font-family:monospace">app</span> is changed, the
+the result of pressing the <span style="font-family:monospace">My pi approx</span> button will change
+also.</p><p>Since <span style="font-family:monospace">CST</span> is a list, a function can be added to the
+<span style="font-family:monospace">cust</span> menu with the <span style="font-family:monospace">concat</span> command (see
+Section <a href="cascmd_en425.html#ssec%3Aconcat">6.40.13</a>);<br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">CST:= concat(CST,evalc)</span>
+</div><p>
+will add the <span style="font-family:monospace">evalc</span> command to the <span style="font-family:monospace">cust</span> menu.</p>
 <hr>
 <a href="cascmd_en060.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

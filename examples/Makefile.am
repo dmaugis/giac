@@ -92,10 +92,7 @@ recur/autres.cxx \
 recur/permutation.cxx \
 recur/dragon.cxx \
 recur/peano.cxx \
-groebner/cyclic3 \
-groebner/cyclic4 \
-groebner/cyclic5 \
-groebner/cyclic6 \
+groebner/*  \
 polyfact/zimmer1 \
 polyfact/zimmer2 \
 polyfact/zimmer3 \
@@ -195,6 +192,7 @@ Exemples/climat/soleil.xws \
 Exemples/climat/edc.xws \
 Exemples/climat/vostok.xws \
 Exemples/climat/global_temp.xws \
+Exemples/climat/banquise.xws \
 Exemples/climat/terre.jpg \
 Exemples/climat/terre.xws \
 Exemples/climat/energie.xws \
@@ -203,6 +201,8 @@ Exemples/climat/neige.xws \
 Exemples/climat/co2t150.xws \
 Exemples/climat/insol.xws \
 Exemples/climat/co2.xws \
+Exemples/climat/geneve_juillet.xws \
+Exemples/climat/geneve_novembre.xws \
 Exemples/crypto/rsa.xws \
 Exemples/crypto/codage.xws \
 Exemples/crypto/reed_s.xws \

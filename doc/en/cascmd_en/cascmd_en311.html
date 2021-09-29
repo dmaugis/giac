@@ -4,51 +4,35 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Laguerre polynomials: laguerre</title>
+<title>Random lists: ranm
+</title>
 </head>
 <body >
 <a href="cascmd_en310.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en312.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec384" class="subsection">5.27.3  Laguerre polynomials: <span style="font-family:monospace">laguerre</span></h3>
-<p><a id="hevea_default486"></a>
-<span style="font-family:monospace">laguerre</span> takes as argument an integer <span style="font-style:italic">n</span> and optionally 
-a variable name (by default <span style="font-style:italic">x</span>) and a parameter name (by default <span style="font-style:italic">a</span>).<br>
-<span style="font-family:monospace">laguerre</span> returns the Laguerre polynomial of degree <span style="font-style:italic">n</span> and of 
-parameter <span style="font-style:italic">a</span>.<br>
-If <span style="font-style:italic">L</span>(<span style="font-style:italic">n</span>,<span style="font-style:italic">a</span>,<span style="font-style:italic">x</span>) denotes the Laguerre polynomial of degree <span style="font-style:italic">n</span> and 
-parameter <span style="font-style:italic">a</span>, the following recurrence relation holds:
-</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><span style="font-style:italic">L</span>(0,<span style="font-style:italic">a</span>,<span style="font-style:italic">x</span>)=1,   
-<span style="font-style:italic">L</span>(1,<span style="font-style:italic">a</span>,<span style="font-style:italic">x</span>)=1+<span style="font-style:italic">a</span>−<span style="font-style:italic">x</span>,   
-<span style="font-style:italic">L</span>(<span style="font-style:italic">n</span>,<span style="font-style:italic">a</span>,<span style="font-style:italic">x</span>)=</td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">2<span style="font-style:italic">n</span>+<span style="font-style:italic">a</span>−1−<span style="font-style:italic">x</span></td></tr>
-<tr><td class="hbar"></td></tr>
-<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span></td></tr>
-</table></td><td class="dcell"><span style="font-style:italic">L</span>(<span style="font-style:italic">n</span>−1,<span style="font-style:italic">a</span>,<span style="font-style:italic">x</span>)−</td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span>+<span style="font-style:italic">a</span>−1</td></tr>
-<tr><td class="hbar"></td></tr>
-<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">n</span></td></tr>
-</table></td><td class="dcell"><span style="font-style:italic">L</span>(<span style="font-style:italic">n</span>−2,<span style="font-style:italic">a</span>,<span style="font-style:italic">x</span>) </td></tr>
-</table><p>
-These polynomials are orthogonal for the scalar product
-</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">&lt;<span style="font-style:italic">f</span>,<span style="font-style:italic">g</span>&gt;=</td><td class="dcell"><span style="font-size:xx-large">∫</span></td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:left">+∞</td></tr>
-<tr><td class="dcell" style="text-align:left"><br>
-<br>
-</td></tr>
-<tr><td class="dcell" style="text-align:left">0</td></tr>
-</table></td><td class="dcell"><span style="font-style:italic">f</span>(<span style="font-style:italic">x</span>)<span style="font-style:italic">g</span>(<span style="font-style:italic">x</span>)<span style="font-style:italic">x</span><sup><span style="font-style:italic">a</span></sup><span style="font-style:italic">e</span><sup>−<span style="font-style:italic">x</span></sup><span style="font-style:italic">dx</span> </td></tr>
-</table><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">laguerre(2)</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">(a</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+-2*a*x+3*a+x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+-4*x+2)/2</span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">laguerre(2,y)</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">(a</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+-2*a*y+3*a+y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+-4*y+2)/2</span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">laguerre(2,y,b)</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">(b</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+-2*b*y+3*b+y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+-4*y+2)/2</span></div>
+<h3 id="ssec:ranm1" class="subsection">6.27.28  Random lists: <span style="font-family:monospace">ranm</span>
+<a id="hevea_default554"></a></h3>
+<p>The <span style="font-family:monospace">ranm</span> command finds lists of random integers.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">ranm</span> takes one argument:<br>
+ <span style="font-style:italic">n</span>, an integer.
+</li><li class="li-itemize"><span style="font-family:monospace">ranm(</span><span style="font-style:italic">n</span><span style="font-family:monospace">)</span> returns a list of <span style="font-style:italic">n</span> random integers
+(between -99 and +99). This list can be seen as the coefficients of an
+univariate polynomial of degree <span style="font-style:italic">n</span>−1.
+</li></ul><p>
+(See also Section <a href="cascmd_en636.html#ssec%3Arandmatrix">9.3.16</a>)</p><p><br>
+</p><p><span style="font-weight:bold">Example.</span><br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">ranm(3)</span>
+</div><p>
+<span style="font-style:italic">Output (for example):</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">⎡<br>
+⎣</td><td class="dcell">70,22,42</td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table>
 <hr>
 <a href="cascmd_en310.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

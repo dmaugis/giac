@@ -1,0 +1,193 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+  <meta charset="utf-8">
+  <meta name=viewport content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="keywords" content="xcas Numworks">
+<title>Outils Numworks</title>
+<style id="document_style" type="text/css">
+* { font-family: sans-serif }
+
+body {
+    margin: 20px 15%;
+    padding: 30px;
+    border-radius: 45px;
+    border: 8px solid #55b4d4;
+}
+
+/* pour les tous petits écrans */
+@media only screen and (max-width: 500px){
+    body {
+        margin: 20px;
+        padding: 20px;
+        border-radius: 40px;
+    }
+}
+
+/* pour les petits écrans */
+@media only screen and (max-width: 800px){
+    ul { padding-inline-start: 20px }
+    h1 { text-align: center }
+}
+
+/* pour les grands écrans */
+@media only screen and (min-width: 1300px){
+    body {
+        margin: 50px 20%;
+        padding: 50px;
+        border-radius: 60px;
+    }
+}
+
+/* pour éviter que les boutons se touchent d'une <li> à une autre */
+
+li {
+    margin-top: 5px;
+    overflow-x: auto
+}
+
+/* pour les boutons */
+
+button {
+    height: 30px;
+    padding: 0px 15px;
+}
+
+input { padding: 5px 15px }
+
+button, input {
+    border: solid 0;
+    border-radius: 15px;
+    cursor: pointer;
+    background: #86b300;
+    transition: background 200ms;
+}
+
+button:hover, input:hover {
+    background: #99bf4d;
+}
+</style>
+</head>
+<script src="numworks.js"></script>
+<script src="nws_sig.js"></script>
+<script src="nws.js"></script>
+<script src="FileSaver.js"></script>
+
+<body>
+<h1>Kit de connection Numworks non verrouill&eacute;e</h1>
+<b>Attention, Numworks verrouille ses calculatrices</b> &agrave;
+partir de la version 16 de son logiciel (sortie en aout 2021)
+ce qui les rend incompatibles avec Xcas et tous
+les logiciels d&eacute;velopp&eacute;s par la communaut&eacute;.
+<b>Ne faites pas de mise &agrave; jour sur le site de Numworks, car c'est
+irr&eacute;versible</b> : cela diminue les possibilit&eacute;s
+de votre calculatrice et lui fait perdre de la valeur
+sur le march&eacute; d'occasion.
+<br>
+Cette page contient un kit de connexion
+avec votre calculatrice qui vous &eacute;vitera d'aller sur
+le workshop de Numworks et de faire une mise &agrave; jour par
+inadvertance.
+<ul>
+  <li> 
+<button id="numworks_load" class="bouton" onclick="UI.numworks_load(false)">Numworks→</button>
+: importe un script Python de la calculatrice vers l'ordinateur. Vous
+  pouvez aussi faire un <button id="numworks_load" class="bouton"
+  onclick="UI.numworks_load(true)">Backup</button>, c'est-&agrave;-dire une
+  sauvegarde compl&egrave;te
+  de tous les scripts de la calculatrice.
+  <li>
+  <button onclick="UI.loadFile(($id('loadfileinput').files)[0]);">→Numworks</button>
+  <input id="loadfileinput" accept=".py,.nws" type="file"
+  title="Cliquer ici pour charger un fichier Python"
+  onchange="UI.loadFile((this.files)[0]);">
+  : si le fichier a pour extension <tt>.py</tt> on
+  envoie un script Python de l'ordinateur vers la calculatrice. Si le
+  fichier a pour extension <tt>.nws</tt>, on remplace le contenu de la
+  calculatrice par la sauvegarde.
+  <li>
+  Vous pouvez aussi &eacute;changer des scripts avec la calculatrice depuis
+  <a
+  href="https://www-fourier.univ-grenoble-alpes.fr/~parisse/xcasfr.html">
+  Xcas pour Firefox </a>, les modifier, les tester, et les partager
+  sous forme de liens par email ou
+  sur des forums.
+  <li> <hr>
+  <span id="ploglegend"></span>
+  <progress id="plog" value=0 style="display:none"></progress>
+  <div id="output" style="max-height: 200px; overflow:auto"></div>
+  <hr>
+  <li> 
+  <button
+  onclick="UI.numworks_install_delta();">Installation
+  KhiCAS</button> : installe Xcas sur votre calculatrice Numworks
+  N0110. <a href="https://www-fourier.univ-grenoble-alpes.fr/~parisse/numworks/khicasnw.html">Documentation</a>
+  <li>
+  <em>Lutte contre la fraude :</em> pour certifier que le firmware d'une calculatrice Numworks N0110 est
+  une version non modifi&eacute;e de KhiCAS, cliquez sur l'un des
+  deux boutons
+  <br>
+  <button
+  onclick="UI.numworks_certify(nws_sig,false);">Certification</button> 
+  <button
+  onclick="UI.numworks_certify(nws_sig,true);">Certification + R/W test</button>
+  <br>
+  Le premier test prend 15 secondes environ, le deuxi&egrave;me est plus
+s&eacute;curis&eacute; mais dure 1 minute environ. Ce test peut etre fait
+par un surveillant pendant un examen depuis son smartphone depuis
+<a
+href="https://www-fourier.univ-grenoble-alpes.fr/~parisse/nws.html">ce
+lien</a>
+avec un
+<a href="https://tiplanet.org/forum/viewtopic.php?f=99&t=25091">cable smartphone-Numworks</a>.
+  <li>
+  <button
+  onclick="UI.numworks_rescue();">R&eacute;cup&eacute;ration</button> :
+  Assistance si votre calculatrice N0110 est bloqu&eacute;e.<br>
+  Connectez la calculatrice, appuyez sur la touche 6 de la
+  calculatrice, enfoncez un stylo dans le bouton RESET au dos
+  en laissant la touche 6 appuy&eacute;e,
+  relachez la touche 6, l'&eacute;cran doit etre &eacute;teint et la
+  diode rouge allum&eacute;e.
+  <br>
+  Si le message <tt>http://... tente de se connecter</tt> apparait, cliquez
+  sur <tt>STM32 BOOTLOADER associ&eacute;</tt> puis sur le bouton
+  <tt>Connexion</tt>.
+  <br>
+  Si la r&eacute;cup&eacute;ration ne fonctionne pas, essayez avec
+  Xcas PC.
+</ul>
+Cette page fonctionne uniquement avec un navigateur compatible webusb,
+par exemple Chromium ou Chrome et depuis un serveur web. Firefox n'a pas de
+support pour webusb pour des raisons de s&eacute;curit&eacute;, si
+vous avez des craintes &agrave; ce sujet, vous pouvez connecter votre
+calculatrice Numworks avec 
+<a
+href="https://www-fourier.univ-grenoble-alpes.fr/~parisse/install_fr">Xcas</a>
+(version Windows, Linux et Mac).
+<br>
+Pour les experts souhaitant utiliser cette page en local,
+activez un serveur web local, par exemple en tapant
+dans un Terminal la commande <tt>python3 -m http.server</tt>
+depuis le r&eacute;pertoire o&ugrave; vous avez d&eacute;compress&eacute;
+<a href="https://www-fourier.univ-grenoble-alpes.fr/~parisse/giac/xcashtml.zip">xcashtml.zip</a>, puis cliquez
+<a href="localhost:8000/nws.html">sur ce lien</a>.
+
+
+<hr>
+	      Remerciements &agrave; Maxime Friess pour le script
+	      <a
+                    href="https://github.com/M4xi1m3/numworks.js/blob/master/README.md"
+                    target="_blank">Numworks.js</a> (sous licence
+MIT).
+<br> Remerciements &agrave; Elio Poletti pour le style de la page 
+
+<hr>
+<address></address>
+<!-- hhmts start -->Last modified: Mon Sep 13 13:04:57 CEST 2021 <!-- hhmts end -->
+</body> </html>
+<script language="javascript">
+window.onload = function (e) {
+if (!navigator.usb) alert(UI.langue==-1?'Utilisez un navigateur compatible usb comme Chromium ou Chrome':'Requires a webusb browser like Chromium or Chrome');
+}
+</script>

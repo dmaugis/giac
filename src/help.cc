@@ -24,9 +24,23 @@ using namespace std;
 #include "gen.h"
 #include "help.h"
 #include <iostream>
+#if !defined GIAC_HAS_STO_38 && !defined NSPIRE && !defined FXCG 
+#include <fstream>
+#endif
 #include "global.h"
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
+
+#if defined MICROPY_LIB || defined HAVE_LIBMICROPYTHON
+extern "C" int mp_token(const char * line);
+#endif
+
+#ifdef KHICAS
+#include "kdisplay.h" // for select_item,
+#if defined MICROPY_LIB || defined HAVE_LIBMICROPYTHON
+extern "C" int xcas_python_eval;
+#endif
 #endif
 
 #if defined VISUALC || defined BESTA_OS
@@ -44,7 +58,7 @@ using namespace std;
 #include <sys/param.h>
 #endif
 
-#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG && !defined NUMWORKS // test should always return true
+#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG && !defined KHICAS // test should always return true
 #include <dirent.h>
 #endif
 
@@ -67,7 +81,7 @@ namespace giac {
   };
 
   const static_help_t static_help[]={
-#if !defined RTOS_THREADX && !defined BESTA_OS && !defined GIAC_HAS_STO_38 
+#if defined NSPIRE_NEWLIB || defined NUMWORKS || (!defined RTOS_THREADX && !defined BESTA_OS && !defined GIAC_HAS_STO_38 && !defined(KHICAS) && !defined POCKETCAS)
 #include "static_help.h"
 #else
     { "", { "", "", "", "",""}, "", "", "" },
@@ -94,21 +108,317 @@ namespace giac {
     return a.second>b.second;
   }
 
+  const char * python_keywords[] = {   // List of known giac keywords...
+    "False",
+    "None",
+    "True",
+    "and",
+    "break",
+    "continue",
+    "def",
+    "default",
+    "elif",
+    "else",
+    "except",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "not",
+    "or",
+    "return",
+    "try",
+    "while",
+    "xor",
+    "yield",
+  };
+  const char * const python_builtins[]={
+    "NoneType",
+    "__call__",
+    "__class__",
+    "__delitem__",
+    "__dir__", 
+    "__enter__",
+    "__exit__",
+    "__getattr__",
+    "__getitem__",
+    "__hash__",
+    "__init__",
+    "__int__",
+    "__iter__",
+    "__len__",
+    "__main__",
+    "__module__",
+    "__name__",
+    "__new__",
+    "__next__",
+    "__qualname__",
+    "__repr__",
+    "__setitem__",
+    "__str__",
+    "abs",
+    "all",
+    "any",
+    "append",
+    "args",
+    "bool",
+    "builtins",
+    "bytearray",
+    "bytecode",
+    "bytes",
+    "callable",
+    "chr",
+    "classmethod",
+    "clear",
+    "close",
+    "const",
+    "copy",
+    "count",
+    "dict",
+    "dir",
+    "divmod",
+    "end",
+    "endswith",
+    "eval",
+    "exec",
+    "extend",
+    "find",
+    "format",
+    "from_bytes",
+    "get",
+    "getattr",
+    "globals",
+    "hasattr",
+    "hash",
+    "id",
+    "index",
+    "insert",
+    "int",
+    "isalpha",
+    "isdigit",
+    "isinstance",
+    "islower",
+    "isspace",
+    "issubclass",
+    "isupper",
+    "items",
+    "iter",
+    "join",
+    "key",
+    "keys",
+    "len",
+    "list",
+    "little",
+    "locals",
+    "lower",
+    "lstrip",
+    "main",
+    "map",
+    "micropython",
+    "next",
+    "object",
+    "open",
+    "ord",
+    "pop",
+    "popitem",
+    "pow",
+    "print",
+    "range",
+    "read",
+    "readinto",
+    "readline",
+    "remove",
+    "replace",
+    "repr",
+    "reverse",
+    "rfind",
+    "rindex",
+    "round",
+    "rsplit",
+    "rstrip",
+    "self",
+    "send",
+    "sep",
+    "set",
+    "setattr",
+    "setdefault",
+    "sort",
+    "sorted",
+    "split",
+    "start",
+    "startswith",
+    "staticmethod",
+    "step",
+    "stop",
+    "str",
+    "strip",
+    "sum",
+    "super",
+    "throw",
+    "to_bytes",
+    "tuple",
+    "type",
+    "update",
+    "upper",
+    "utf-8",
+    "value",
+    "values",
+    "write",
+    "xcas",
+    "zip",
+  };
+
+  bool is_python_keyword(const char * s){
+    return dichotomic_search(python_keywords,sizeof(python_keywords)/sizeof(char*),s)!=-1;
+  }
+  
+  bool is_python_builtin(const char * s){
+    return dichotomic_search(python_builtins,sizeof(python_builtins)/sizeof(char*),s)!=-1;
+  }
+  const char *js_keywords[]={ 
+    "Infinity",
+    "NaN", 
+    "break", 
+    "case", 
+    "catch",
+    "class", 
+    "const", 
+    "continue", 
+    "debugger",
+    "default",
+    "delete", 
+    "do", 
+    "else", 
+    "export", 
+    "extends",
+    "false", 
+    "finally",
+    "for", 
+    "function", 
+    "if", 
+    "import", 
+    "in", 
+    "instanceof",
+    "let",
+    "module", 
+    "new", 
+    "null", 
+    "return", 
+    "super",
+    "switch", 
+    "this", 
+    "throw", 
+    "true", 
+    "try", 
+    "typeof", 
+    "undefined", 
+    "var", 
+    "while",
+    "with",
+    "yield", 
+  };
+  bool is_js_keyword(const char * s){
+    return dichotomic_search(js_keywords,sizeof(js_keywords)/sizeof(char*),s)!=-1;
+  }
+
+  
   // NB: cmd_name may be localized but related is not localized
-  bool has_static_help(const char * cmd_name,int lang,const char * & howto,const char * & syntax,const char * & related,const char * & examples){
+  bool has_static_help(const char * & cmd_name,int lang,const char * & howto,const char * & syntax,const char * & related,const char * & examples){
 #ifdef GIAC_HAS_STO_38
     const char nullstring[]=" ";
 #else
     const char nullstring[]="";
 #endif
+    bool tooltip=lang & 0x100;
+    if (tooltip)
+      lang=lang & 0xff;
     if (lang<=0)
       lang=2;
     if (lang>HELP_LANGUAGES)
       lang=2;
     string s=unlocalize(cmd_name);
     int l=int(s.size());
+    if (l==0) return false;
     if ( (l>2) && (s[0]=='\'') && (s[l-1]=='\'') )
       s=s.substr(1,l-2);
+#ifdef KHICAS
+    static string res;
+    int pos=0,kk,ks=s.size();
+    for (;pos<static_help_size;++pos){
+      if (strcmp(static_help[pos].cmd_name,s.c_str())>=0)
+	break;
+    }
+    const char * items[1+static_help_size];
+    kk=0;
+#ifdef MICROPY_LIB
+    if (xcas_python_eval && !python_heap){
+      python_init(pythonjs_stack_size,pythonjs_heap_size);
+    }
+#endif
+    for (;pos<static_help_size;++kk,++pos){
+      const static_help_t & sh=static_help[pos];
+      const char * ptr=sh.cmd_name;
+#ifdef QUICKJS
+      if (xcas_python_eval<0){
+	if (!js_token(ptr)){
+	  --kk;
+	  continue;
+	}
+      }
+#endif
+#ifdef MICROPY_LIB
+      if (xcas_python_eval>0){
+	if (!is_python_builtin(ptr) && mp_token(ptr)==0){
+	  --kk;
+	  continue;
+	}
+      }
+#endif
+      if (strcmp(ptr,s.c_str())==0){
+	howto=sh.cmd_howto[lang-1];
+	if (!howto)
+	  howto=sh.cmd_howto[1];
+	  syntax=sh.cmd_syntax;
+	  if (!syntax)
+	    syntax=nullstring;
+	  related=sh.cmd_related;
+	  if (!related)
+	    related=nullstring;
+	  examples=sh.cmd_examples;
+	  if (!examples)
+	    examples=nullstring;
+	  return true;
+      }
+      if (strlen(ptr)<ks || strncmp(ptr,s.c_str(),ks)!=0)
+	break;
+      items[kk]=ptr;
+    }
+    if (tooltip){
+      if (kk==1){
+	cmd_name=items[0];
+	return has_static_help(items[0],lang,howto,syntax,related,examples);
+      }
+      if (kk>1){
+	res="";
+	for (int i=0;i<kk;++i){
+	  res += items[i];
+	  res +=';';
+	}
+	examples=res.c_str();
+	return true;
+      }
+      return false;
+    }
+    else {
+      items[kk]=0;
+      int r=select_item(items,"Select completion",false);
+      if (r<0)
+	return false;
+      cmd_name=items[r];
+      return has_static_help(items[r],lang,howto,syntax,related,examples);
+    }
+#endif
     static_help_t h={s.c_str(),{0,0,0,0,0},0,0,0};
     std::pair<const static_help_t *,const static_help_t *> p=equal_range(static_help,static_help+static_help_size,h,static_help_sort());
     if (p.first!=p.second && p.first!=static_help+static_help_size){
@@ -126,7 +436,7 @@ namespace giac {
 	examples=nullstring;
       return true;
     }
-#ifdef EMCC
+#if defined EMCC || defined EMCC2
     // Find closest string
     syntax=nullstring;
     related=nullstring;
@@ -187,11 +497,16 @@ namespace giac {
   }
 
   // Run ./icas with export GIAC_DEBUG=-2 to print static_help.h and static_help_w.h, then sort in emacs
-  // cascmd_fr -> longhelp.js: 
+  // /usr/share/giac/doc/fr or en -> longhelp.js or longhelp_en.js: html_mtt 
+  // replace string \244 with :
+  // macro replace /usr/share/giac/doc/en/cascmd_en/ with ' and #... with '
+  // longhelp*.js should begin with var longhelp = {
+  // and end with };
   static bool output_static_help(vector<aide> & v,const vector<int> & langv){
-#if !defined NSPIRE && !defined FXCG
+#if !defined NSPIRE && !defined FXCG && !defined GIAC_HAS_STO_38
     add_language(5,context0); // add german help de/aide_cas
     cout << "Generating xcascmds, for UI.xcascmds in xcas.js, sort and esc-x replace-string ctrl-Q ctrl-j ret ret" << endl;
+    cout << "Copy in python.js. For xcasmod.js, replace \",\" by | " << endl;
     cout << "Generating static_help.h (sort it in emacs)" << endl;
     cout << "Generating static_help_w.h (same but UTF16)" << endl;
     ofstream cmds("xcascmds");
@@ -204,11 +519,13 @@ namespace giac {
       of << '"' << output_quote(it->cmd_name) << '"' << ",";
       std::vector<localized_string> & blabla = it->blabla;
       sort(blabla.begin(),blabla.end());
-      int bs=int(blabla.size());
+      int blablapos=0;
       of << "{";
       for (int i=0;i<HELP_LANGUAGES;i++){
-	if (i<bs && i+1==blabla[i].language && equalposcomp(langv,i+1))
-	  of << '"' << output_quote(blabla[i].chaine) << '"' ;
+	if (i+1==blabla[blablapos].language && equalposcomp(langv,i+1)){
+	  of << '"' << output_quote(blabla[blablapos].chaine) << '"' ;
+	  blablapos++;
+	}
 	else
 	  of << 0 ;
 	if (i==HELP_LANGUAGES-1)
@@ -218,7 +535,7 @@ namespace giac {
       }
       of << "," << '"' << output_quote(it->syntax) << '"' << ',' ;
       std::vector<std::string> & examples = it->examples;
-      bs=int(examples.size());
+      int bs=int(examples.size());
       if (bs){
 	of << '"';
 	for (int i=0;i<bs;i++){
@@ -253,7 +570,8 @@ namespace giac {
       of << "," << endl;
     }
     cmds << "]" << endl;
-    of << endl;
+    of << endl; 
+    of.close();
     ofstream ofw("static_help_w.h");
     ofstream ofwindex("index_w.h");
     ofwindex << "const TChooseItem index_w[]={" << endl;
@@ -455,7 +773,7 @@ namespace giac {
   // FIXME: aide_cas may end with synonyms (# cmd synonym1 ...)
   void readhelp(vector<aide> & v,const char * f_name,int & count,bool warn){
     count=0;
-#if !defined NSPIRE && !defined FXCG
+#if !defined NSPIRE && !defined FXCG && !defined GIAC_HAS_STO_38
     if (access(f_name,R_OK)){
       if (warn)
 	std::cerr << "Help file " << f_name << " not found" << endl;
@@ -681,7 +999,7 @@ namespace giac {
     return result;
   }
 
-#if !defined(NSPIRE_NEWLIB) && !defined(RTOS_THREADX) && !defined(EMCC) &&!defined(NSPIRE) && !defined FXCG
+#if !defined(NSPIRE_NEWLIB) && !defined(RTOS_THREADX) && !defined(EMCC) && !defined(EMCC2) &&!defined(NSPIRE) && !defined FXCG && !defined(KHICAS) && !defined GIAC_HAS_STO_38
   multimap<string,string> html_mtt,html_mall;
   std::vector<std::string> html_vtt,html_vall;
 
@@ -821,7 +1139,7 @@ namespace giac {
 	  break;
 	}
 	if (s>8 && tmp.substr(s-8,8)=="</B></A>"){
-	  // Find backward the first occurence of <A
+	  // Find backward the first occurrence of <A
 	  int l=s-8;
 	  for (;l>0;--l){
 	    if (tmp[l]=='<' && tmp[l+1]=='A')
@@ -915,7 +1233,7 @@ namespace giac {
     return 0;
   }
 
-#if ! (defined VISUALC || defined BESTA_OS || defined FREERTOS || defined NSPIRE || defined FXCG || defined NSPIRE_NEWLIB)
+#if ! (defined VISUALC || defined BESTA_OS || defined FREERTOS || defined NSPIRE || defined FXCG || defined NSPIRE_NEWLIB || defined(KHICAS)) 
 #if defined WIN32 || !defined DT_DIR
   static int dir_select (const struct dirent *d){
     string s(d->d_name);
@@ -937,7 +1255,7 @@ namespace giac {
 #else
 // __APPLE_CC__ == 5666 on Mac OS X 10.6, 5658 on geogebra build system OS X 10.8
 // should check __APPLE__ OS X version instead!
-#if ( defined(__MAC_OS_X_VERSION_MAX_ALLOWED)&&  __MAC_OS_X_VERSION_MAX_ALLOWED<  1080 ) || ( defined(__IPHONE_OS_VERSION_MAX_ALLOWED)&&  __IPHONE_OS_VERSION_MAX_ALLOWED<  60100 ) || defined(__OpenBSD__) || ( defined(__FreeBSD_version)&&  __FreeBSD_version<800501)
+#if ( defined(__MAC_OS_X_VERSION_MAX_ALLOWED)&&  __MAC_OS_X_VERSION_MAX_ALLOWED<  1080 ) || ( defined(__IPHONE_OS_VERSION_MAX_ALLOWED)&&  __IPHONE_OS_VERSION_MAX_ALLOWED<  60100 ) || ( defined(__OpenBSD__)&& OpenBSD<201905) || ( defined(__FreeBSD_version)&&  __FreeBSD_version<800501)
   static int dir_select (struct dirent *d){
 #else
   static int dir_select (const struct dirent *d){
@@ -960,8 +1278,112 @@ namespace giac {
 #endif
 #endif // visualc
 
+#ifdef __MINGW_H
+  int giac_errno=0;
+  int get_errno(){
+    return giac_errno;
+  }
+  void set_errno(int i){
+    giac_errno=i;
+  }
+
+/* scandir.cc
+
+   Copyright 1998, 1999, 2000, 2001 Red Hat, Inc.
+
+   Written by Corinna Vinschen <corinna.vinschen@cityweb.de>
+
+   This file is part of Cygwin.
+
+   scandir is a copyrighted work licensed under the terms of the
+   Cygwin license.  Please consult the file "CYGWIN_LICENSE" for
+   details. */
+extern "C"
+int
+scandir (const char *dir,
+	 struct dirent ***namelist,
+	 int (*select) (const struct dirent *),
+	 int (*compar) (const struct dirent **, const struct dirent **))
+{
+  DIR *dirp;
+  struct dirent *ent, *etmp, **nl = NULL, **ntmp;
+  int count = 0;
+  int allocated = 0;
+
+  if (!(dirp = opendir (dir)))
+    return -1;
+
+  int prior_errno = get_errno ();
+  set_errno (0);
+
+  while ((ent = readdir (dirp)))
+    {
+      if (!select || select (ent))
+	{
+
+	  /* Ignore error from readdir/select. See POSIX specs. */
+	  set_errno (0);
+
+	  if (count == allocated)
+	    {
+
+	      if (allocated == 0)
+		allocated = 10;
+	      else
+		allocated *= 2;
+
+	      ntmp = (struct dirent **) realloc (nl, allocated * sizeof *nl);
+	      if (!ntmp)
+		{
+		  set_errno (ENOMEM);
+		  break;
+		}
+	      nl = ntmp;
+	  }
+
+	  if (!(etmp = (struct dirent *) malloc (sizeof *ent)))
+	    {
+	      set_errno (ENOMEM);
+	      break;
+	    }
+	  *etmp = *ent;
+	  nl[count++] = etmp;
+	}
+    }
+
+  if ((prior_errno = get_errno ()) != 0)
+    {
+      closedir (dirp);
+      if (nl)
+	{
+	  while (count > 0)
+	    free (nl[--count]);
+	  free (nl);
+	}
+      /* Ignore errors from closedir() and what not else. */
+      set_errno (prior_errno);
+      return -1;
+    }
+
+  closedir (dirp);
+  set_errno (prior_errno);
+
+  qsort (nl, count, sizeof *nl, (int (*)(const void *, const void *)) compar);
+  if (namelist)
+    *namelist = nl;
+  return count;
+}
+
+extern "C"
+int
+alphasort (const struct dirent **a, const struct dirent **b)
+{
+  return strcoll ((*a)->d_name, (*b)->d_name);
+}  
+#endif
+
   void find_all_index(const std::string & subdir,multimap<std::string,std::string> & mtt,multimap<std::string,std::string> & mall){
-#if defined GNUWINCE || defined __MINGW_H || defined __ANDROID__ || defined EMCC || defined NSPIRE_NEWLIB || defined FXCG
+#if defined GNUWINCE || defined __ANDROID__ || defined EMCC|| defined EMCC2 || defined NSPIRE_NEWLIB || defined FXCG || defined KHICAS
     return;
 #else
     // cerr << "HTML help Scanning " << subdir << endl;
@@ -983,7 +1405,7 @@ namespace giac {
 
     struct dirent **eps;
     int n;
-#if defined APPLE_SMART || defined NO_SCANDIR
+#if defined APPLE_SMART || defined NO_SCANDIR 
     n =-1;
 #else
     n = scandir (subdir.c_str(), &eps, dir_select, alphasort);

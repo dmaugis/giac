@@ -19,11 +19,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#ifndef IN_GIAC
-#include <giac/first.h>
-#else
 #include "first.h"
-#endif
 #include <string>
 #ifdef HAVE_LIBFLTK
 #include <FL/Fl.H>
@@ -66,14 +62,11 @@
 #ifdef HAVE_PTHREAD_H
 #include <pthread.h>
 #endif
-#ifndef IN_GIAC
-#include <giac/global.h>
-#include <giac/misc.h>
-#include <giac/gen.h>
-#else
 #include "global.h"
 #include "misc.h"
 #include "gen.h"
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
 #endif
 using namespace std;
 using namespace giac;
@@ -398,7 +391,7 @@ namespace xcas {
 	Xcas_debug_input->when(FL_WHEN_ENTER_KEY|FL_WHEN_NOT_CHANGED);
       }
       // Debugging mode
-      // cerr << "Debugging" << endl;
+      // cerr << "Debugging" << '\n';
       debug_struct * dbgptr=debug_ptr(contextptr);
       if (dbgptr){
 	if (dbgptr->debug_info_ptr && dbgptr->debug_info_ptr->type==_VECT){
@@ -471,11 +464,11 @@ namespace xcas {
 	  /* console mode debugging
 	     if (dbgptr->debug_refresh){
 	     if (dbgptr->fast_debug_info_ptr)
-	     cerr << *dbgptr->fast_debug_info_ptr << endl;
+	     cerr << *dbgptr->fast_debug_info_ptr << '\n';
 	     }
 	     else {
 	     if (dbgptr->debug_info_ptr)
-	     cerr << *dbgptr->debug_info_ptr << endl;
+	     cerr << *dbgptr->debug_info_ptr << '\n';
 	       }
 	  */
 	}
@@ -518,6 +511,14 @@ namespace xcas {
       *dbgptr->fast_debug_info_ptr = g;
       thread_eval_status(1,contextptr);
     }
+  }
+
+  void Xcas_interrupt_cb(void){
+    static int counter=0;
+    ++counter;
+    if (counter & 0xf)
+      return;
+    Fl::check();
   }
 
   void Xcas_idle_function(void * dontcheck){
@@ -695,10 +696,10 @@ namespace xcas {
       menufile_found=is_file_available(menufile.c_str());
     }
     if (!menufile_found){
-      cerr << "// Unable to open menu file "<< menufile << endl;
+      cerr << "// Unable to open menu file "<< menufile << '\n';
       return false;
     }
-    cerr << "// Using menu file " << menufile << endl;
+    cerr << "// Using menu file " << menufile << '\n';
     // Now reading commandnames from file for menus
     // Syntax is menu/submenu/item, callback inserts item name
     ifstream in(menufile.c_str());
@@ -1000,7 +1001,7 @@ namespace xcas {
 
   giac::gen thread_eval(const giac::gen & g,int level,context * contextptr){
     // Remove idle function for wait to work
-    // cerr << "remove idle " << endl;
+    // cerr << "remove idle " << '\n';
     Fl::remove_idle(xcas::Xcas_idle_function,0);
     gen res=giac::thread_eval(g,level,contextptr,fl_wait_0001);
     if (Xcas_Debug_Window) Xcas_Debug_Window->hide();
@@ -1034,7 +1035,18 @@ namespace xcas {
 	  return res;
 	}
       }
-      if (evaled_g.type == _VECT && graph_output_type(evaled_g)){
+      int tt;
+      if (evaled_g.type == _VECT && (tt=graph_output_type(evaled_g)) ){
+	if (tt==4){
+	  // Fl_Tile * g = new Fl_Tile(w->x(),w->y(),w->w(),max(130,w->w()/3));
+	  // g->labelsize(w->labelsize());
+	  Turtle * tu = new Turtle(w->x(),w->y(),w->w(),max(130,w->w()/3));
+	  tu->turtleptr=&turtle_stack(contextptr);
+	  //g->end();
+	  //change_group_fontsize(g,w->labelsize());
+	  //return g;
+	  return tu;
+	}
 	Fl_Tile * g = new Fl_Tile(w->x(),w->y(),w->w(),max(130,w->w()/3));
 	g->labelsize(w->labelsize());
 	Graph2d3d * tmp;
@@ -1158,8 +1170,16 @@ namespace xcas {
     if (!hp || !gr)
       return;
 #ifdef HAVE_LIBPTHREAD
-    // cerr << "geo2d lock" << endl;
-    pthread_mutex_lock(&interactive_mutex);
+    // cerr << "eval lock" << '\n';
+    int locked=pthread_mutex_trylock(&interactive_mutex);
+    if (locked){
+      usleep(1000);
+      locked=pthread_mutex_trylock(&interactive_mutex);
+      if (locked){
+	cerr << "locked " << evaled_g << '\n' ;
+	return ;
+      }
+    }
 #endif
     bool b=io_graph(contextptr);
     io_graph(contextptr)=false;
@@ -1177,7 +1197,14 @@ namespace xcas {
     else
       giac::history_out(contextptr).push_back(evaled_g);
     int pos=gr->find(wid);
-    Fl_Widget * res = in_Xcas_eval(wid,evaled_g,hp->pretty_output,contextptr);
+    Fl_Widget * res =0;
+    if (evaled_g.type==_STRNG && *evaled_g._STRNGptr=="Logo_turtle"){
+      giac::context * ptr=(giac::context *) caseval("caseval contextptr");
+      giac::gen g0=_avance(0,ptr);
+      res=in_Xcas_eval(wid,g0,hp->pretty_output,ptr);
+    }
+    else
+      res = in_Xcas_eval(wid,evaled_g,hp->pretty_output,contextptr);
     if (Log_Output * lout=find_log_output(gr))
       output_resize_parent(lout,false);
     if (res){
@@ -1291,7 +1318,7 @@ namespace xcas {
     if (!w)
       return 0;
     if (debug_infolevel>=5)
-      cerr << "eval " << g_ << endl;
+      cerr << "eval " << g_ << '\n';
     Fl_Group * gr=w->parent();
     Fl_Group::current(gr);
     // Find history_pack above for context from widget 
@@ -1302,11 +1329,16 @@ namespace xcas {
       return 0;
     gen g=add_autosimplify(g_,contextptr);
     giac::gen evaled_g;
-    giac::history_in(contextptr).push_back(g_);
     // if w 2nd brother is a graph2d3d, return a graph2d3d with the same
     // config
     Fl_Widget * res = 0;
     if (gr && gr->children()>=3){
+      if (Fl_Output * out=dynamic_cast<Fl_Output *>(gr->child(2))){
+	if (strcmp(out->value(),gettext("Computing..."))==0){
+	  out->value(gettext("Unable to launch thread. Press STOP to interrupt."));
+	  return w;
+	}
+      }
       if (Fl_Group * grc2=dynamic_cast<Fl_Group * >(gr->child(2))){
 	if (grc2->children()){
 	  if (Graph2d3d * graph=dynamic_cast<Graph2d3d *>(grc2->child(0))){
@@ -1321,6 +1353,7 @@ namespace xcas {
 	}
       }
     }
+    giac::history_in(contextptr).push_back(g_);
     // commented otherwise ans() does not work
     // giac::history_out.push_back(g);
     Fl_Output * out=0;
@@ -1427,11 +1460,11 @@ namespace xcas {
 	if (t<10) res += ('0'+t); else res += 'a'+(t-10);
       }
     }
-    //std::cerr << s << endl << res << endl;
+    //std::cerr << s << '\n' << res << '\n';
     return res;
   }
 
-  std::string widget_html5(const Fl_Widget * o){
+  std::string widget_html5(const Fl_Widget * o,int & pos){
     string res;
     const giac::context * contextptr = get_context(o);
     // Add here code for specific widgets
@@ -1442,11 +1475,11 @@ namespace xcas {
       return '+'+res+'&';
     }
     if (const Figure * f = dynamic_cast<const Figure *>(o)){
-      res = widget_html5(f->geo->hp);
+      res = widget_html5(f->geo->hp,pos);
       return res;
     }
     if (const Logo * l=dynamic_cast<const Logo *>(o)){
-      res = widget_html5(l->hp);
+      res = widget_html5(l->hp,pos);
       return res;
     }
     if (const Editeur * ed=dynamic_cast<const Editeur *>(o)){
@@ -1457,6 +1490,18 @@ namespace xcas {
     if (const Xcas_Text_Editor * ed=dynamic_cast<const Xcas_Text_Editor *>(o)){
       string s=unlocalize(ed->value());
       res = replace_html5(s);
+      int xpos=(pos%2)*400;
+      int ypos=(pos/2)*400;
+      ++pos;
+      string spos=print_INT_(xpos)+","+print_INT_(ypos)+",";
+      switch (ed->pythonjs){
+      case -1:
+	return "js="+spos+res+'&';
+      case 0: case 1: case 2:
+	return "cas="+spos+res+'&';
+      case 4:
+	return "micropy="+spos+res+'&';
+      }
       return '+'+res+'&';
     }
     if (dynamic_cast<const Fl_Output *>(o))
@@ -1478,7 +1523,7 @@ namespace xcas {
       int n=g->children();
       for (int i=0;i<n;++i){
 	Fl_Widget * wid=g->child(i);
-	res += widget_html5(wid);
+	res += widget_html5(wid,pos);
       }
       return res;
     }
@@ -1501,7 +1546,7 @@ namespace xcas {
     res += " " + giac::print_INT_(o->x()) + " " + giac::print_INT_(o->y())+ " " + giac::print_INT_(o->w()) + " " + giac::print_INT_(wh) + " " + giac::print_INT_(o->labelsize()) + " " + giac::print_INT_(o->labelfont()) ;
     // Add here code for specific widgets
     if (const Flv_Table_Gen * g = dynamic_cast<const Flv_Table_Gen *>(o)){
-      res += '\n'+print_INT_(g->is_spreadsheet)+" "+print_INT_(g->matrix_fill_cells)+" "+print_INT_(g->spreadsheet_recompute)+" "+print_INT_(g->matrix_symmetry)+ " " +replace(gen(g->m,_SPREAD__VECT).print(contextptr),'\n','£')+'\n';
+      res += '\n'+print_INT_(g->is_spreadsheet?1:0)+" "+print_INT_(g->matrix_fill_cells?1:0)+" "+print_INT_(g->spreadsheet_recompute?1:0)+" "+print_INT_(g->matrix_symmetry?1:0)+ " " +replace(gen(g->m,_SPREAD__VECT).print(contextptr),'\n',char(0x7f))+'\n';
       return res;
     }
     if (const Tableur_Group * t = dynamic_cast<const Tableur_Group *>(o)){
@@ -1545,7 +1590,7 @@ namespace xcas {
 	  }
 	}
       }
-      res += '\n'+print_INT_(g->is_spreadsheet)+" "+print_INT_(g->matrix_fill_cells)+" "+print_INT_(g->spreadsheet_recompute)+" "+print_INT_(g->matrix_symmetry)+ " " +replace(gen(m,_SPREAD__VECT).print(contextptr),'\n','£')+'\n';
+      res += '\n'+print_INT_(g->is_spreadsheet)+" "+print_INT_(g->matrix_fill_cells)+" "+print_INT_(g->spreadsheet_recompute)+" "+print_INT_(g->matrix_symmetry)+ " " +replace(gen(m,_SPREAD__VECT).print(contextptr),'\n',char(0x7f))+'\n';
       return res;
     }
     if (const Figure * f = dynamic_cast<const Figure *>(o)){
@@ -1565,19 +1610,19 @@ namespace xcas {
     }
     if (const Editeur * ed=dynamic_cast<const Editeur *>(o)){
       string s=unlocalize(ed->value());
-      res += '\n'+print_INT_(s.size())+" ,\n"+s;
+      res += '\n'+print_INT_(s.size())+" "+print_INT_(ed->editor->pythonjs)+" "+string(ed->output->value())+" ,\n"+s;
       return res;
     }
     if (const Xcas_Text_Editor * ed=dynamic_cast<const Xcas_Text_Editor *>(o)){
       string s=unlocalize(ed->value());
-      res += '\n'+print_INT_(s.size())+" ,\n"+s;
+      res += '\n'+print_INT_(s.size())+" "+print_INT_(ed->pythonjs)+" ,\n"+s;
       return res;
     }
     if (const Gen_Output * i=dynamic_cast<const Gen_Output *>(o)){
       res += '\n';
       string s=taille(i->value(),100)>100?string("Done"):i->value().print(contextptr);
       s=unlocalize(s);
-      res += replace(s,'\n','£');
+      res += replace(s,'\n',char(0x7f));
       // res += '"';
       return res + '\n';
     }
@@ -1586,14 +1631,14 @@ namespace xcas {
       string s=i->value();
       if ( dynamic_cast<const Multiline_Input_tab *>(i) )
 	s=unlocalize(s);
-      res += replace(s,'\n','£');
+      res += replace(s,'\n',char(0x7f));
       // res += '"';
       return res + '\n';
     }
     if (const Log_Output * i=dynamic_cast<const Log_Output *>(o)){
       res += '\n';
       // res += '"';
-      res += replace(i->value(),'\n','£');
+      res += replace(i->value(),'\n',char(0x7f));
       // res += '"';
       return res + '\n';
     }
@@ -1602,7 +1647,7 @@ namespace xcas {
       res += '\n';
       // res += '"';
       string s=taille(i->get_data(),1000)>1000?string("Done"):i->value();
-      res += replace(unlocalize(s),'\n','£');
+      res += replace(unlocalize(s),'\n',char(0x7f));
       // res += '"';
       return res + '\n';
     }
@@ -1610,7 +1655,7 @@ namespace xcas {
       res += '\n';
       res += print_DOUBLE_(i->window_xmin) + ',' + print_DOUBLE_(i->window_xmax) + ',';
       res += print_DOUBLE_(i->window_ymin) + ',' + print_DOUBLE_(i->window_ymax) + ',';
-      res += replace(giac::gen(giac::merge_pixon(seq2vecteur(i->plot_instructions))).print(contextptr),'\n','£');
+      res += replace(giac::gen(giac::merge_pixon(seq2vecteur(i->plot_instructions))).print(contextptr),'\n',char(0x7f));
       res += ','+ print_DOUBLE_(i->window_zmin) + ',' + print_DOUBLE_(i->window_zmax)+','+print_DOUBLE_(i->q.w) +','+print_DOUBLE_(i->q.x)+','+print_DOUBLE_(i->q.y)+','+print_DOUBLE_(i->q.z) + ','+print_DOUBLE_(i->x_tick) + ',' + print_DOUBLE_(i->y_tick)+','+print_INT_(i->show_axes)+','+print_INT_(i->couleur)+','+print_INT_(i->approx)+','+print_DOUBLE_(i->ylegende)+',';
       if (i->paused)
 	res += "-";
@@ -1656,7 +1701,7 @@ namespace xcas {
       return res + '\n';
     }
     if (const History_Fold * g=dynamic_cast<const History_Fold *>(o)){
-      res += '\n'+replace(g->input->value(),'\n','£') + '\n';
+      res += '\n'+replace(g->input->value(),'\n',char(0x7f)) + '\n';
       res += widget_sprint(g->pack);
       return res;
     }
@@ -1699,13 +1744,13 @@ namespace xcas {
   void next_line(const string & s,int L,string & line,int & i){
     line="";
     for (;i<L;++i){
-      line += (s[i]=='£'?'\n':s[i]);
+      line += ( (s[i]==char(0x7f) || s[i]==char(0243))?'\n':s[i]);
       if (s[i]=='\n'){
 	++i;
 	break;
       }
     }
-    // cerr << i << " " << line << endl;
+    // cerr << i << " " << line << '\n';
   }
 
   void next_line_nonl(const string & s,int L,string & line,int & i){
@@ -2023,6 +2068,8 @@ namespace xcas {
     res = new Editeur(x,y,w,h,"");
     res->callback(History_Pack_cb_eval,0);
     res->editor->buffer()->insert(0,s.c_str());
+    if (s.size()>=7 && s.substr(0,7)=="#xwaspy")
+      res->editor->locked=true;
   }
 
   bool split_string(const string & s,char sep,string & before,string & after){
@@ -2034,6 +2081,39 @@ namespace xcas {
     }
     else
       return false;
+  }
+
+  void read_size_mode(const string & line, int & taille,int & mode,string & filename){
+    filename="";
+    taille=mode=0;
+    int i=0,n=line.size();
+    for (;i<n;++i){
+      if (line[i]<'0' || line[i]>'9')
+	break;
+      taille *= 10;
+      taille += line[i]-'0';
+    }
+    ++i;
+    if (i>=n) return;
+    bool neg=false;
+    if (line[i]=='-'){
+      ++i;
+      neg=true;
+    }
+    for (;i<n;++i){
+      if (line[i]<'0' || line[i]>'9')
+	break;
+      mode *= 10;
+      mode += line[i]-'0';
+    }
+    if (neg) mode=-mode;
+    for (;i<n;++i){
+      if (line[i]!=' ') break;
+    }
+    for (;i<n;++i){
+      if (isalpha(line[i]) || line[i]=='.')
+	filename += line[i];
+    }
   }
 
   // Read a widget from string s starting at position i
@@ -2132,6 +2212,13 @@ namespace xcas {
 	next_line_nonl(s,L,line,i);
 	tableur_load(res->table,line,x,y,w,h);
 	return res;
+      }
+      pos=tmp.find("Turtle");
+      if (pos>0 && pos<tmps){ 
+	Turtle * tu=new Turtle(x,y,w,h);
+	tu->turtleptr=&turtle_stack(context0);
+	next_line(s,L,line,i); // skip []
+	return tu;
       }
       pos=tmp.find("Fl_Scrollbar");
       if (pos>0 && pos<tmps){ 
@@ -2328,15 +2415,11 @@ namespace xcas {
 	Xcas_Text_Editor * res=0;
 	next_line_nonl(s,L,line,i);
 	// read size
-#ifdef HAVE_SSTREAM
-	istringstream is(line);
-#else
-	istrstream is(line.c_str());
-#endif
-	int taille;
-	is >> taille;
+	int taille,mode=python_compat(contextptr); string filename;
+	read_size_mode(line,taille,mode,filename);
 	string tmp=localize(s.substr(i,taille),language(contextptr));
 	xcas_text_editor_load(res,tmp,x,y,w,h);
+	res->pythonjs=mode;
 	i += taille ;
 	return res;
       }
@@ -2345,15 +2428,16 @@ namespace xcas {
 	Editeur * res=0;
 	next_line_nonl(s,L,line,i);
 	// read size
-#ifdef HAVE_SSTREAM
-	istringstream is(line);
-#else
-	istrstream is(line.c_str());
-#endif
-	int taille;
-	is >> taille;
+	int taille,mode=python_compat(contextptr); string filename;
+	read_size_mode(line,taille,mode,filename);
 	string tmp=localize(s.substr(i,taille),language(contextptr));
 	editeur_load(res,tmp,x,y,w,h);
+	res->editor->pythonjs=mode; 
+	if (filename.size()){
+	  string * fname=new string(filename); // will be lost
+	  res->output->value(fname->c_str());
+	  res->editor->set_changed();//label(fname->c_str());
+	}
 	i += taille ;
 	return res;
       }
@@ -2507,10 +2591,10 @@ namespace xcas {
       // if (chaine[i0]!=13) 
 	s += chaine[i0];
     }
-    // cerr << s << endl;
+    // cerr << s << '\n';
     int L=s.size(),i=0;
     // Check for an HTML link
-    if (L>8 && (s.substr(0,6)=="http:/" || s.substr(0,6)=="file:/") ){
+    if (L>8 && (s.substr(0,6)=="http:/" || s.substr(0,7)=="https:/" || s.substr(0,6)=="file:/") ){
       // find # position, then create normal line for +, slider for *
       int pos=s.find('#');
       if (pos>0 && pos<L){
@@ -2538,7 +2622,7 @@ namespace xcas {
 	      continue;
 	    }
 	    if (s.size()>pos+3 && s[pos+2]=='/' && s[pos+3]=='/'){
-	      txt=replace(txt,'\n',char(163)); // should count \n and ajust size
+	      txt=replace(txt,'\n',char(0x7f)); // should count \n and ajust size
 	      txt="// fltk 7Fl_Tile 14 68 845 25 18 0\n[\n// fltk N4xcas23Comment_Multiline_InputE 14 68 845 24 18 0\n"+txt.substr(2,txt.size()-2)+"\n,\n// fltk N4xcas10Log_OutputE 14 93 845 1 18 0\n\n]";
 	    }
 	    else {
@@ -2748,11 +2832,19 @@ namespace xcas {
   
   giac::gen Xcas_fltk_interactive(const giac::gen & g,GIAC_CONTEXT){
 #ifdef HAVE_LIBPTHREAD
-    // cerr << "xcas lock" << g << endl;
-    pthread_mutex_lock(&interactive_mutex);
+    // cerr << "xcas lock" << g << '\n';
+    int locked=pthread_mutex_trylock(&interactive_mutex);
+    if (locked){
+      usleep(1000);
+      locked=pthread_mutex_trylock(&interactive_mutex);
+      if (locked){
+	cerr << "locked " << g << '\n' ;
+	return 0;
+      }
+    }
 #endif
     if (block_signal){
-      cerr << "blocked " << g << endl;
+      cerr << "blocked " << g << '\n';
 #ifdef HAVE_LIBPTHREAD
       pthread_mutex_unlock(&interactive_mutex);
 #endif
@@ -2761,7 +2853,7 @@ namespace xcas {
     gen res=in_Xcas_fltk_interactive(g,contextptr); 
     // FIXME change interactive for context, like input
 #ifdef HAVE_LIBPTHREAD
-    // cerr << "xcas unlock" << endl;
+    // cerr << "xcas unlock" << '\n';
     pthread_mutex_unlock(&interactive_mutex);
 #endif
     return res;
@@ -2816,6 +2908,35 @@ namespace xcas {
     return res;
   }
 
+  Fl_Window * getkeywin=0;
+  class Fl_Key :public Fl_Input {
+  public:
+    int key;
+    Fl_Key(int x,int y,int w,int h):Fl_Input(x,y,w,h){key=-1;}
+    virtual int handle(int event){
+      if (event==FL_KEYBOARD){
+	int k=Fl::event_key();
+	switch (k){
+	case FL_Right:
+	  key=3;
+	  break;
+	case FL_Left:
+	  key=0;
+	  break;
+	case FL_Up:
+	  key=1;
+	  break;
+	case FL_Down:
+	  key=2;
+	  break;
+	}
+	if (key>=0)
+	  return 1;
+      }
+      return Fl_Input::handle(event);
+    }    
+  };
+  
   // Given a vector v describing an input form, return
   gen makeform(const vecteur & v0,GIAC_CONTEXT) {
     vecteur v;
@@ -2826,29 +2947,75 @@ namespace xcas {
     }
     if (v.size()==1 && v.front().type==_STRNG){
       v.push_back(identificateur("_input_"));
-      // CERR << v << endl;
+      // CERR << v << '\n';
     }
     if (!v.empty() && v.front()==at_getKey){
       Fl_Widget * foc=Fl::focus();
-      static Fl_Window * getkeywin=0;
       static Fl_Button * getkeybut = 0;
-      static Fl_Input * getkeyin = 0;
+      static Fl_Button * getkeyleft = 0;
+      static Fl_Button * getkeyright = 0;
+      static Fl_Button * getkeyup = 0;
+      static Fl_Button * getkeydown = 0;
+      static Fl_Button * getkeyesc = 0;
+      static Fl_Button * getkeyok = 0;
+      static Fl_Key * getkeyin = 0;
       static Fl_Multiline_Output * getkeyout = 0;
+      static Graph2d * getkeyscreen = 0 ;
       if (!getkeywin){
 	Fl_Group::current(0);
-	getkeywin=new Fl_Window(50,50,200,200);
+	getkeywin=new Fl_Window(50,50,460,360);
 	getkeywin->label(gettext("Press a key"));
-	getkeyout= new Fl_Multiline_Output(2,24,196,170);
+	getkeyscreen=new Graph2d(0,120,460,240);
+	getkeyscreen->show_axes=0;
+	// getkeyscreen->legende_size=0;
+	getkeyout= new Fl_Multiline_Output(2,64,456,56);
 	getkeybut=new Fl_Button(2,2,96,20);
 	getkeybut->label(gettext("Cancel"));
 	getkeybut->shortcut("^[");
-	getkeyin = new Fl_Input(102,2,96,20);
+	getkeyesc=new Fl_Button(2,34,36,20);
+	getkeyesc->label("esc");
+	getkeyleft=new Fl_Button(42,34,36,20);
+	getkeyleft->label("â—€");
+	getkeyleft->shortcut(0xff51);
+	getkeyright=new Fl_Button(122,34,36,20);
+	getkeyright->label("â–¶");
+	getkeyright->shortcut(0xff53);
+	getkeyup=new Fl_Button(82,24,36,20);
+	getkeyup->label("â–²");
+	getkeyup->shortcut(0xff52);
+	getkeydown=new Fl_Button(82,44,36,20);
+	getkeydown->label("â–¼");
+	getkeydown->shortcut(0xff54);
+	getkeyok=new Fl_Button(162,34,36,20);
+	getkeyok->label("OK");
+	getkeyesc->shortcut(0xff1b);
+	getkeyok->shortcut(0xff0d);
+	getkeyin = new Fl_Key(102,2,96,20);
 	getkeyin->when(FL_WHEN_CHANGED);
 	getkeywin->end();
-	getkeywin->resizable(getkeywin);
+	getkeywin->resizable(getkeyscreen); // (getkeywin);
       }
-      string msg(gettext("Press a key\n"));
+      getkeyin->key=-1;
+      getkeyscreen->clear();
+      vecteur V=get_pixel_v();
+      getkeyscreen->add(V);
+      int I=320,J=240;
+      adjust_pixels_dim(V,I,J);
+      I=giacmin(I,giac::screen_w);
+      J=giacmin(J,giac::screen_h);
+      getkeywin->resize(getkeywin->x(),getkeywin->y(),I+140,J+120);
+      getkeyout->resize(2,64,456,56);
+      getkeyscreen->resize(0,120,I+140,J);
+      //getkeyscreen->resize_mouse_param_group(140);
+      getkeyscreen->mouse_param_group->redraw();
+      //getkeyscreen->redraw();
+      string msg; double delay=-1;
       int vs=v.size();
+      if (vs==2 && v[1].type==_DOUBLE_){
+	delay=v[1]._DOUBLE_val;
+	if (delay<0)
+	  delay=0;
+      }
       for (int i=1;i<vs;++i){
 	if (v[i].type==_STRNG)
 	  msg += *v[i]._STRNGptr;
@@ -2858,6 +3025,8 @@ namespace xcas {
 	  break;
 	msg += '\n';
       }
+      if (delay==-1)
+	msg += gettext("Press a key\n");
       getkeyout->value(msg.c_str());
       getkeyin->value("");
       getkeywin->show();
@@ -2868,12 +3037,52 @@ namespace xcas {
       }
       Fl::flush();
       gen res=undef;
-      for (;;){
+      for (int n=0;;n++){
+	if (getkeyin->key>=0){
+	  res=getkeyin->key;
+	  break;
+	}
 	Fl_Widget *o = Fl::readqueue();
-	if (!o) Fl::wait();
+	if (!o){
+	  if (delay>=0){
+	    Fl::wait(0.001);
+	    usleep(1000);
+	    if (n>delay*500){
+	      res=0;
+	      break;
+	    }
+	    else
+	      continue;
+	  }
+	  Fl::wait();
+	}
 	if (o==getkeybut)
 	  res=unsigned_inf;
 	if (o==getkeybut || o==getkeywin){
+	  break;
+	}
+	if (o==getkeyesc){
+	  res=5;
+	  break;
+	}
+	if (o==getkeyok){
+	  res=4;
+	  break;
+	}
+	if (o==getkeyleft){
+	  res=0;
+	  break;
+	}
+	if (o==getkeyright){
+	  res=3;
+	  break;
+	}
+	if (o==getkeyup){
+	  res=1;
+	  break;
+	}
+	if (o==getkeydown){
+	  res=2;
 	  break;
 	}
 	if (o==getkeyin){
@@ -2884,7 +3093,7 @@ namespace xcas {
 	  }
 	}
       }
-      getkeywin->hide();
+      // getkeywin->hide();
       Fl::focus(foc);
       return res;
     }
@@ -3207,10 +3416,15 @@ namespace xcas {
   }
 
   // FIXME: forms should work under win32!!
-#if defined WIN32 || defined __APPLE__
+#if defined __APPLE__ || defined WIN32 
   giac::gen Xcas_fltk_input(const giac::gen & arg,const giac::context * contextptr){
     Fl::lock();
-    if (Xcas_DispG) Xcas_DispG->waiting_click_value=arg;
+    if (Xcas_DispG){
+      if (arg==at_getKey)
+	Xcas_DispG->waiting_click_value=makevecteur(arg,gen(vecteur(0),_SEQ__VECT));
+      else
+	Xcas_DispG->waiting_click_value=arg;
+    }
     Fl::unlock();
     thread_eval_status(3,contextptr);
     for (;;){
@@ -3295,7 +3509,7 @@ namespace xcas {
 
   void icas_eval_callback(const giac::gen & evaled_g,void * param){
     giac::gen * resptr=(giac::gen *) param;
-    // cerr << "icas_eval_callback " << evaled_g << endl;
+    // cerr << "icas_eval_callback " << evaled_g << '\n';
     *resptr=evaled_g;
   }
   
@@ -3303,7 +3517,7 @@ namespace xcas {
   // and set reading_file to true
   void icas_eval(giac::gen & g,giac::gen & gg,int & reading_file,std::string &filename,giac::context * contextptr){
     if (debug_infolevel)
-      CERR << CLOCK() << " icas_eval " << g << endl;
+      CERR << CLOCK() << " icas_eval " << g << '\n';
     try {
       reading_file=read_file(g);
       if (g.type==_SYMB && g._SYMBptr->feuille.type==giac::_STRNG)
@@ -3364,7 +3578,8 @@ namespace xcas {
 	  xcas::Xcas_debugguer(status,contextptr);
 #else
 	// FIXME Debugguer without FLTK
-	giac::thread_eval_status(1,contextptr);
+	if (status!=1)
+	  giac::thread_eval_status(1,contextptr);
 #endif
 	if (ctrl_c){
 	  if (giac::is_context_busy(contextptr))
@@ -3514,17 +3729,24 @@ namespace xcas {
     }
     else {
       int t=graph_output_type(ge);
-      if (t==3||file_type==3){
-#ifdef HAVE_LIBFLTK_GL
-	print_wid=wid=new xcas::Graph3d(0,0,dx,dy-25,"",0);
-#endif
+      if (t==4 || file_type==4){
+	xcas::Turtle * tu=new xcas::Turtle(0,0,dx,dy-25);
+	tu->turtleptr=&turtle_stack(contextptr);
+	print_wid=wid=tu;
       }
       else {
-	if (t==2 || file_type==2)
-	  print_wid=wid=new xcas::Graph2d(0,0,dx,dy-25);
+	if (t==3||file_type==3){
+#ifdef HAVE_LIBFLTK_GL
+	  print_wid=wid=new xcas::Graph3d(0,0,dx,dy-25,"",0);
+#endif
+	}
 	else {
-	  print_wid=wid=new Fl_Output(0,0,dx,dy-25);
-	  ((Fl_Output *) (wid))->value("No suitable widget");
+	  if (t==2 || file_type==2)
+	    print_wid=wid=new xcas::Graph2d(0,0,dx,dy-25);
+	  else {
+	    print_wid=wid=new Fl_Output(0,0,dx,dy-25);
+	    ((Fl_Output *) (wid))->value("No suitable widget");
+	  }
 	}
       }
     }
@@ -3588,7 +3810,7 @@ namespace xcas {
 	    if (!of)
 	      fl_message("%s","Write error");
 	    else
-	      of << giac::gen(t->table->m,giac::_SPREAD__VECT) << endl;
+	      of << giac::gen(t->table->m,giac::_SPREAD__VECT) << '\n';
 	    of.close();
 	  }
 	}

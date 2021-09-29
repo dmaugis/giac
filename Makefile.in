@@ -79,7 +79,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/codeset.m4 \
 	$(top_srcdir)/m4/uintmax_t.m4 $(top_srcdir)/m4/ulonglong.m4 \
 	$(top_srcdir)/m4/wchar_t.m4 $(top_srcdir)/m4/wint_t.m4 \
 	$(top_srcdir)/m4/xsize.m4 $(top_srcdir)/acinclude.m4 \
-	$(top_srcdir)/configure.in
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
@@ -158,6 +158,7 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BERNMM_LIBS = @BERNMM_LIBS@
 BUILD_INCLUDED_LIBINTL = @BUILD_INCLUDED_LIBINTL@
 CATOBJEXT = @CATOBJEXT@
 CC = @CC@
@@ -165,14 +166,17 @@ CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 COCOA_LIBS = @COCOA_LIBS@
 CONFIG_AO = @CONFIG_AO@
+CONFIG_BERNMM = @CONFIG_BERNMM@
 CONFIG_COCOA = @CONFIG_COCOA@
 CONFIG_CURL = @CONFIG_CURL@
 CONFIG_DOC_PROGS = @CONFIG_DOC_PROGS@
+CONFIG_ECM = @CONFIG_ECM@
 CONFIG_GLPK = @CONFIG_GLPK@
 CONFIG_GMPXX = @CONFIG_GMPXX@
 CONFIG_GSL = @CONFIG_GSL@
 CONFIG_NTL = @CONFIG_NTL@
 CONFIG_PARI = @CONFIG_PARI@
+CONFIG_SAMPLERATE = @CONFIG_SAMPLERATE@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CURL_LIBS = @CURL_LIBS@
@@ -190,6 +194,7 @@ DVIPS = @DVIPS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
+ECM_LIBS = @ECM_LIBS@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
@@ -259,6 +264,7 @@ PATH_SEPARATOR = @PATH_SEPARATOR@
 PDFLATEX = @PDFLATEX@
 POSUB = @POSUB@
 RANLIB = @RANLIB@
+SAMPLERATE_LIBS = @SAMPLERATE_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
@@ -327,9 +333,10 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-SUBDIRS = src check intl po debianold debian doc examples 
-DIST_SUBDIRS = src check intl po debianold debian doc examples 
-EXTRA_DIST = path.h.in setup inst TROUBLES Init.scm compte INSTALACION LEAME.WIN LEAME.ipaq giac.specs giac.specs32 fltk.1.1.changes README.MACOSX pariinl.h changeversion mkosx mkosx10 mkosx3 mkdebian mkdebian2 win2unix.cc addu.cc xcas*.nsi xcas.desktop xcas.xpm xcas.applications README.visualcpp java.README config.h.win win64 mkiphone build_for_iphoneos path.iphone simupath.iphone config.h.iphone config.h.64 config.h.mingw path.mingw configure.mingw README.mingw archive.mingw compile.android mkrpm LISEZMOI.numworks icons/*
+@BUILD_MICROPY_TRUE@MICROPY_DIR = micropython-1.12
+SUBDIRS = $(MICROPY_DIR) src check intl po debianold debian doc examples
+DIST_SUBDIRS = micropython-1.12 src check intl po debianold debian doc examples
+EXTRA_DIST = path.h.in setup inst TROUBLES Init.scm compte INSTALACION LEAME.WIN LEAME.ipaq giac.specs giac.specs32 fltk.1.1.changes README.MACOSX pariinl.h changeversion mkosx mkosx10 mkosx3 mkdebian mkdebian32 mkdebian2 win2unix.cc addu.cc xcas*.nsi xcas.desktop xcas.metainfo.xml xcas.xpm xcas.applications README.visualcpp java.README config.h.win config.h.win64 win win64 mkiphone build_for_iphoneos path.iphone simupath.iphone config.h.iphone config.h.64 config.h.mingw path.mingw configure.mingw README.mingw archive.mingw compile.android mkrpm LISEZMOI.numworks icons/* README.hevea2mml README.itex2MML
 ACLOCAL_AMFLAGS = -I m4
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-recursive
@@ -857,6 +864,8 @@ install-exec-hook:
 	cp xcas.xpm $(DESTDIR)$(prefix)/share/pixmaps/xcas.xpm
 	./mkinstalldirs $(DESTDIR)$(prefix)/share/applications
 	cp xcas.desktop $(DESTDIR)$(prefix)/share/applications/xcas.desktop
+	./mkinstalldirs $(DESTDIR)$(prefix)/share/metainfo
+	cp xcas.metainfo.xml $(DESTDIR)$(prefix)/share/metainfo/
 	./mkinstalldirs $(DESTDIR)$(prefix)/share/application-registry
 	cp xcas.applications $(DESTDIR)$(prefix)/share/application-registry/xcas.applications
 	./mkinstalldirs $(DESTDIR)$(prefix)/share/icons/

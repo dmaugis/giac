@@ -64,7 +64,7 @@ namespace std {
     void _destroy(){
       if (_taille>0){ 
 	if (_begin_immediate_vect) {
-	  // std::cerr << "delete " << _taille << endl;
+	  // std::cerr << "delete " << _taille << '\n';
 	  delete [] _begin_immediate_vect; 
 	}
       }
@@ -94,8 +94,12 @@ namespace std {
 	_endalloc_immediate_vect=_begin_immediate_vect+n;
 	return;
       }
-      if ( _endalloc_immediate_vect-_begin_immediate_vect>=int(n) )
+      if ( _endalloc_immediate_vect-_begin_immediate_vect>=int(n) ){
+	_Tp * ptr=_begin_immediate_vect+n;
+	for (;ptr!=_endalloc_immediate_vect;++ptr)
+	  *ptr=_Tp();
 	return;
+      }
       n=nextpow2(n);
       _Tp * _newbegin = new _Tp[n];
       _Tp * _end_immediate_vect = _begin_immediate_vect+(_taille==immvector_max?0:_taille);
@@ -572,6 +576,7 @@ namespace std {
 	for (;_end!=_endalloc;++_end){
 	  *_end=value;
 	}
+	_end=_begin+n;
       }
     }
     void erase(_Tp * b,_Tp * e){

@@ -113,7 +113,16 @@ namespace giac {
     }
     if (!assume_t_in_ab(t,plus_inf,plus_inf,true,true,contextptr))
       return gensizeerr(contextptr);
-    gen res=_integrate(gen(makevecteur(f*exp(-t*x,contextptr),x,0,plus_inf),_SEQ__VECT),contextptr);
+    int c=calc_mode(contextptr);
+    calc_mode(0,contextptr);
+    gen res=_integrate(makesequence(f*exp(-t*x,contextptr),x),contextptr);
+    calc_mode(c,contextptr);
+    if (lop(res,at_integrate).empty() && lop(res,at_piecewise).empty() && lop(res,at_sign).empty())
+      res=-_limit(makesequence(res,x,0,1),contextptr);
+    else
+      res=undef;
+    if (is_undef(res))
+      res=_integrate(makesequence(f*exp(-t*x,contextptr),x,0,plus_inf),contextptr);
     for (int i=1;i<=n;++i){
       if (is_undef(res))
 	return res;
@@ -205,7 +214,7 @@ namespace giac {
     return pf<gen>(p);
   }
 
-  static gen pf_ilaplace(const gen & e0,const gen & x, gen & remains,GIAC_CONTEXT){
+  static gen pf_ilaplace(const gen & e0,const gen & x, gen & remains,int,GIAC_CONTEXT){
     vecteur vexp;
     gen res;
     lin(e0,vexp,contextptr); // vexp = coeff, arg of exponential
@@ -222,7 +231,7 @@ namespace giac {
 	continue;
       }
       if (is_strictly_positive(expa,contextptr))
-	*logptr(contextptr) << gettext("Warning, exponential x coeff is positive ") << expa << endl;
+	*logptr(contextptr) << gettext("Warning, exponential x coeff is positive ") << expa << '\n';
       vecteur varx(lvarx(coeff,x));
       int varxs=int(varx.size());
       if (!varxs){ // Dirac function
@@ -344,7 +353,7 @@ namespace giac {
       return gensizeerr(contextptr);
     if (has_num_coeff(f))
       return ilaplace(exact(f,contextptr),x,s,contextptr);
-    gen remains,res=linear_apply(f,x,remains,contextptr,pf_ilaplace);
+    gen remains,res=linear_apply(f,x,remains,0,contextptr,pf_ilaplace);
     res=subst(res,laplace_var,s,false,contextptr);
     if (!is_zero(remains))
       res=res+symbolic(at_ilaplace,makevecteur(remains,x,s));
@@ -507,7 +516,7 @@ namespace giac {
       return res;
     }
     if (solution_generale.type==_VECT)
-      *logptr(contextptr) << gettext("Boundary conditions for parametric curve not implemented") << endl;
+      *logptr(contextptr) << gettext("Boundary conditions for parametric curve not implemented") << '\n';
     // solve boundary conditions
     iterateur jt=v.begin()+1,jtend=v.end();
     for (unsigned ndiff=0;jt!=jtend;++ndiff,++jt){
@@ -597,14 +606,16 @@ namespace giac {
   static gen desolve_with_conditions(const vecteur & v,const gen & x,const gen & y,gen & f,int step_info,GIAC_CONTEXT){
     if (v.empty())
       return gensizeerr(contextptr);
-    int ordre;
+    int ordre; bool num=false;
     vecteur parameters;
-    gen solution_generale(desolve_f(v.front(),x,y,ordre,parameters,f,step_info,contextptr));
-    if (solution_generale.type!=_VECT) 
-      return in_desolve_with_conditions(v,x,y,solution_generale,parameters,f,step_info,contextptr);
+    gen solution_generale(desolve_f(v.front(),x,y,ordre,parameters,f,step_info,num,contextptr));
+    if (solution_generale.type!=_VECT) {
+      gen res= in_desolve_with_conditions(v,x,y,solution_generale,parameters,f,step_info,contextptr);
+      return num?evalf(res,1,contextptr):res;
+    }
     solution_generale.subtype=0; // otherwise desolve([y'=[[1,2],[2,1]]*y+[x,x+1],y(0)=[1,2]]) fails on the Prime (?)
     if (parameters.empty())
-      return solution_generale;
+      return num?evalf(solution_generale,1,contextptr):solution_generale;
     iterateur it=solution_generale._VECTptr->begin(),itend=solution_generale._VECTptr->end();
     vecteur res;
     res.reserve(itend-it);
@@ -618,7 +629,7 @@ namespace giac {
       else
 	res.push_back(tmp);
     }
-    return res;
+    return num?evalf(res,1,contextptr):res;
   }
 
   static gen desolve_with_conditions(const vecteur & v,const gen & x,const gen & y,gen & f,GIAC_CONTEXT){
@@ -734,7 +745,7 @@ namespace giac {
       cl=ilaplace(cl,x,x,contextptr);
       return vecteur(1,ratnormal(cl,contextptr));
     }
-    gen i=integrate_without_lnabs(rdiv(b,a,contextptr),x,contextptr);
+    gen i=integrate_without_lnabs(inv(a,contextptr)*b,x,contextptr);
     i=normal(lnexpand(i,contextptr),contextptr);
     i=exp(i,contextptr);
     if (step_info)
@@ -836,16 +847,18 @@ namespace giac {
 	      bool b=calc_mode(contextptr)==1;
 	      if (b)
 		calc_mode(0,contextptr);
-	      gen tmp=_lin(c[i]*exp(-rac[i]*x,contextptr),contextptr);
+	      gen tmp=_lin(makesequence(c[i]*exp(-rac[i]*x,contextptr),at_sqrt),contextptr);
 	      tmp = _integrate(makesequence(tmp,x),contextptr);
-	      part += _lin(tmp*exp(rac[i]*x,contextptr),contextptr);
+	      part += _lin(makesequence(tmp*exp(rac[i]*x,contextptr),at_sqrt),contextptr);
 	      if (b)
 		calc_mode(1,contextptr);
 	    }
-	    if (reel && is_zero(im(cst,contextptr)))
+	    if (reel && is_zero(im(cst,contextptr)) && lop(part,at_integrate).empty())
 	      part=re(part,contextptr);
-	    //part=recursive_ratnormal(part,contextptr);
-	    part=simplify(part,contextptr);
+	    if (1) // desolve((y''+y=sin(x)) and (y(0)=1) and (y'(0)=2),y)
+	      part=recursive_ratnormal(part,contextptr);
+	    else
+	      part=simplify(part,contextptr);
 	  }
 	  if (step_info)
 	    gprintf("Particuliar solution %gen",makevecteur(part),step_info,contextptr);
@@ -875,6 +888,15 @@ namespace giac {
       gen & b=v[1];
       gen & c=v[2];
       gen & d=cst;
+#if 0
+      if (is_exactly_zero(c)){
+	vecteur v1(makevecteur(a,b,d));
+	if (desolve_linn(x,y,t,1,v1,parameters,result,step_info,contextptr)){
+	  result=_integrate(makesequence(result,x),contextptr);
+	  return true;
+	}
+      }
+#endif
       gen u=-b/a,V=-c/a,w=-d/a,
 	k=simplify(u*u/4-derive(u,x,contextptr)/2+V,contextptr);
       // y''=u*y'+V*y+w  (with u,V,w functions of x)
@@ -940,6 +962,7 @@ namespace giac {
       }
       // IMPROVE: if a, b, c are polynomials, search for a polynomial solution
       // of the homogeneous equation, if found we can solve the diffeq
+      gen aa(a),bb(b),cc(c);
       if (lvarxwithinv(makevecteur(a,b,c),x,contextptr)==vecteur(1,x)){
 	vecteur l=vecteur(1,x);
 	gen a0(a),b0(b);
@@ -1006,7 +1029,7 @@ namespace giac {
 		vecteur v=*sol._VECTptr;
 		reverse(v.begin(),v.end());
 		sol=symb_horner(-v,x);
-		*logptr(contextptr) << "Polynomial solution found " << sol << endl;
+		*logptr(contextptr) << "Polynomial solution found " << sol << '\n';
 		// now solve equation a*y''+b*y'+c*y+d=0 with y=sol*z
 		// a*sol*z''+(2*a*sol'+b*sol)*z'=d
 		gen res=desolve_lin1(a0*sol,2*a0*derive(sol,x,contextptr)+b0*sol,d,x,parameters,step_info,contextptr);
@@ -1020,17 +1043,46 @@ namespace giac {
 	    }
 	  }
 	}
+      } // end polynomial a,b,c
+#ifndef USE_GMP_REPLACEMENTS
+      a=aa; b=bb; c=cc;
+      if (d==0 && lvarx(makevecteur(a,b,c),x,contextptr)==vecteur(1,x)){
+	// if a,b,c are rationals and d==0, Kovacic
+	gen k=_kovacicsols(makesequence(makevecteur(a,b,c),x),contextptr);
+	if (k.type==_VECT && !k._VECTptr->empty()){
+	  if (k._VECTptr->size()==2){
+	    parameters.push_back(diffeq_constante(int(parameters.size()),contextptr));
+	    parameters.push_back(diffeq_constante(int(parameters.size()),contextptr));	
+	    result=parameters[parameters.size()-2]*k._VECTptr->front()+parameters[parameters.size()-1]*k._VECTptr->back();
+	    return true;
+	  }
+	  if (k._VECTptr->size()==1){
+	    // we have one solution Y, find an independent one as z*Y
+	    gen Y=k._VECTptr->front();
+	    // a*(zY)''+b*(zY)'+c*(zY)=0
+	    // a*(z''Y+2z'Y')+b*(z'Y)=0
+	    // z''*(aY)+z'*(2aY'+bY)=0
+	    result=desolve_lin1(a*Y,2*a*derive(Y,x,contextptr)+b*Y,0,x,parameters,step_info,contextptr);
+	    result=_integrate(makesequence(result,x),contextptr);
+	    parameters.push_back(diffeq_constante(int(parameters.size()),contextptr));
+	    result += parameters.back();
+	    result = result*Y;
+	    return true;
+	  }
+	}
       }
+#endif
     } // end 2nd order eqdiff
     return false;
   }
 
-  gen desolve_f(const gen & f_orig,const gen & x_orig,const gen & y_orig,int & ordre,vecteur & parameters,gen & fres,int step_info,GIAC_CONTEXT){
+  gen desolve_f(const gen & f_orig,const gen & x_orig,const gen & y_orig,int & ordre,vecteur & parameters,gen & fres,int step_info,bool & num,GIAC_CONTEXT){
+    num=false;
     // if x_orig.type==_VECT || y_orig.type==_VECT, they should be evaled
     if (x_orig.type!=_VECT && eval(x_orig,1,contextptr)!=x_orig)
-      return gensizeerr("Independant variable assigned. Run purge("+x_orig.print(contextptr)+")\n");
+      return gensizeerr("Independent variable assigned. Run purge("+x_orig.print(contextptr)+")\n");
     if (y_orig.type!=_VECT && eval(y_orig,1,contextptr)!=y_orig)
-      return gensizeerr("Dependant variable assigned. Run purge("+y_orig.print(contextptr)+")\n");
+      return gensizeerr("Dependent variable assigned. Run purge("+y_orig.print(contextptr)+")\n");
     gen x(x_orig);
     if ( (x_orig.type==_VECT) && (x_orig._VECTptr->size()==1) )
       x=x_orig._VECTptr->front();
@@ -1081,6 +1133,9 @@ namespace giac {
     }
 #endif
     f=remove_equal(eval(f,eval_level(contextptr),contextptr));
+    num=has_num_coeff(f);
+    if (num) 
+      f=exact(f,contextptr);
     if (ckmatrix(f)){
       vecteur v = *f._VECTptr;
       for (int i=0;i<v.size();++i){
@@ -1195,7 +1250,7 @@ namespace giac {
 	  vecteur newsol=solve(res-x,*t._IDNTptr,3,contextptr);
 	  if (is_undef(newsol)){
 	    newsol.clear();
-	    *logptr(contextptr) << "Unable to solve implicit equation "<< res-x << "=0 in " << t << endl;
+	    *logptr(contextptr) << "Unable to solve implicit equation "<< res-x << "=0 in " << t << '\n';
 	  }
 #else
 	  vecteur newsol;
@@ -1204,7 +1259,7 @@ namespace giac {
 	  } catch(std::runtime_error & err){
 	    last_evaled_argptr(contextptr)=NULL;
 	    newsol.clear();
-	    *logptr(contextptr) << "Unable to solve implicit equation "<< res-x << "=0 in " << t << endl;
+	    *logptr(contextptr) << "Unable to solve implicit equation "<< res-x << "=0 in " << t << '\n';
 	  }
 #endif
 	  if (newsol.empty())
@@ -1246,7 +1301,7 @@ namespace giac {
 	  vecteur newsol=solve(implicitsol,*y._IDNTptr,3,contextptr);
 	  if (is_undef(newsol)){
 	    newsol.clear();
-	    *logptr(contextptr) << "Unable to solve implicit equation "<< implicitsol << "=0 in " << y << endl;
+	    *logptr(contextptr) << "Unable to solve implicit equation "<< implicitsol << "=0 in " << y << '\n';
 	  }
 #else
 	  vecteur newsol;
@@ -1257,7 +1312,7 @@ namespace giac {
 	  } catch(std::runtime_error & err){
 	    last_evaled_argptr(contextptr)=NULL;
 	    newsol.clear();
-	    *logptr(contextptr) << "Unable to solve implicit equation "<< implicitsol << "=0 in " << y << endl;
+	    *logptr(contextptr) << "Unable to solve implicit equation "<< implicitsol << "=0 in " << y << '\n';
 	  }
 	  calc_mode(cm,contextptr);
 #endif
@@ -1268,7 +1323,7 @@ namespace giac {
 	  if (step_info)
 	    gprintf("Order 1 x-incomplete differential equation",vecteur(0),step_info,contextptr);
 	  if (debug_infolevel)
-	    *logptr(contextptr) << gettext("Incomplete") << endl;
+	    *logptr(contextptr) << gettext("Incomplete") << '\n';
 	  gen pr=integrate_without_lnabs(inv(*it,contextptr),y,contextptr)+parameters.back();
 	  sol=mergevecteur(sol,solve(pr-x,*y._IDNTptr,3,contextptr));
 	  continue;
@@ -1301,7 +1356,7 @@ namespace giac {
 	  if (step_info)
 	    gprintf("Order 1 Homogeneous differential equation",vecteur(0),step_info,contextptr);
 	  if (debug_infolevel)
-	    *logptr(contextptr) << gettext("Homogeneous differential equation") << endl;
+	    *logptr(contextptr) << gettext("Homogeneous differential equation") << '\n';
 	  tmpsto=sto(doubleassume_and(vecteur(2,0),0,1,false,contextptr),x,contextptr);
 	  if (is_undef(tmpsto))
 	    return tmpsto;
@@ -1316,7 +1371,7 @@ namespace giac {
 	  // Try to find t in x=pr
 	  vecteur v=protect_solve(x-pr,*t._IDNTptr,1,contextptr);
 	  if (!v.empty() && !is_undef(v)){
-	    *logptr(contextptr) << "solve(" << pr << "=" << x << "," << t << ") returned " << v << ".\nIf solutions were missed consider paramplot(" << makevecteur(pr,t*pr) << "," << t << ")" << endl;
+	    *logptr(contextptr) << "solve(" << pr << "=" << x << "," << t << ") returned " << v << ".\nIf solutions were missed consider paramplot(" << makevecteur(pr,t*pr) << "," << t << ")" << '\n';
 	    for (unsigned j=0;j<v.size();++j){
 	      sol.push_back(x*v[j]);
 	    }
@@ -1466,7 +1521,7 @@ namespace giac {
 	    continue;
 	  } // end x-incomplete
 	  gen res(string2gen(gettext("Unable to solve differential equation"),false));
-	  res.subtype=1;
+	  res.subtype=-1;
 	  sol.push_back(res);
 	} 
 	ordre=2;
@@ -1499,6 +1554,7 @@ namespace giac {
   // "unary" version
   gen _desolve(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG && args.subtype==-1) return  args;
+    //if (has_num_coeff(args)) return evalf(_desolve(exact(args,contextptr),contextptr),1,contextptr);
     int ordre;
     vecteur parameters;
     if (args.type!=_VECT || args.subtype!=_SEQ__VECT || (!args._VECTptr->empty() && is_equal(args._VECTptr->back()) && args._VECTptr->back()._SYMBptr->feuille[0].type!=_IDNT)){
@@ -1554,7 +1610,7 @@ namespace giac {
     return ggbputinlist(desolve( v[0],v[1],v[2],ordre,parameters,contextptr),contextptr);    
   }
   static const char _desolve_s []="desolve";
-  static define_unary_function_eval (__desolve,&_desolve,_desolve_s);
+  static define_unary_function_eval_quoted (__desolve,&_desolve,_desolve_s);
   define_unary_function_ptr5( at_desolve ,alias_at_desolve,&__desolve,1,true);
 
   static const char _dsolve_s []="dsolve";
@@ -1591,7 +1647,10 @@ namespace giac {
       y=eval(y,1,contextptr);
     int st=step_infolevel(contextptr);
     step_infolevel(0,contextptr);
-    gen res=desolve_f(f_orig,x,y,ordre,parameters,f,st,contextptr);
+    bool num=false;
+    gen res=desolve_f(f_orig,x,y,ordre,parameters,f,st,num,contextptr);
+    if (num)
+      res=evalf(res,1,contextptr);
     step_infolevel(st,contextptr);
     return res;
   }
@@ -1676,7 +1735,7 @@ namespace giac {
       polynome ipnum(dim),ipden(dim);
       partfrac(num,den,vden,pfde_VECT,ipnum,ipden);
       if (!is_zero(ipnum))
-	*logptr(contextptr) << gettext("Warning, z*argument has a non-zero integral part") << endl;
+	*logptr(contextptr) << gettext("Warning, z*argument has a non-zero integral part") << '\n';
       vector< pf<gen> >::iterator it=pfde_VECT.begin();
       vector< pf<gen> >::const_iterator itend=pfde_VECT.end();
       gen a,A,B;
@@ -1766,6 +1825,692 @@ namespace giac {
   static define_unary_function_eval (__Kronecker,&_Kronecker,_Kronecker_s);
   define_unary_function_ptr5( at_Kronecker ,alias_at_Kronecker,&__Kronecker,0,true);
 
+#ifndef USE_GMP_REPLACEMENTS
+  // this code slice (c) 2018 Luka Marohnić 
+  /* returns the coefficient of t in (fraction, Taylor or Laurent) expansion e */
+  gen expansion_coeff(const gen &e,const gen &t,GIAC_CONTEXT) {
+    gen ret(0),g;
+    if (e.is_symb_of_sommet(at_plus) && e._SYMBptr->feuille.type==_VECT) {
+      const vecteur &feu=*e._SYMBptr->feuille._VECTptr;
+      for (const_iterateur it=feu.begin();it!=feu.end();++it) {
+	g=_ratnormal(*it/t,contextptr);
+	if (_evalf(g,contextptr).type==_DOUBLE_) {
+	  ret=g;
+	  break;
+	}
+      }
+    } else {
+      g=_ratnormal(e/t,contextptr);
+      if (_evalf(g,contextptr).type==_DOUBLE_)
+	ret=g;
+    }
+    return ret;
+  }
+
+  bool kovacic_iscase1(const vecteur &poles,int dinf) {
+    if (dinf%2!=0 && dinf<=2)
+      return false;
+    for (const_iterateur it=poles.begin();it!=poles.end();++it) {
+      int order=it->_VECTptr->back().val;
+      if (order%2!=0 && order!=1)
+	return false;
+    }
+    return true;
+  }
+
+  bool kovacic_iscase2(const vecteur &poles) {
+    for (const_iterateur it=poles.begin();it!=poles.end();++it) {
+      int order=it->_VECTptr->back().val;
+      if (order==2 || (order>2 && order%2!=0))
+	return true;
+    }
+    return false;
+  }
+
+  bool kovacic_iscase3(const gen &cpfr,const gen &x,const vecteur &poles,int dinf,GIAC_CONTEXT) {
+    if (dinf<2)
+      return false;
+    vecteur alpha,beta;
+    gen a,b,g(0),p;
+    int d;
+    for (const_iterateur it=poles.begin();it!=poles.end();++it) {
+      p=it->_VECTptr->front();
+      d=it->_VECTptr->back().val;
+      if (d>2)
+	return false;
+      if (d>1) {
+	alpha.push_back(a=expansion_coeff(cpfr,pow(x-p,-2),contextptr));
+	g+=a;
+	a=_eval(sqrt(1+4*a,contextptr),contextptr);
+	if (!_numer(a,contextptr).is_integer() || !_denom(a,contextptr).is_integer())
+	  return false;
+      }
+      beta.push_back(b=expansion_coeff(cpfr,_inv(x-p,contextptr),contextptr));
+      g+=b*p;
+    }
+    g=_eval(sqrt(1+4*g,contextptr),contextptr);
+    return is_zero(_ratnormal(_sum(beta,contextptr),contextptr)) &&
+      _numer(g,contextptr).is_integer() && _denom(g,contextptr).is_integer();
+  }
+
+  void build_E_families(const gen_map &E,const vecteur &cv,vecteur &family,matrice &families) {
+    int i=family.size();
+    if (i>=int(cv.size()))
+      return;
+    const vecteur ev=*E.find(cv[i])->second._VECTptr;
+    for (const_iterateur it=ev.begin();it!=ev.end();++it) {
+      family.push_back(*it);
+      if (family.size()==cv.size())
+	families.push_back(family);
+      else build_E_families(E,cv,family,families);
+      family.pop_back();
+    }
+  }
+
+  void create_identifiers(vecteur &vars,int n) {
+    vars.reserve(n);
+    stringstream ss;
+    for (int i=0;i<n;++i) {
+      ss.str("");
+      ss << " cf" << i;
+      vars.push_back(identificateur(ss.str().c_str()));
+    }
+  }
+
+  gen strip_abs(const gen &g) {
+    if (g.is_symb_of_sommet(at_abs))
+      return g._SYMBptr->feuille;
+    if (g.type==_SYMB) {
+      gen args;
+      if (g._SYMBptr->feuille.type==_VECT) {
+	args=vecteur(0);
+	const vecteur &feu=*g._SYMBptr->feuille._VECTptr;
+	for (const_iterateur it=feu.begin();it!=feu.end();++it) {
+	  args._VECTptr->push_back(strip_abs(*it));
+	}
+      } else args=strip_abs(g._SYMBptr->feuille);
+      return symbolic(g._SYMBptr->sommet,args);
+    }
+    return g;
+  }
+
+  gen explnsimp(const gen &g,GIAC_CONTEXT) {
+    gen e=expand(strip_abs(g),contextptr);
+    e=symbolic(at_exp2pow,symbolic(at_expexpand,symbolic(at_lncollect,e)));
+    return ratnormal(_lin(_eval(e,contextptr),contextptr),contextptr);
+  }
+
+  bool isroot(const gen &g,gen &deg,GIAC_CONTEXT) {
+    if (!g.is_symb_of_sommet(at_pow))
+      return false;
+    const gen &pw=g._SYMBptr->feuille._VECTptr->at(1);
+    return (deg=_inv(pw,contextptr)).is_integer() && !is_minus_one(deg);
+  }
+
+  void partialrad(const gen &g,const gen &deg,gen &outside,gen &inside,bool isdenom,GIAC_CONTEXT) {
+    gen s;
+    if (g.is_integer() && (s=_pow(makesequence(g,_inv(deg,contextptr)),contextptr)).is_integer()) {
+      outside=outside*(isdenom?_inv(s,contextptr):s);
+    } else if (g.is_symb_of_sommet(at_prod) && g._SYMBptr->feuille.type==_VECT) {
+      vecteur &fv=*g._SYMBptr->feuille._VECTptr,qr;
+      for (const_iterateur it=fv.begin();it!=fv.end();++it) {
+	if (it->is_integer()) {
+	  s=_pow(makesequence(*it,_inv(deg,contextptr)),contextptr);
+	  outside=outside*(isdenom?_inv(s,contextptr):s);
+	  continue;
+	} else if (it->is_symb_of_sommet(at_pow)) {
+	  const gen &pw=it->_SYMBptr->feuille._VECTptr->at(1);
+	  const gen &b=it->_SYMBptr->feuille._VECTptr->front();
+	  if (pw.is_integer()) {
+	    qr=*_iquorem(makesequence(pw,deg),contextptr)._VECTptr;
+	    if (isdenom) {
+	      outside=outside/_pow(makesequence(b,qr.front()),contextptr);
+	      inside=inside/_pow(makesequence(b,qr.back()),contextptr);
+	    } else {
+	      outside=outside*_pow(makesequence(b,qr.front()),contextptr);
+	      inside=inside*_pow(makesequence(b,qr.back()),contextptr);
+	    }
+	    continue;
+	  }
+	} else if (it->is_symb_of_sommet(at_inv)) {
+	  partialrad(it->_SYMBptr->feuille,deg,outside,inside,!isdenom,contextptr);
+	  continue;
+	}
+	inside=inside*(isdenom?_inv(*it,contextptr):*it);
+      }
+    } else if (g.is_symb_of_sommet(at_inv))
+      partialrad(g._SYMBptr->feuille,deg,outside,inside,!isdenom,contextptr);
+    else inside=inside*(isdenom?_inv(g,contextptr):g);
+  }
+
+  gen radsimp(const gen &g,GIAC_CONTEXT) {
+    gen deg;
+    if (g.type==_VECT) {
+      vecteur ret;
+      for (const_iterateur it=g._VECTptr->begin();it!=g._VECTptr->end();++it) {
+	ret.push_back(radsimp(*it,contextptr));
+      }
+      return change_subtype(ret,g.subtype);
+    }
+    if (isroot(g,deg,contextptr)) {
+      gen radic=_collect(radsimp(g._SYMBptr->feuille._VECTptr->front(),contextptr),contextptr);
+      gen inside(1),outside(1),inum;
+      partialrad(radic,deg,outside,inside,false,contextptr);
+      gen ideg=_inv(deg,contextptr);
+      inside=_eval(symb_normal(inside),contextptr);
+      if (!(inum=_eval(_pow(makesequence(_numer(inside,contextptr),ideg),contextptr),contextptr)).is_symb_of_sommet(at_pow) ||
+	  inum._SYMBptr->feuille._VECTptr->at(1).is_integer())
+	return _collect(outside,contextptr)*inum/_pow(makesequence(_collect(_denom(inside,contextptr),contextptr),ideg),contextptr);
+      return _collect(outside,contextptr)*_pow(makesequence(_collect(inside,contextptr),ideg),contextptr);
+    }
+    if (g.is_symb_of_sommet(at_prod) && g._SYMBptr->feuille.type==_VECT) {
+      vecteur &feu=*g._SYMBptr->feuille._VECTptr,degv;
+      gen den(1);
+      for (const_iterateur it=feu.begin();it!=feu.end();++it) {
+	if (it->is_symb_of_sommet(at_pow)) {
+	  gen dg=_inv(it->_SYMBptr->feuille._VECTptr->at(1),contextptr);
+	  if (is_greater(dg,2,contextptr))
+	    degv.push_back(dg);
+	} else if (it->is_symb_of_sommet(at_inv))
+	  den=den*it->_SYMBptr->feuille;
+      }
+      if (den.is_symb_of_sommet(at_prod) && den._SYMBptr->feuille.type==_VECT) {
+	vecteur &dfeu=*den._SYMBptr->feuille._VECTptr;
+	for (const_iterateur it=dfeu.begin();it!=dfeu.end();++it) {
+	  if (it->is_symb_of_sommet(at_pow)) {
+	    gen dg=_inv(it->_SYMBptr->feuille._VECTptr->at(1),contextptr);
+	    if (is_greater(dg,2,contextptr))
+	      degv.push_back(dg);
+	  }
+	}
+      }
+      gen gd=_lcm(degv,contextptr);
+      gen p=_collect(ratnormal(pow(g,gd.val),contextptr),contextptr);
+      if (p.is_symb_of_sommet(at_pow)) {
+	gen ppw=p._SYMBptr->feuille._VECTptr->at(1);
+	if (ppw.is_integer())
+	  gd=_eval(gd/ppw,contextptr);
+      }
+      gen ret=_pow(makesequence(p,_inv(gd,contextptr)),contextptr);
+      return isroot(ret,deg,contextptr)?radsimp(ret,contextptr):ratnormal(ret,contextptr);
+    }
+    if (g.type==_SYMB) {
+      gen &feu=g._SYMBptr->feuille;
+      if (feu.type==_VECT) {
+	vecteur res;
+	for (const_iterateur it=feu._VECTptr->begin();it!=feu._VECTptr->end();++it) {
+	  res.push_back(radsimp(*it,contextptr));
+	}
+	return symbolic(g._SYMBptr->sommet,change_subtype(res,feu.subtype));
+      }
+      return symbolic(g._SYMBptr->sommet,radsimp(feu,contextptr));
+    }
+    return g;
+  }
+
+  vecteur strip_gcd(const vecteur &v,GIAC_CONTEXT) {
+    gen g1=_gcd(_apply(makesequence(at_numer,v),contextptr),contextptr);
+    gen g2=_gcd(_apply(makesequence(at_denom,v),contextptr),contextptr);
+    return *_collect(_ratnormal(multvecteur(g2/g1,v),contextptr),contextptr)._VECTptr;
+  }
+
+  gen ratsimp_nonexp(const gen &g,GIAC_CONTEXT) {
+    if (g.type==_VECT) {
+      vecteur res;
+      for (const_iterateur it=g._VECTptr->begin();it!=g._VECTptr->end();++it) {
+	res.push_back(ratsimp_nonexp(*it,contextptr));
+      }
+      return change_subtype(res,g.subtype);
+    }
+    if (g.is_symb_of_sommet(at_plus) && g._SYMBptr->feuille==_VECT) {
+      vecteur &terms=*g._SYMBptr->feuille._VECTptr;
+      gen res(0);
+      for (const_iterateur it=terms.begin();it!=terms.end();++it) {
+	res+=ratsimp_nonexp(*it,contextptr);
+      }
+      return res;
+    }
+    if (g.is_symb_of_sommet(at_prod) && g._SYMBptr->feuille.type==_VECT) {
+      vecteur &facs=*g._SYMBptr->feuille._VECTptr;
+      gen e(1),ne(1);
+      for (const_iterateur it=facs.begin();it!=facs.end();++it) {
+	if (it->is_symb_of_sommet(at_exp))
+	  e=*it*e;
+	else ne=*it*ne;
+      }
+      return _ratnormal(ne,contextptr)*e;
+    }
+    return g;
+  }
+
+  gen fullsimp(const gen &g,GIAC_CONTEXT) {
+    return ratsimp_nonexp(_collect(radsimp(explnsimp(exp(_ratnormal(g,contextptr),contextptr),
+                                                     contextptr),contextptr),contextptr),contextptr);
+  }
+
+  /*
+   * This routine solves the general homogeneous linear second-order ODE
+   * y''=r(t)*y, where r is a non-constant rational function, using Kovacic's
+   * algorithm (https://core.ac.uk/download/pdf/82509765.pdf). A list of
+   * solutions is returned (possibly empty).
+   */
+  gen kovacicsols(const gen &r_orig,const gen &x,const gen &dy_coeff,GIAC_CONTEXT) {
+    gen r=_ratnormal(r_orig,contextptr),inf=symbolic(at_plus,_IDNT_infinity());
+    gen s=_numer(r,contextptr),t=_denom(r,contextptr),a,b,c,e,w=identificateur("omega_");
+    int ds=_degree(makesequence(s,x),contextptr).val;
+    int dt=_degree(makesequence(t,x),contextptr).val,dinf=dt-ds,order,nu;
+    vecteur poles=*_roots(makesequence(t,x),contextptr)._VECTptr,solutions(0);
+    gen cpfr=_cpartfrac(makesequence(r,x),contextptr);
+    gen laur=_series(makesequence(r,x,inf,1,_POLY1__VECT),contextptr);
+    bool success=false;
+    if (kovacic_iscase1(poles,dinf)) {
+      //cerr << "Case 1 of Kovacic algorithm" << '\n';
+      /* step 1 */
+      gen_map alpha_plus,alpha_minus,sqrt_r;
+      gen alpha_inf_plus,alpha_inf_minus;
+      for (const_iterateur it=poles.begin();it!=poles.end();++it) {
+	c=it->_VECTptr->front();
+	order=it->_VECTptr->back().val;
+	if (order==1) {
+	  sqrt_r[c]=0;
+	  alpha_plus[c]=alpha_minus[c]=1;
+	} else if (order==2) {
+	  sqrt_r[c]=0;
+	  b=expansion_coeff(cpfr,pow(x-c,-2),contextptr);
+	  alpha_plus[c]=(1+sqrt(1+4*b,contextptr))/2;
+	  alpha_minus[c]=(1-sqrt(1+4*b,contextptr))/2;
+	} else if (order%2==0 && order>=4) {
+	  nu=order/2;
+	  e=_series(makesequence(sqrt(r,contextptr),x,c,1,_POLY1__VECT),contextptr);
+	  for (int i=2;i<=nu;++i) {
+	    gen cf=expansion_coeff(e,pow(x-c,-i),contextptr);
+	    if (i==nu)
+	      a=cf;
+	    sqrt_r[c]+=cf/pow(x-c,i);
+	  }
+	  if (is_zero(a))
+	    return false;
+	  b=expansion_coeff(cpfr,pow(x-c,-nu-1),contextptr);
+	  b-=expansion_coeff(_cpartfrac(makesequence(sq(sqrt_r[c]),x),contextptr),pow(x-c,-nu-1),contextptr);
+	  alpha_plus[c]=(nu+b/a)/2;
+	  alpha_minus[c]=(nu-b/a)/2;
+	} else assert(false);
+      }
+      if (dinf>2) {
+	sqrt_r[inf]=0;
+	alpha_inf_plus=0;
+	alpha_inf_minus=1;
+      } else if (dinf==2) {
+	sqrt_r[inf]=0;
+	b=_lcoeff(makesequence(s,x),contextptr)/_lcoeff(makesequence(t,x),contextptr);
+	alpha_inf_plus=(1+sqrt(1+4*b,contextptr))/2;
+	alpha_inf_minus=(1-sqrt(1+4*b,contextptr))/2;
+      } else if (dinf%2==0 && dinf<=0) {
+	nu=-dinf/2;
+	e=_series(makesequence(sqrt(r,contextptr),x,inf,1,_POLY1__VECT),contextptr);
+	for (int i=0;i<=nu;++i) {
+	  gen cf=expansion_coeff(e,pow(x,i),contextptr);
+	  if (i==nu)
+	    a=cf;
+	  sqrt_r[inf]+=cf*pow(x,i);
+	}
+	if (is_zero(a))
+	  return false;
+	b=expansion_coeff(_propfrac(makesequence(r,x),contextptr),pow(x,nu-1),contextptr);
+	b-=expansion_coeff(expand(sq(sqrt_r[inf]),contextptr),pow(x,nu-1),contextptr);
+	alpha_inf_plus=(b/a-nu)/2;
+	alpha_inf_minus=(-b/a-nu)/2;
+      } else assert(false);
+      /* step 2 */
+      int np=poles.size()+1,N=(1<<np),sc,d,maxd=0; // N=std::pow(2.0,np)
+      vecteur fam,cv,vars,v;
+      gen fd,fw,P;
+      for (gen_map::const_iterator it=alpha_plus.begin();it!=alpha_plus.end();++it) {
+	cv.push_back(it->first);
+      }
+      for (int i=0;i<N;++i) {
+	fd=(i & 1)!=0?alpha_inf_plus:alpha_inf_minus;
+	for (int j=1;j<np;++j) {
+	  fd-=(i & (1<<j))!=0?alpha_plus[cv[j-1]]:alpha_minus[cv[j-1]]; // i & (int)std::pow(2.0,j)
+	}
+	fd=_ratnormal(fd,contextptr);
+	if (fd.is_integer() && is_positive(fd,contextptr)) {
+	  fw=(i & 1)!=0?sqrt_r[inf]:-sqrt_r[inf];
+	  for (int j=1;j<np;++j) {
+	    sc=(i & (1<<j)); // i & (int)std::pow(2.0,j)
+	    fw+=sc!=0?sqrt_r[cv[j-1]]:-sqrt_r[cv[j-1]];
+	    fw+=(sc!=0?alpha_plus[cv[j-1]]:alpha_minus[cv[j-1]])/(x-cv[j-1]);
+	  }
+	  fam.push_back(makevecteur(fd,fw));
+	  maxd=std::max(maxd,fd.val);
+	}
+      }
+      /* step 3 */
+      create_identifiers(vars,maxd);
+      for (const_iterateur it=fam.begin();it!=fam.end() && !success;++it) {
+	d=it->_VECTptr->front().val; fw=it->_VECTptr->back();
+	v=vecteur(vars.begin(),vars.begin()+d);
+	P=0;
+	for (int i=0;i<d;++i) P+=v[i]*pow(x,i);
+	P+=pow(x,d);
+	e=_numer(_derive(makesequence(P,x,2),contextptr)+2*fw*_derive(makesequence(P,x),contextptr)+
+		 (_derive(makesequence(fw,x),contextptr)+sq(fw)-r)*P,contextptr);
+	gen lsol=_solve(makesequence(_coeff(makesequence(e,x),contextptr),v),contextptr);
+	if (lsol.type==_VECT && !lsol._VECTptr->empty()) {
+	  lsol=_subst(makesequence(lsol._VECTptr->front(),v,vecteur(d,0)),contextptr);
+	  solutions.push_back(_subst(makesequence(P,v,lsol),contextptr)*
+			      fullsimp(_int(makesequence(fw-dy_coeff/2,x),contextptr),contextptr));
+	  success=true;
+	}
+      }
+    }
+    if (!success && kovacic_iscase2(poles)) {
+      //cerr << "Case 2 of Kovacic algorithm" << '\n';
+      /* step 1 */
+      gen_map E;
+      for (const_iterateur it=poles.begin();it!=poles.end();++it) {
+	c=it->_VECTptr->front();
+	order=it->_VECTptr->back().val;
+	if (order==1)
+	  E[c]=vecteur(1,4);
+	else if (order==2) {
+	  b=expansion_coeff(cpfr,pow(x-c,-2),contextptr);
+	  E[c]=vecteur(0);
+	  for (int k=-1;k<=1;++k) {
+	    gen tmp=_eval(2+2*k*sqrt(1+4*b,contextptr),contextptr);
+	    if (tmp.is_integer())
+	      E[c]._VECTptr->push_back(tmp);
+	  }
+	} else if (order>2)
+	  E[c]=vecteur(1,order);
+      }
+      vecteur Einf(0);
+      if (dinf>2)
+	Einf=makevecteur(0,2,4);
+      else if (dinf==2) {
+	b=expansion_coeff(laur,pow(x,-2),contextptr);
+	for (int k=-1;k<=1;++k) {
+	  gen tmp=_eval(2+2*k*sqrt(1+4*b,contextptr),contextptr);
+	  if (tmp.is_integer())
+	    Einf.push_back(tmp);
+	}
+      } else if (dinf<2)
+	Einf.push_back(dinf);
+      /* step 2 */
+      vecteur family,families,fam,cv,vars,v;
+      for (gen_map::const_iterator it=E.begin();it!=E.end();++it) {
+	cv.push_back(it->first);
+      }
+      build_E_families(E,cv,family,families);
+      int maxdeg=0,deg;
+      for (const_iterateur it=Einf.begin();it!=Einf.end();++it) {
+	if (families.empty()) {
+	  e=*it/2;
+	  if (e.is_integer() && is_positive(e,contextptr)) {
+	    fam.push_back(makevecteur(e,0));
+	    maxdeg=std::max(maxdeg,e.val);
+	  }
+	}
+	for (const_iterateur jt=families.begin();jt!=families.end();++jt) {
+	  gen th(0);
+	  bool discard=is_one(_even(*it,contextptr));
+	  const vecteur &fm=*(jt->_VECTptr);
+	  for (const_iterateur kt=fm.begin();kt!=fm.end();++kt) {
+	    th+=(*kt)/(x-cv[kt-fm.begin()]);
+	    if (is_zero(_even(*kt,contextptr)))
+	      discard=false;
+	  }
+	  //if (discard) continue;
+	  e=_eval(*it-_sum(fm,contextptr),contextptr)/2;
+	  if (e.is_integer() && is_positive(e,contextptr)) {
+	    fam.push_back(makevecteur(e,th/2));
+	    maxdeg=std::max(maxdeg,e.val);
+	  }
+	}
+      }
+      /* step 3 */
+      create_identifiers(vars,maxdeg);
+      gen P,th,dth;
+      for (const_iterateur it=fam.begin();it!=fam.end() && !success;++it) {
+	deg=it->_VECTptr->front().val; th=it->_VECTptr->back();
+	v=vecteur(vars.begin(),vars.begin()+deg);
+	P=0;
+	for (int i=0;i<deg;++i) P+=v[i]*pow(x,i);
+	P+=pow(x,deg);
+	dth=_derive(makesequence(th,x),contextptr);
+	e=_derive(makesequence(P,x,3),contextptr)+3*th*_derive(makesequence(P,x,2),contextptr)+
+	  (3*sq(th)+3*dth-4*r)*_derive(makesequence(P,x),contextptr)+
+	  (_derive(makesequence(th,x,2),contextptr)+3*th*dth+pow(th,3)-4*r*th-2*_derive(makesequence(r,x),contextptr))*P;
+	e=_numer(e,contextptr);
+	gen cfs=deg==0?undef:_solve(makesequence(_coeff(makesequence(e,x),contextptr),v),contextptr);
+	if (deg==0?is_zero(e):(cfs.type==_VECT && !cfs._VECTptr->empty())) {
+	  if (deg>0) {
+	    cfs=_subst(makesequence(cfs._VECTptr->front(),v,vecteur(deg,0)),contextptr);
+	    P=_subst(makesequence(P,v,cfs),contextptr);
+	  }
+	  gen ph=th+_derive(makesequence(P,x),contextptr)/P;
+	  gen qsol=_solve(makesequence(symb_equal(sq(w)-w*ph+(_derive(makesequence(ph,x),contextptr)/2+sq(ph)/2-r),0),w),contextptr);
+	  if (qsol.type==_VECT) for (const_iterateur jt=qsol._VECTptr->begin();jt!=qsol._VECTptr->end();++jt) {
+	      solutions.push_back(fullsimp(_int(makesequence(*jt-dy_coeff/2,x),contextptr),contextptr));
+	      success=true;
+	    }
+	}
+      }
+    }
+    if (!success && kovacic_iscase3(cpfr,x,poles,dinf,contextptr)) {
+      //cerr << "Case 3 of Kovacic algorithm" << '\n';
+      vector<int> nv=vecteur_2_vector_int(makevecteur(4,6,12));
+      for (vector<int>::const_iterator nt=nv.begin();nt!=nv.end();++nt) {
+	int n=*nt;
+	/* step 1 */
+	gen_map E;
+	for (const_iterateur it=poles.begin();it!=poles.end();++it) {
+	  c=it->_VECTptr->front();
+	  order=it->_VECTptr->back().val;
+	  if (order==1)
+	    E[c]=vecteur(1,12);
+	  else if (order==2) {
+	    a=expansion_coeff(cpfr,pow(x-c,-2),contextptr);
+	    E[c]=vecteur(0);
+	    for (int k=-n/2;k<=n/2;++k) {
+	      gen tmp=_eval(6+k*(12/n)*sqrt(1+4*a,contextptr),contextptr);
+	      if (tmp.is_integer())
+		E[c]._VECTptr->push_back(tmp);
+	    }
+	  }
+	}
+	vecteur Einf(0);
+	b=dinf>2?gen(0):expansion_coeff(laur,pow(x,-2),contextptr);
+	for (int k=-n/2;k<=n/2;++k) {
+	  gen tmp=_eval(6+k*(12/n)*sqrt(1+4*b,contextptr),contextptr);
+	  if (tmp.is_integer())
+	    Einf.push_back(tmp);
+	}
+	/* step 2 */
+	vecteur family,families,fam,cv,vars,v;
+	for (gen_map::const_iterator it=E.begin();it!=E.end();++it) {
+	  cv.push_back(it->first);
+	}
+	build_E_families(E,cv,family,families);
+	int maxdeg=0,deg;
+	for (const_iterateur it=Einf.begin();it!=Einf.end();++it) {
+	  if (families.empty()) {
+	    e=*it*gen(n)/12;
+	    if (e.is_integer() && is_positive(e,contextptr)) {
+	      fam.push_back(makevecteur(e,0));
+	      maxdeg=std::max(maxdeg,e.val);
+	    }
+	  }
+	  for (const_iterateur jt=families.begin();jt!=families.end();++jt) {
+	    gen th(0);
+	    const vecteur &fm=*(jt->_VECTptr);
+	    for (const_iterateur kt=fm.begin();kt!=fm.end();++kt) {
+	      th+=(*kt)/(x-cv[kt-fm.begin()]);
+	    }
+	    e=gen(n)*_eval(*it-_sum(*jt,contextptr),contextptr)/12;
+	    if (e.is_integer() && is_positive(e,contextptr)) {
+	      fam.push_back(makevecteur(e,gen(n)*th/12));
+	      maxdeg=std::max(maxdeg,e.val);
+	    }
+	  }
+	}
+	/* step 3 */
+	gen S(1);
+	for (const_iterateur it=cv.begin();it!=cv.end();++it) {
+	  S=S*(x-*it);
+	}
+	gen dS=_derive(makesequence(S,x),contextptr),th;
+	vecteur P(n+2,0);
+	create_identifiers(vars,maxdeg);
+	for (const_iterateur it=fam.begin();it!=fam.end();++it) {
+	  deg=it->_VECTptr->front().val; th=it->_VECTptr->back();
+	  v=vecteur(vars.begin(),vars.begin()+deg);
+	  for (int i=0;i<deg;++i) P[n+1]-=v[i]*pow(x,i);
+	  P[n+1]-=pow(x,deg);
+	  P[n]=-S*(_derive(makesequence(P[n+1],x),contextptr)+th*P[n+1]);
+	  if (P[n].type==_SYMB) P[n]=_collect(P[n],contextptr);
+	  for (int i=n;i-->0;) {
+	    P[i]=-S*_derive(makesequence(P[i+1],x),contextptr)+((n-i)*dS-S*th)*P[i+1]-(n-i)*(i+1)*sq(S)*r*P[i+2];
+	    if (P[i].type==_SYMB) P[i]=_collect(P[i],contextptr);
+	  }
+	  gen cfs;
+	  if ((deg==0 && is_zero(P[0])) ||
+	      (deg>0 && (cfs=_solve(makesequence(_coeff(makesequence(P[0],x),contextptr),v),contextptr)).type==_VECT &&
+	       !cfs._VECTptr->empty())) {
+	    if (deg>0) {
+	      cfs=_subst(makesequence(cfs._VECTptr->front(),v,vecteur(deg,0)),contextptr);
+	      P=*_subst(makesequence(P,v,cfs),contextptr)._VECTptr;
+	    }
+	    vecteur ac(n+1);
+	    for (int i=0;i<=n;++i) {
+	      ac[i]=_collect(pow(S,i)*P[i+1]/_factorial(n-i,contextptr),contextptr);
+	    }
+        //*logptr(contextptr) << "Warning: outputting the algebraic expression for ω" << '\n';
+	    ac=strip_gcd(ac,contextptr);
+	    gen omg=pow(w,4)*ac[4]+pow(w,3)*ac[3]+pow(w,2)*ac[2]+w*ac[1]+ac[0];
+	    if (!is_zero(dy_coeff)) {
+	      vecteur C=*_coeff(makesequence(_subst(makesequence(omg,w,w+dy_coeff/2),contextptr),w),contextptr)._VECTptr;
+	      for (int i=0;i<=n;++i) {
+		ac[i]=_collect(_ratnormal(C[i],contextptr),contextptr);
+	      }
+	      ac=strip_gcd(ac,contextptr);
+	      omg=pow(w,4)*ac[4]+pow(w,3)*ac[3]+pow(w,2)*ac[2]+w*ac[1]+ac[0];
+	    }
+	    return omg;
+	  }
+	}
+      }
+    }
+    return solutions;
+  }
+
+  /*
+   * Return the solution(s) of a second-order linear homogeneous ODE using
+   * Kovacic's algorithm. The first argument is the ODE a(x)*y''+b(x)*y'+c(x)*y=0
+   * itself, which may be given as an expression (left-hand side), an equation or
+   * a list [a,b,c]. The functions a, b and c must be rational in x. The second
+   * and third (both optional) arguments are the independent variable x and the
+   * dependent variable y, respectively. By default, the symbols "x" and "y" are
+   * used.
+   */
+  gen _kovacicsols(const gen &g,GIAC_CONTEXT) {
+    if (g.type==_STRNG && g.subtype==-1) return g;
+    gen x=identificateur("x"),y=identificateur("y"),eq,p(0),q(0),r(0);
+    if (g.type!=_VECT || g.subtype!=_SEQ__VECT) {
+      eq=g;
+    } else if (g.subtype==_SEQ__VECT) {
+      vecteur &gv=*g._VECTptr;
+      if (gv.size()<2) return gensizeerr(contextptr);
+      eq=gv.front();
+      if (gv.size()==2) {
+	if (eq.type==_VECT && gv.back().type==_IDNT)
+	  x=gv.back();
+	else if (gv.back().is_symb_of_sommet(at_of)) {
+	  y=gv.back()._SYMBptr->feuille._VECTptr->front();
+	  x=gv.back()._SYMBptr->feuille._VECTptr->back();
+	} else return gensizeerr(contextptr);
+      } else {
+	if (eq.type==_VECT)
+	  return gensizeerr(contextptr);
+	x=gv[1];
+	y=gv[2];
+      }
+      if (y.type!=_IDNT || x.type!=_IDNT)
+	return gensizeerr(contextptr);
+    }
+    eq=idnteval(eq,contextptr);
+    if (eq.type==_VECT) {
+      vecteur &cfs=*eq._VECTptr;
+      if (cfs.size()!=3)
+	return gensizeerr(contextptr);
+      p=cfs[1]; q=cfs[2]; r=cfs[0];
+    } else if (eq.type==_SYMB) {
+      gen dy=identificateur(" dy"),d2y=identificateur(" d2y"),yx=symb_of(y,x);
+      gen diffy=symbolic(at_derive,y),diff2y=symbolic(at_derive,diffy);
+      eq=_subst(makesequence(eq,makevecteur(_derive(makesequence(yx,x),contextptr),_derive(makesequence(yx,x,2),contextptr)),
+			     makevecteur(dy,d2y)),contextptr);
+      eq=_subst(makesequence(_subst(makesequence(_subst(makesequence(eq,diff2y,d2y),contextptr),diffy,dy),contextptr),yx,y),contextptr);
+      if (eq.is_symb_of_sommet(at_equal))
+	eq=equal2diff(eq);
+      eq=expand(eq,contextptr);
+      vecteur terms=eq.is_symb_of_sommet(at_plus) && eq._SYMBptr->feuille.type==_VECT?
+	*eq._SYMBptr->feuille._VECTptr:vecteur(1,eq);
+      gen tmp;
+      vecteur yvars=makevecteur(y,dy,d2y);
+      for (const_iterateur it=terms.begin();it!=terms.end();++it) {
+	if (is_constant_wrt_vars(tmp=_ratnormal(*it/y,contextptr),yvars,contextptr))
+	  q+=tmp;
+	else if (is_constant_wrt_vars(tmp=_ratnormal(*it/dy,contextptr),yvars,contextptr))
+	  p+=tmp;
+	else if (is_constant_wrt_vars(tmp=_ratnormal(*it/d2y,contextptr),yvars,contextptr))
+	  r+=tmp;
+	else return gensizeerr(contextptr);
+      }
+    } else return gensizeerr(contextptr);
+    if (is_zero(r)) // not a second order ODE
+      return gensizeerr(contextptr);
+    p=_ratnormal(p/r,contextptr);
+    q=_ratnormal(q/r,contextptr);
+    if (rlvarx(p,x).size()+rlvarx(q,x).size()>2) // p or q is not rational in x
+      return gensizeerr(contextptr);
+    /* solve the equation y''+p(x)*y'+q(x)*y=0, transform it first to z''=r(x)*z */
+    r=sq(p)/4+_derive(makesequence(p,x),contextptr)/2-q;
+    return kovacicsols(r,x,p,contextptr);
+  }
+  static const char _kovacicsols_s []="kovacicsols";
+  static define_unary_function_eval_quoted (__kovacicsols,&_kovacicsols,_kovacicsols_s);
+  define_unary_function_ptr5(at_kovacicsols,alias_at_kovacicsols,&__kovacicsols,_QUOTE_ARGUMENTS,true)
+
+  /*
+   * Return true iff the expression 'e' is constant with respect to
+   * variables in 'vars'.
+   */
+  bool is_constant_wrt_vars(const gen &e,const vecteur &vars,GIAC_CONTEXT) {
+    for (const_iterateur it=vars.begin();it!=vars.end();++it) {
+      if (!is_constant_wrt(e,*it,contextptr))
+	return false;
+    }
+    return true;
+  }
+  
+  gen idnteval(const gen &g,GIAC_CONTEXT) {
+    if (g.type==_IDNT)
+      return _eval(g,contextptr);
+    if (g.type==_SYMB) {
+      gen &feu=g._SYMBptr->feuille;
+      if (feu.type==_VECT) {
+	vecteur v;
+	for (const_iterateur it=feu._VECTptr->begin();it!=feu._VECTptr->end();++it) {
+	  v.push_back(idnteval(*it,contextptr));
+	}
+	return symbolic(g._SYMBptr->sommet,change_subtype(v,feu.subtype));
+      }
+      return symbolic(g._SYMBptr->sommet,idnteval(feu,contextptr));
+    }
+    return g;
+  }
+
+#endif
 
 #ifndef NO_NAMESPACE_GIAC
 } // namespace giac

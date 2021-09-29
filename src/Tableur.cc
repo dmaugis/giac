@@ -2,11 +2,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#ifndef IN_GIAC
-#include <giac/first.h>
-#else
 #include "first.h"
-#endif
 /*
  *  Copyright (C) 2002,2014 B. Parisse, Institut Fourier, 38402 St Martin d'Heres
  *
@@ -28,24 +24,12 @@
 #include "Tableur.h"
 #include "Xcas1.h"
 #include "Print.h"
-#ifndef IN_GIAC
-#include <giac/vecteur.h>
-#else
 #include "vecteur.h"
-#endif
-#ifndef IN_GIAC
-#include <giac/identificateur.h>
-#include <giac/usual.h>
-#include <giac/prog.h>
-#include <giac/misc.h>
-#include <giac/global.h>
-#else
 #include "identificateur.h"
 #include "usual.h"
 #include "prog.h"
 #include "misc.h"
 #include "global.h"
-#endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -583,7 +567,7 @@ namespace xcas {
       // int mode=Fl::event_state(FL_CTRL);
       if (Fl::event_key()==FL_Escape){
 	editing=false;
-	// cerr << "Mtrw edit leave"<<endl;
+	// cerr << "Mtrw edit leave"<<'\n';
       }
       if (Fl::event_key()==FL_Delete){
 	erase_row_col(2);
@@ -1054,7 +1038,7 @@ namespace xcas {
     if (iscell(g,c,r,contextptr) ){
       if (r>=spread_ptr->rows()||c>=spread_ptr->cols())
 	spread_ptr->resizesheet(max(r+1,spread_ptr->rows()),max(c+1,spread_ptr->cols()));
-      // cerr << g << " " << r << " " << c << endl;
+      // cerr << g << " " << r << " " << c << '\n';
       spread_ptr->row(r);
       spread_ptr->col(c);
       spread_ptr->select_start_row(r);
@@ -1102,7 +1086,7 @@ namespace xcas {
     Fl::focus(spread_ptr);
     if (spread_ptr && spread_ptr->editing){
       spread_ptr->editing=false;
-      // cerr << "Mtrw edit end" << endl;
+      // cerr << "Mtrw edit end" << '\n';
       spread_ptr->row(spread_ptr->edit_row);
       spread_ptr->col(spread_ptr->edit_col);
     }
@@ -1114,7 +1098,7 @@ namespace xcas {
       g=gen(str,contextptr);
     }
     catch (std::runtime_error & e){
-      cerr << e.what() << endl;
+      cerr << e.what() << '\n';
     }
     // count number of newline
     unsigned strs=str.size();
@@ -1190,6 +1174,8 @@ namespace xcas {
 	spread_ptr->update_input();
         return;
       }
+      if (g.type>=_IDNT && spread_ptr->is_spreadsheet && v[C].type!=_VECT)
+	v[C]=makevecteur(v[C],0,0);
       if ( (v[C].type==_VECT) && (v[C]._VECTptr->size()==3)){
 	v[C]._VECTptr->front()=spread_convert(g,R,C,contextptr);
 	if (!spread_ptr->is_spreadsheet)
@@ -1199,8 +1185,11 @@ namespace xcas {
 	else 
 	  (*v[C]._VECTptr)[1]=g;
       }
-      else
+      else {
 	v[C]=g;
+	if (spread_ptr->is_spreadsheet && spread_ptr->spreadsheet_recompute)
+          spread_ptr->spread_eval_interrupt();
+      }
       if (spread_ptr->matrix_symmetry && spread_ptr->matrix_symmetry %2)
         g=-g;
       if (spread_ptr->matrix_symmetry && spread_ptr->matrix_symmetry/2)
@@ -1346,10 +1335,10 @@ namespace xcas {
       fl_message("%s","Write error");
       return;
     }
-    of << mathml_preamble << endl;
+    of << mathml_preamble << '\n';
     int formule=tg->is_spreadsheet?0:1;
     of << spread2mathml(tg->m,formule,contextptr);
-    of << mathml_end << endl;
+    of << mathml_end << '\n';
   }
 
    void cb_Tableur_Save_CSV(Fl_Menu_* m , void*) {
@@ -1371,10 +1360,10 @@ namespace xcas {
 	for (;jt!=jtend;++jt){
 	  of << *jt << ";";
 	}
-	of << endl;
+	of << '\n';
       }
     }
-    of << endl;
+    of << '\n';
     of.close();
   }
 
@@ -1391,9 +1380,9 @@ namespace xcas {
 	return;
       }
       if (tg->is_spreadsheet)
-	of << gen(tg->m,_SPREAD__VECT) << endl;
+	of << gen(tg->m,_SPREAD__VECT) << '\n';
       else
-	of << gen(extractmatricefromsheet(tg->m)) << endl;
+	of << gen(extractmatricefromsheet(tg->m)) << '\n';
       of.close();
       tg->changed_ = false;
     }
@@ -1488,7 +1477,7 @@ namespace xcas {
       decimal_sep=new Fl_Input(dx/4,2+dy/4,dx/4-2,dy/4-4,gettext("Decimal"));
       decimal_sep->tooltip(gettext("One character used for decimal digit separator, like . or ,"));
       end_file=new Fl_Input(3*dx/4,2+dy/4,dx/4-2,dy/4-4,gettext("Endfile"));
-      end_file->tooltip(gettext("Stop reading at first occurence of this character, leave blank for none"));
+      end_file->tooltip(gettext("Stop reading at first occurrence of this character, leave blank for none"));
       import_syntax = new Fl_Check_Button(dx/4,2+2*dy/4,dx/4-2,dy/4-4,gettext("Start row=1"));
       import_syntax->value(1);
       button0 = new Fl_Return_Button(2,2+3*dy/4,dx/2-4,dy/4-4);
@@ -1794,36 +1783,36 @@ namespace xcas {
       fcn3d->tooltip(gettext("Expression of the function (e.g x-y^2)"));
       varname=new Fl_Input(dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("1st var"));
       varname->value("x");
-      varname->tooltip(gettext("Independant variable name (e.g x)"));
+      varname->tooltip(gettext("Independent variable name (e.g x)"));
       varnamey=new Fl_Input(3*dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("2nd var"));
       varnamey->value("y");
-      varnamey->tooltip(gettext("Second independant variable name (e.g y)"));
+      varnamey->tooltip(gettext("Second independent variable name (e.g y)"));
       xmin = new Fl_Value_Input(dx/6,2+2*dy/lignes,dx/6-2,dy/lignes-4,gettext("xmin"));
       xmin->value(-4);
       xmin->step(0.5);
-      xmin->tooltip(gettext("Minimal value for 1st independant variable"));
+      xmin->tooltip(gettext("Minimal value for 1st independent variable"));
       xstep = new Fl_Value_Input(3*dx/6,2+2*dy/lignes,dx/6-2,dy/lignes-4,gettext("xstep"));
       xstep->value(0.5);
       xstep->step(0.01);
-      xstep->tooltip(gettext("Discretization step for 1st independant variable"));
+      xstep->tooltip(gettext("Discretization step for 1st independent variable"));
       xmax = new Fl_Value_Input(5*dx/6,2+2*dy/lignes,dx/6-2,dy/lignes-4,gettext("xmax"));
       xmax->value(4);
       xmax->step(0.5);
-      xmax->tooltip(gettext("Maximal value for 1st independant variable"));
+      xmax->tooltip(gettext("Maximal value for 1st independent variable"));
       target = new Fl_Input(dx/6,2+3*dy/lignes,dx/6-2,dy/lignes-4,gettext("Target"));
       target->tooltip(gettext("Name of the first of two columns that will be overwritten by the tablefunc"));
       ymin = new Fl_Value_Input(dx/6,2+3*dy/lignes,dx/6-2,dy/lignes-4,gettext("ymin"));
       ymin->value(-4);
       ymin->step(0.5);
-      ymin->tooltip(gettext("Minimal value for 2nd independant variable"));
+      ymin->tooltip(gettext("Minimal value for 2nd independent variable"));
       ystep = new Fl_Value_Input(3*dx/6,2+3*dy/lignes,dx/6-2,dy/lignes-4,gettext("ystep"));
       ystep->value(0.5);
       ystep->step(0.01);
-      ystep->tooltip(gettext("Discretization step for 2nd independant variable"));
+      ystep->tooltip(gettext("Discretization step for 2nd independent variable"));
       ymax = new Fl_Value_Input(5*dx/6,2+3*dy/lignes,dx/6-2,dy/lignes-4,gettext("ymax"));
       ymax->value(4);
       ymax->step(0.5);
-      ymin->tooltip(gettext("Maximal value for 2nd independant variable"));
+      ymin->tooltip(gettext("Maximal value for 2nd independent variable"));
       methode = new Fl_Menu_Button(0,2+3*dy/lignes,dx/3-2,dy/lignes-4,gettext("Choose"));
       methode->menu(Xcas_Menu_Methodes);
       Xcas_Methodes_Output = new Fl_Output(4*dx/6,2+3*dy/lignes,dx/3-2,dy/lignes-4,gettext("int. method"));
@@ -2061,7 +2050,7 @@ namespace xcas {
       fcn->tooltip(gettext("Expression of u_(n+1) in terms of a variable=u_n, e.g. 1/2*(x+2/x)\nOr expression of u_(n+k+1) in terms of a list of variables=[u_n,...,u_(n+k)], e.g. x+y"));
       varname=new Fl_Input(dx/2,2+dy/lignes,dx/2-4,dy/lignes-4,gettext("Variable(s)"));
       varname->value("x");
-      varname->tooltip(gettext("Independant variable name representing u_n, e.g. x\nOr list of independant variables representing u_n,...,u_(n+k), e.g. [x,y]"));
+      varname->tooltip(gettext("Independent variable name representing u_n, e.g. x\nOr list of independent variables representing u_n,...,u_(n+k), e.g. [x,y]"));
       u0name = new Fl_Input(0,2+2*dy/lignes,dx/8,dy/lignes-4);
       u0name->value("u0");
       u0name->tooltip(gettext("Name of the initial value of un"));
@@ -2185,7 +2174,7 @@ namespace xcas {
       if (iscell(g,c,r,contextptr) ){
 	if (r>=spread_ptr->rows()||c>=spread_ptr->cols())
 	  spread_ptr->resizesheet(max(r+1,spread_ptr->rows()),max(c+1,spread_ptr->cols()));
-	// cerr << g << " " << r << " " << c << endl;
+	// cerr << g << " " << r << " " << c << '\n';
 	spread_ptr->row(r);
 	spread_ptr->col(c);
 	spread_ptr->select_start_row(r);
@@ -2642,7 +2631,14 @@ namespace xcas {
   static Flv_Table_Gen * current_spread_ptr;
   bool thesheetsort(const gen & a,const gen &b){
     const giac::context * contextptr = get_context(current_spread_ptr);
-    gen a1=a[current_spread_ptr->sort_col][1].evalf_double(1,contextptr),a2=b[current_spread_ptr->sort_col][1].evalf_double(1,contextptr); 
+    gen a1=a[current_spread_ptr->sort_col];
+    if (a1.type==_VECT)
+      a1=a1[1];
+    a1=a1.evalf_double(1,contextptr);
+    gen a2=b[current_spread_ptr->sort_col];
+    if (a2.type==_VECT)
+      a2=a2[1];
+    a2=a2.evalf_double(1,contextptr); 
     if (a1.type!=_DOUBLE_ || a2.type!=_DOUBLE_)
       return a1.islesscomplexthan(a2);
     return a1._DOUBLE_val<a2._DOUBLE_val;
@@ -2973,8 +2969,8 @@ namespace xcas {
     {gettext("Move down"), 0,  (Fl_Callback *) cb_Tableur_MoveDown, 0, 0, 0, 0, 14, 56},
     {gettext("Auto Recompute"), 0,  (Fl_Callback *) cb_Tableur_Auto_Recompute, 0, 0, 0, 0, 14, 56},
     {gettext("No Recompute"), 0,  (Fl_Callback *) cb_Tableur_No_Recompute, 0, 0, 0, 0, 14, 56},
-    {gettext("Dispatch matrice to cells"), 0,  (Fl_Callback *) cb_Tableur_Matrix_Fill, 0, 0, 0, 0, 14, 56},
-    {gettext("Keep matrice in one cell"), 0,  (Fl_Callback *) cb_Tableur_No_Matrix_Fill, 0, 0, 0, 0, 14, 56},
+    {gettext("Dispatch matrix to cells"), 0,  (Fl_Callback *) cb_Tableur_Matrix_Fill, 0, 0, 0, 0, 14, 56},
+    {gettext("Keep matrix in one cell"), 0,  (Fl_Callback *) cb_Tableur_No_Matrix_Fill, 0, 0, 0, 0, 14, 56},
     {0}, // end Configuration
     {gettext("Fill"), 0,  0, 0, 64, 0, 0, 14, 56},
     {gettext("Copy right"), 0x40072,  (Fl_Callback *) cb_Tableur_Copy_Right, 0, 0, 0, 0, 14, 56},
@@ -3415,7 +3411,7 @@ namespace xcas {
   int Tableur_Group::handle(int event){
     if (table && event==FL_UNFOCUS){
       if (Fl::event_x()<x() || Fl::event_x()>x()+w() || Fl::event_y()<y() || Fl::event_y()>y()+h()){
-	// cerr << "unfocus " << endl;
+	// cerr << "unfocus " << '\n';
 	table->editing=false;
       }
     }
@@ -3622,6 +3618,13 @@ namespace xcas {
 
   gen Xcas_fltk_current_sheet(const gen & g,GIAC_CONTEXT){
     Flv_Table_Gen * tptr=(Flv_Table_Gen * )evaled_table(contextptr);
+    if (!tptr && last_history_pack){
+      Fl::lock();
+      Tableur_Group * tg=dynamic_cast<Tableur_Group *>(new_tableur(last_history_pack,2));
+      Fl::unlock();
+      if (tg)
+	tptr=tg->table;
+    }
     if (tptr){
       const giac::context * contextptr = get_context((tptr));
       int r,c;
@@ -3631,6 +3634,11 @@ namespace xcas {
 	gen tmp=tptr->m[r];
 	tmp=tmp[c];
 	return tmp[1];
+      }
+      if (ckmatrix(g,true)){
+	tptr->is_spreadsheet=true;
+	tptr->set_matrix(g);
+	return 1;
       }
       if (g.type==_VECT && g._VECTptr->size()==2 && g._VECTptr->front().type==_INT_ && g._VECTptr->back().type==_INT_)
 	return gen(extractmatricefromsheet(tptr->m),_MATRIX__VECT)[g];

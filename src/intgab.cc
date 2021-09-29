@@ -206,11 +206,13 @@ namespace giac {
 	return 2;
       return 0;
     }
-    f1=normal(_texpand(f1,contextptr),contextptr);
-    f2=normal(_texpand(f2,contextptr),contextptr);
+    f1=_texpand(f1,contextptr);
+    f1=normal(f1,contextptr);
+    f2=_texpand(f2,contextptr);
+    f2=normal(f2,contextptr);
     if (f1==f2)
       return 1;
-    if (is_zero(ratnormal(f1+f2,contextptr)))
+    if (is_zero(ratnormal(invfracpow(f1+f2,contextptr),contextptr)))
       return 2;
     return 0;
   }
@@ -237,16 +239,23 @@ namespace giac {
       return gensizeerr(contextptr);
     gen xval=x._IDNTptr->eval(1,x,contextptr);
     if (xval!=x){
+#if 1
+      identificateur tmpid(x._IDNTptr->id_name+string("_"));
+      gen tmp(tmpid);
+      gen g(subst(g_,x,tmp,false,contextptr));
+      return residue(g,tmp,a,contextptr);
+#else
       _purge(x,contextptr);
       xval=x._IDNTptr->eval(1,x,contextptr);
-      if (xval!=x){
+      if (xval!=x){	
 	string s="Unable to purge "+x.print(contextptr)+ ", choose another free variable name";
-	*logptr(contextptr) << s << endl;
+	*logptr(contextptr) << s << '\n';
 	return gensizeerr(s);
       }
       gen res=residue(g_,x,a,contextptr);
       sto(xval,x,contextptr);
       return res;
+#endif
     }
     gen g1=fxnd(g_);
     if (g1.type==_VECT && g1._VECTptr->size()==2){
@@ -497,7 +506,7 @@ namespace giac {
       polynome Dp_content;
       gen extra_div=1;
       if (!factor(Dp,Dp_content,fd,false,true,true,1,extra_div) || extra_div!=1){
-	*logptr(contextptr) << gettext("Unable to factor ") << r2sym(Dp,vX,contextptr) << endl;
+	*logptr(contextptr) << gettext("Unable to factor ") << r2sym(Dp,vX,contextptr) << '\n';
 	res=undef;
 	return true;
       }
@@ -506,7 +515,7 @@ namespace giac {
       factorization::const_iterator f_it=fd.begin(),f_itend=fd.end();
       for (;f_it!=f_itend;++f_it){
 	if (f_it->fact.degree(0)>1){
-	  *logptr(contextptr) << gettext("Unable to factor ") << r2sym(f_it->fact,vX,contextptr) << endl;
+	  *logptr(contextptr) << gettext("Unable to factor ") << r2sym(f_it->fact,vX,contextptr) << '\n';
 	  res=undef;
 	  return true;
 	}
@@ -524,7 +533,7 @@ namespace giac {
       Tabcuv(D1,D2,R,U,V,C); // R/D=(D1*U+D2*V)/(C*D1*D2) -> V/(C*D1)
       Dp=C*D1;
       R=V; // back to integrating 2*Re(R/Dp)
-      // find R/Dp at 0, real part should be substracted
+      // find R/Dp at 0, real part should be subtracted
       vecteur Rv(polynome2poly1(R,1)),Dv(polynome2poly1(Dp,1)),Qv(polynome2poly1(Q,1));
       vecteur vX1(vX.begin()+1,vX.end());
       Rv=*r2sym(Rv,vX1,contextptr)._VECTptr;
@@ -719,14 +728,18 @@ namespace giac {
 	gen tmp=xfactint*subst(Xfact,X,expx,false,contextptr);
 	gen somme_residus;
 	int rAs=int(rA.size()),rPs=int(rP.size());
+	vecteur lrac;
 	for (int i=0;i<rAs;++i){
 	  gen rac=rA[i];
 	  // adjust imaginary part
 	  gen imrac=im(rac,contextptr);
 	  gen k=_floor(imrac/imT,contextptr);
 	  rac -= k*T;
-	  if (is_positive(k,contextptr))
+	  rac=ratnormal(rac,contextptr);
+	  if (is_positive(k,contextptr)){
+	    lrac.push_back(rac);
 	    somme_residus += residue(tmp,*x._IDNTptr,rac,contextptr);
+	  }
 	  if (is_undef(somme_residus))
 	    return false;
 	}
@@ -736,7 +749,11 @@ namespace giac {
 	  gen imrac=im(rac,contextptr);
 	  gen k=_floor(imrac/imT,contextptr);
 	  rac -= k*T;
-	  somme_residus += residue(tmp,*x._IDNTptr,rac,contextptr);
+	  rac=ratnormal(rac,contextptr);
+	  if (!equalposcomp(lrac,rac)){
+	    somme_residus += residue(tmp,*x._IDNTptr,rac,contextptr);
+	    lrac.push_back(rac);
+	  }
 	  if (is_undef(somme_residus)) return false;
 	}
 	res=normal(-2*cst_pi*cst_i*somme_residus,contextptr); 
@@ -799,7 +816,7 @@ namespace giac {
 	  for (int i=0;i<s;++i){
 	    if (is_real(v[i],contextptr)){
 	      res=undef; // singularity on the real axis
-	      *logptr(contextptr) << gettext("Warning: pole at ") << v[i] << endl;
+	      *logptr(contextptr) << gettext("Warning: pole at ") << v[i] << '\n';
 	      purgenoassume(gt,contextptr);
 	      return false;
 	    }
@@ -891,7 +908,7 @@ namespace giac {
       return true;
     }
     if (a==unsigned_inf || b==unsigned_inf){
-      *logptr(contextptr) << gettext("Please use +infinity or -infinity since infinity is unsigned") << endl;
+      *logptr(contextptr) << gettext("Please use +infinity or -infinity since infinity is unsigned") << '\n';
       return false;
     }
     if (is_strictly_greater(a,b,contextptr)){
@@ -948,10 +965,18 @@ namespace giac {
 	  if (derive(base,x,contextptr)==0){
 	    g0mult=pow(base,expo,contextptr);
 	    g0_=symbolic(at_pow,makesequence(x-a,na*expo))*symbolic(at_pow,makesequence(b-x,nb*expo));
-	    nb=0; // insure next test is not true
+	    na=nb=0; // insure next tests are not true
+	  }
+	  else 
+	    base=g0_._VECTptr->front();
+	  bool exchanged=false;
+	  if (na==1 && !nb){ // exchange a and b
+	    // x->b+a-x
+	    base=subst(base,x,b+a-x,false,contextptr);
+	    nb=1; na=0;
+	    exchanged=true;
 	  }
 	  if (nb==1 && !na){
-	    base=g0_._VECTptr->front();
 	    gen tmp=_horner(makesequence(base,a,x),contextptr);
 	    base=base-tmp;
 	    for (;;){
@@ -971,9 +996,9 @@ namespace giac {
 	      return true;
 	    }
 	  } // nb==1 && !na
-	}
-      }
-    }
+	} // lv.size()==1 && lv.front()==x
+      } // g0_.type==-_VECT of size 2
+    } // a!=inf && b!=inf && pow
     if (!is_inf(a) && !is_inf(b) && g0_.is_symb_of_sommet(at_prod) && g0_._SYMBptr->feuille.type==_VECT && g0_._SYMBptr->feuille._VECTptr->size()==2){ // Beta?
       // rewrite ^ of powers
       vecteur v=*g0_._SYMBptr->feuille._VECTptr,v1;  
@@ -1028,7 +1053,7 @@ namespace giac {
       if (heav.type==_VECT && heav._VECTptr->size()==2 && heav._VECTptr->back().type==_INT_ ){
 	int diracorder=heav._VECTptr->back().val;
 	if (diracorder<0){
-	  *logptr(contextptr) << gettext("Negative second Dirac argument") << endl;
+	  *logptr(contextptr) << gettext("Negative second Dirac argument") << '\n';
 	  return false;
 	}
 	A=derive(A,x,diracorder,contextptr);
@@ -1046,7 +1071,7 @@ namespace giac {
       if (ck_is_greater(c,a,contextptr) && ck_is_greater(b,c,contextptr))
 	res += quotesubst(A,x,c,contextptr);
       else
-	*logptr(contextptr) << gettext("Warning, Dirac function outside summation interval") << endl;
+	*logptr(contextptr) << gettext("Warning, Dirac function outside summation interval") << '\n';
       return true;
     }
     if (a==b){
@@ -1073,7 +1098,7 @@ namespace giac {
       if (b==plus_inf){
 	vecteur singu=find_singularities(g,*x._IDNTptr,0 /* real singularities*/,contextptr);
 	if (!singu.empty()){
-	  *logptr(contextptr) << "Warning, singularities at " << singu << endl;
+	  *logptr(contextptr) << "Warning, singularities at " << singu << '\n';
 	  if (calc_mode(contextptr)==1 || abs_calc_mode(contextptr)==38){
 	    res=undef;
 	    return true;
@@ -1135,7 +1160,7 @@ namespace giac {
       return false;
     } // end a==minus_inf
     if (b==plus_inf){
-      gen ga=subst(g,x,x+a,false,contextptr);
+      gen ga_orig=subst(g,x,x+a,false,contextptr),ga(ga_orig);
       // additional check for int(t^n/(exp(alpha*t)-1),t,0,inf)=n!/alpha^(n+1)*Zeta(n+1)
       vecteur vax=rlvarx(ga,x);
       if (vax.size()==2 && vax.front()==x && vax.back().is_symb_of_sommet(at_exp)){
@@ -1214,6 +1239,7 @@ namespace giac {
 	  }
 	} // end if (is_linear_wrt(expo...))
       } // end varx.size()==2
+      ga=ga_orig;
       int eo=is_even_odd(ga,x,contextptr);
       if (eo==1){ 
 	vecteur singu=find_singularities(g,*x._IDNTptr,0 /* real singularities*/,contextptr);
@@ -1325,7 +1351,7 @@ namespace giac {
 	      vecteur vout=makevecteur((ln(x,contextptr)-beta)/alpha);
 	      // check for essential singularities
 	      vecteur v2=lop(recursive_normal(rlvarx(subst(v,vin,vout,false,contextptr),x),contextptr),at_exp);
-	      vecteur w2=singular(v2,x,contextptr);
+	      vecteur w2=singular(exp2pow(v2,contextptr),x,contextptr);
 	      unsigned w2i=0;
 	      for (;w2i<w2.size();++w2i){
 		if (is_greater(radius,w2[w2i],contextptr))
@@ -1360,7 +1386,7 @@ namespace giac {
 	      // complex_mode(b,contextptr);
 	      // Sucess! Now integration of gof on the unit circle using residues
 	      if (debug_infolevel)
-		*logptr(contextptr) << gettext("Searching int of ") << gof << gettext(" where ") << x << gettext(" is on the unit circle, using residues") << endl;
+		*logptr(contextptr) << gettext("Searching int of ") << gof << gettext(" where ") << x << gettext(" is on the unit circle, using residues") << '\n';
 	      // replace x by another variable because we might have assumptions on x
 	      identificateur tmpid("_intgab38");
 	      vecteur w=singular(subst(gof,x,tmpid,false,contextptr),tmpid,contextptr);
@@ -1496,9 +1522,9 @@ namespace giac {
 
   static bool sumab_ps(const polynome & Q,const polynome & R,const vecteur & v,const gen & a,const gen & x,const gen & g,bool est_reel,const polynome & p,const polynome & s,gen & res,GIAC_CONTEXT){
     // p corresponds to derivation, s to integration
-    // cerr << "p=" << p << " s=" << s << " Q=" << Q << " R=" << R << endl;
-    // Q must be independant of x
-    // If R is independant of x we use the geometric series
+    // cerr << "p=" << p << " s=" << s << " Q=" << Q << " R=" << R << '\n';
+    // Q must be independent of x
+    // If R is independent of x we use the geometric series
     // If R=x-integer the exponential (must change bounds by integer)
     // If R=2x(2x+1) sinh/cosh etc.
     if (Q.degree(0)==0){
@@ -1552,7 +1578,7 @@ namespace giac {
 	  // hence the sum is exp(Q)*(w[0]+w[1]*Q+...)
 	  reverse(w.begin(),w.end());
 	  gen tmp1=symb_horner(w,gx)*exp(gx,contextptr),remains;
-	  // substract sum(p(n)*Q^(n-R0)/(n-R0)!,n=R0..a-1)
+	  // subtract sum(p(n)*Q^(n-R0)/(n-R0)!,n=R0..a-1)
 	  for (int n=R0.val;n<a.val;++n){
 	    tmp1 -= subst(Pg,x,n,false,contextptr)*pow(Qg,n-R0.val)/factorial(n-R0.val);
 	  }
@@ -1614,7 +1640,7 @@ namespace giac {
 	  vecteur w=divided_differences(vx,vy);
 	  reverse(w.begin(),w.end());
 	  gen tmp=symb_horner(w,gx)*exp(gx,contextptr),remains;
-	  // substract sum(...,k=0..r*a-R0-1)
+	  // subtract sum(...,k=0..r*a-R0-1)
 	  for (int k=0;k<r*a.val-r0;++k){
 	    // pow(Qg,k) replaced by pow(gx,k) for assume(x>0);somme(x^(4n+1)/(4n+1)!,n,1,inf);
 	    tmp -= subst(Pg,x,(k+R0)/r,false,contextptr)*pow(gx,k)/factorial(k);
@@ -1649,7 +1675,7 @@ namespace giac {
 	  gen tmp=r2e(p,v,contextptr)*pow(gx,x,contextptr);
 	  gen remains,tmp1=sum(tmp,x,remains,contextptr);
 	  if (!is_zero(remains) || is_undef(tmp1)){
-	    *logptr(contextptr) << gettext("Unable to sum ")+remains.print(contextptr) << endl;
+	    *logptr(contextptr) << gettext("Unable to sum ")+remains.print(contextptr) << '\n';
 	    return false;
 	  }
 	  tmp1=-subst(tmp1,x,a,false,contextptr);
@@ -1815,11 +1841,11 @@ namespace giac {
 	      for (int i=0;i<diffb.val;++i)
 		res += simplify(limit(g,*x._IDNTptr,trueb+1+i,0,contextptr),contextptr);
 	    }
-	    else { // b<=trueb substract sum(g,x,b+1,trueb)
+	    else { // b<=trueb subtract sum(g,x,b+1,trueb)
 	      for (int i=0;i<-diffb.val;++i)
 		res -= simplify(limit(g,*x._IDNTptr,b+1+i,0,contextptr),contextptr); 
 	    }
-	    if (diffa.val>0){ // a>truea : substract sum(g,x,truea,a-1)
+	    if (diffa.val>0){ // a>truea : subtract sum(g,x,truea,a-1)
 	      for (int i=0;i<diffa.val;++i)
 		res -= simplify(limit(g,*x._IDNTptr,truea+i,0,contextptr),contextptr);
 	    }
@@ -1977,7 +2003,7 @@ namespace giac {
       if (ck_is_greater(c,a_orig,contextptr) && ck_is_greater(b_orig,c,contextptr))
 	res += quotesubst(A,x,c,contextptr);
       else
-	*logptr(contextptr) << gettext("Warning, Dirac function outside summation interval") << endl;
+	*logptr(contextptr) << gettext("Warning, Dirac function outside summation interval") << '\n';
       return true;
     }
     // detect Heaviside 

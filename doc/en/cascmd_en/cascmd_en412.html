@@ -4,34 +4,76 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Make a list with a function : makelist</title>
+<title>Transforming sequences into lists and lists into sequences: [] nop op makesuite
+
+
+
+
+</title>
 </head>
 <body >
 <a href="cascmd_en411.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en413.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec500" class="subsection">5.38.35  Make a list with a function : <span style="font-family:monospace">makelist</span></h3>
-<p><a id="hevea_default623"></a>
-<span style="font-family:monospace">makelist</span> takes as argument a function <span style="font-family:monospace">f</span>, 
-the bounds <span style="font-family:monospace">a,b</span> of an index variable and a step <span style="font-family:monospace">p</span> 
-(by default 1 or -1 depending on the bounds order).<br>
-<span style="font-family:monospace">makelist</span> makes the list <span style="font-family:monospace">[f(a),f(a+p)...f(a+k*p)]</span> with <span style="font-style:italic">k</span> such
-that : <span style="font-style:italic">a</span>&lt;<span style="font-style:italic">a</span>+<span style="font-style:italic">k</span>*<span style="font-style:italic">p</span> ≤ <span style="font-style:italic">b</span> &lt;<span style="font-style:italic">a</span>+(<span style="font-style:italic">k</span>+1)*<span style="font-style:italic">p</span> or <span style="font-style:italic">a</span>&gt;<span style="font-style:italic">a</span>+<span style="font-style:italic">k</span>*<span style="font-style:italic">p</span> ≥ <span style="font-style:italic">b</span> &gt;<span style="font-style:italic">a</span>+(<span style="font-style:italic">k</span>+1)*<span style="font-style:italic">p</span>.<br>
-Input :
-</p><div class="center"><span style="font-family:monospace">makelist(x-&gt;x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,3,5)</span></div><p>
-or
-</p><div class="center"><span style="font-family:monospace">makelist(x-&gt;x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,3,5,1)</span></div><p>
-or first define the function <span style="font-style:italic">h</span>(<span style="font-style:italic">x</span>)=<span style="font-style:italic">x</span><sup>2</sup> by <span style="font-family:monospace">h(x):=x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2</span>
-then input
-</p><div class="center"><span style="font-family:monospace">makelist(h,3,5,1)</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">[9,16,25]</span></div><p>
-Input :
-</p><div class="center"><span style="font-family:monospace">makelist(x-&gt;x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2,3,6,2)</span></div><p>
-Output :
-</p><div class="center"><span style="font-family:monospace">[9,25]</span></div><p>
-<span style="font-weight:bold">Warning!!!</span> purge <span style="font-family:monospace">x</span> if <span style="font-family:monospace">x</span> is not symbolic.</p>
+<h3 id="sec:makesuiteop" class="subsection">6.39.10  Transforming sequences into lists and lists into sequences: <span style="font-family:monospace">[]</span> <span style="font-family:monospace">nop</span> <span style="font-family:monospace">op</span> <span style="font-family:monospace">makesuite</span>
+<a id="hevea_default693"></a>
+<a id="hevea_default694"></a>
+<a id="hevea_default695"></a>
+<a id="hevea_default696"></a>
+</h3>
+<p>To transform a sequence into list, you can put square brackets
+(<span style="font-family:monospace">[]</span>) around the sequence. The <span style="font-family:monospace">makevector</span> and
+<span style="font-family:monospace">nop</span> commands have the same effect.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">makevector</span> (or <span style="font-family:monospace">nop</span>) takes one argument:<br>
+ <span style="font-style:italic">S</span>, a sequence.
+</li><li class="li-itemize"><span style="font-family:monospace">makevector(</span><span style="font-style:italic">S</span><span style="font-family:monospace">)</span> (or <span style="font-family:monospace">nop(</span><span style="font-style:italic">S</span><span style="font-family:monospace">)</span>) returns the
+list with the same elements as <span style="font-style:italic">S</span> in the same order.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Example.</span><br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">[seq(j^3,j=1..4)]</span>
+</div><p>
+<span style="font-style:italic">or:</span>
+</p><div class="center">
+<span style="font-family:monospace">[(j^3)$(j=1..4)]</span>
+</div><p>
+<span style="font-style:italic">or:</span>
+</p><div class="center">
+<span style="font-family:monospace">nop(j^3$(j=1..4))</span>
+</div><p>
+<span style="font-style:italic">or:</span>
+</p><div class="center">
+<span style="font-family:monospace">makevector(j^3$(j=1..4))</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">⎡<br>
+⎣</td><td class="dcell">1,8,27,64</td><td class="dcell">⎤<br>
+⎦</td></tr>
+</table><p><br>
+</p><p>The <span style="font-family:monospace">makesuite</span> command transforms a list into a sequence.
+Note that <span style="font-family:monospace">op</span> (see Section <a href="cascmd_en207.html#ssec%3Aop">6.15.3</a>) can do the same thing.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">makesuite</span> takes one argument:<br>
+ <span style="font-style:italic">L</span>, a list.
+</li><li class="li-itemize"><span style="font-family:monospace">makesuite(</span><span style="font-style:italic">L</span><span style="font-family:monospace">)</span> returns the sequence with the same
+elements as <span style="font-style:italic">L</span> and the same order.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Example.</span><br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">makesuite([0,1,2])</span>
+</div><p>
+<span style="font-style:italic">or:</span>
+</p><div class="center">
+<span style="font-family:monospace">op([0,1,2])</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">0,1,2
+</td></tr>
+</table>
 <hr>
 <a href="cascmd_en411.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

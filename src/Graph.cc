@@ -45,11 +45,7 @@
 #include <sys/time.h>
 #endif
 #include "path.h"
-#ifndef IN_GIAC
-#include <giac/plot.h>
-#else
 #include "plot.h"
-#endif
 #include "Equation.h"
 #include "Editeur.h"
 #include "Xcas1.h"
@@ -59,6 +55,14 @@
 #include "Tableur.h"
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
+
+#ifndef DBL_MIN
+#define DBL_MIN (-1e307)
+#endif
+
+#ifndef DBL_MAX
+#define DBL_MAX (1e307)
 #endif
 
 using namespace std;
@@ -221,7 +225,7 @@ namespace xcas {
     unsigned l=0;
     for (unsigned i=0;i<ih;++i){
       if (debug_infolevel)
-	cerr << "readrgb, reading row " << i << endl;
+	cerr << "readrgb, reading row " << i << '\n';
       vr[i]=vecteur(iw);
       vg[i]=vecteur(iw);
       vb[i]=vecteur(iw);
@@ -257,18 +261,22 @@ namespace xcas {
     // localization code and pointer to RGB image reader
     if (!giac::readrgb_ptr){
       giac::readrgb_ptr=readrgb;
-#ifdef HAVE_LC_MESSAGES
-      xcas_locale()=getenv("XCAS_LOCALE")?getenv("XCAS_LOCALE"):giac_locale_location;	
-      cerr << "// Using locale " << xcas_locale() << endl;
+#if defined(HAVE_LC_MESSAGES)  || defined(__MINGW_H)
+#ifdef __MINGW_H
+      xcas_locale()=getenv("XCAS_LOCALE")?getenv("XCAS_LOCALE"):"c:/xcaswin/locale";	
+#else
+      xcas_locale()=getenv("XCAS_LOCALE")?getenv("XCAS_LOCALE"):giac_locale_location;
+#endif	
+      cerr << "// Using locale " << xcas_locale() << '\n';
       const char * ptr=setlocale (LC_MESSAGES, "");
       if (ptr)
-	cerr << "// " << ptr << endl;
+	cerr << "// " << ptr << '\n';
       else
-	cerr << "// setlocale returns 0" << endl;
+	cerr << "// setlocale returns 0" << '\n';
 #if defined(HAVE_GETTEXT) 
-      cerr << "// " << bindtextdomain (PACKAGE, xcas_locale().c_str()) << endl;
-      cerr << "// " << textdomain (PACKAGE) << endl;
-      cerr << "// " << bind_textdomain_codeset (PACKAGE, "UTF-8") << endl;
+      cerr << "// " << bindtextdomain (PACKAGE, xcas_locale().c_str()) << '\n';
+      cerr << "// " << textdomain (PACKAGE) << '\n';
+      cerr << "// " << bind_textdomain_codeset (PACKAGE, "UTF-8") << '\n';
 #endif
 #endif
     }
@@ -547,7 +555,7 @@ namespace xcas {
 	    /* GL_LIGHT_MODEL_AMBIENT=[r,g,b,a] */
 	    if (optname.val==_GL_LIGHT_MODEL_AMBIENT && optvalf.type==_VECT && optvalf._VECTptr->size()==4){
 	      vecteur & w=*optvalf._VECTptr;
-	      GLfloat tab[4]={w[0]._DOUBLE_val,w[1]._DOUBLE_val,w[2]._DOUBLE_val,w[3]._DOUBLE_val};
+	      GLfloat tab[4]={(GLfloat)w[0]._DOUBLE_val,(GLfloat)w[1]._DOUBLE_val,(GLfloat)w[2]._DOUBLE_val,(GLfloat)w[3]._DOUBLE_val};
 	      glLightModelfv(GL_LIGHT_MODEL_AMBIENT,tab);
 	    }
 	    // gl_blend=[d,s] 
@@ -973,7 +981,7 @@ namespace xcas {
 	for (int j=0;j<8;++j){ 
 	  if (type & (1<<j)){
 	    rotate(rx,ry,rz,theta,lx[j],ly[j],lz[j],lX,lY,lZ);
-	    // cerr << theta << ":" << lX << "," << lY << "," << lZ << endl;
+	    // cerr << theta << ":" << lX << "," << lY << "," << lZ << '\n';
 	    gr3->light_x[j]=lX;
 	    gr3->light_y[j]=lY;
 	    gr3->light_z[j]=lZ;
@@ -1181,11 +1189,11 @@ namespace xcas {
     {gettext("Graph off"), 0,  (Fl_Callback *) cb_Graph_Graphoff, 0, 0, 0, 0, 14, 56},
     {0},
     {gettext("3-d"), 0,  0, 0, 64, 0, 0, 14, 56},
-    {gettext("Mouse plan equation"), 0,  (Fl_Callback*)cb_Graph2d3d_mouse_plan, 0, 0, 0, 0, 14, 56},
+    {gettext("Mouse plane equation"), 0,  (Fl_Callback*)cb_Graph2d3d_mouse_plan, 0, 0, 0, 0, 14, 56},
     {gettext("Oyz view (x=cst=depth)"), 0,  (Fl_Callback*)cb_Graph2d3d_xview, 0, 0, 0, 0, 14, 56},
     {gettext("Oxz view (y=cst=depth)"), 0,  (Fl_Callback*)cb_Graph2d3d_yview, 0, 0, 0, 0, 14, 56},
-    {gettext("upper view (z=cst=depth)"), 0,  (Fl_Callback*)cb_Graph2d3d_zview, 0, 0, 0, 0, 14, 56},
-    {gettext("default view"), 0,  (Fl_Callback*)cb_Graph2d3d_startview, 0, 0, 0, 0, 14, 56},
+    {gettext("Upper view (z=cst=depth)"), 0,  (Fl_Callback*)cb_Graph2d3d_zview, 0, 0, 0, 0, 14, 56},
+    {gettext("Default view"), 0,  (Fl_Callback*)cb_Graph2d3d_startview, 0, 0, 0, 0, 14, 56},
     {gettext("Rotate animation"), 0,  (Fl_Callback*)cb_Graph2d3d_rotate, 0, 0, 0, 0, 14, 56},
     {gettext("Hide below depth"), 0,  (Fl_Callback*)cb_Graph2d3d_hide, 0, 0, 0, 0, 14, 56},
     {gettext("Show below depth"), 0,  (Fl_Callback*)cb_Graph2d3d_show, 0, 0, 0, 0, 14, 56},
@@ -1689,22 +1697,22 @@ namespace xcas {
       ty->tooltip(gettext("Number of units or pixels for ticks on Y"));
       y_ += dh;
       nx=new Fl_Value_Input(30,y_,dx/7-30,dh-4,"x*");
-      nx->tooltip(gettext("x coefficient of mouse plan equation"));
+      nx->tooltip(gettext("x coefficient of mouse plane equation"));
       nx->step(0.1);
       nx->minimum(-10.1);
       nx->maximum(10.1);
       ny=new Fl_Value_Input(dx/7+30,y_,dx/7-30,dh-4,"+y*");
-      ny->tooltip(gettext("y coefficient of mouse plan equation"));
+      ny->tooltip(gettext("y coefficient of mouse plane equation"));
       ny->step(0.1);
       ny->minimum(-10.1);
       ny->maximum(10.1);
       nz=new Fl_Value_Input(2*dx/7+30,y_,dx/7-30,dh-4,"+z*");
-      nz->tooltip(gettext("z coefficient of mouse plan equation"));
+      nz->tooltip(gettext("z coefficient of mouse plane equation"));
       nz->step(0.1);
       nz->minimum(-10.1);
       nz->maximum(10.1);
       nd=new Fl_Value_Input(3*dx/7+30,y_,dx/7-30,dh-4,"=");
-      nd->tooltip(gettext("constant coefficient of mouse plan equation"));
+      nd->tooltip(gettext("constant coefficient of mouse plane equation"));
       nd->step(0.1);
       nd->minimum(-30.1);
       nd->maximum(30.1);
@@ -2159,7 +2167,7 @@ namespace xcas {
 	      // A*x+B*y+C*z=d -> depth=(d-A*tx-B*ty-C*tz)/(A*Zx+B*Zy+C*Zz)
 	      n=aorig*(window_xmax-window_xmin)*a+borig*(window_ymax-window_ymin)*b+corig*(window_zmax-window_zmin)*c;
 	      gr3d->depth = -2/std::sqrt(double(3.0))*(nd->value()-aorig*(window_xmax+window_xmin)/2-borig*(window_ymax+window_ymin)/2-corig*(window_zmax+window_zmin)/2)/n;
-	      // cerr << gr3d->depth << endl;
+	      // cerr << gr3d->depth << '\n';
 	      double A0,B0,C0; // coordinates of OX0
 	      if (std::abs(b)>std::abs(c)){
 		A0=b;
@@ -2191,7 +2199,7 @@ namespace xcas {
 		  2 B E b
 		  3 C F c
 	      */
-	      // cerr << "axis " << F-b << "," << a-C << "," << B-D << endl;
+	      // cerr << "axis " << F-b << "," << a-C << "," << B-D << '\n';
 	      double qx,qy,qz,qw;
 	      qw=std::sqrt(1+A+E+c)/2;
 	      qx=(F-b)/4/qw;
@@ -2659,7 +2667,7 @@ namespace xcas {
       j0=(window_ymax-f1._DOUBLE_val)*y_scale;
       return true;
     }
-    // cerr << "Invalid drawing data" << endl;
+    // cerr << "Invalid drawing data" << '\n';
     return false;
   }
 
@@ -3521,7 +3529,7 @@ namespace xcas {
     }
     else
       decal=in_area?geometry_round_numeric(newx,newy,eps,approx):0;
-    // cerr << in_area << " " << decal << endl;
+    // cerr << in_area << " " << decal << '\n';
     if (event==FL_RELEASE && Fl::event_button()== FL_RIGHT_MOUSE && (is_zero(decal)) ){
       pushed=moving=moving_frame=false;
       change_attributs();
@@ -3567,7 +3575,7 @@ namespace xcas {
 	return 0;
       if (moving && (event==FL_DRAG || event==FL_RELEASE) ){
 	if (mouse_position) mouse_position->redraw();
-	// cerr << current_i << " " << current_j << endl;
+	// cerr << current_i << " " << current_j << '\n';
 	// avoid point()+complex+complex+complex
 	gen newval;
 	if (drag_original_value.is_symb_of_sommet(at_plus) && drag_original_value._SYMBptr->feuille.type==_VECT && drag_original_value._SYMBptr->feuille._VECTptr->size()>=2){
@@ -3887,7 +3895,7 @@ namespace xcas {
       return 0;
     context * contextptr=hp?hp->contextptr:get_context(this);
 #ifdef HAVE_LIBPTHREAD
-    // cerr << "handle lock" << endl;
+    // cerr << "handle lock" << '\n';
     int locked=pthread_mutex_trylock(&interactive_mutex);
     if (locked)
       return 0;
@@ -3900,7 +3908,7 @@ namespace xcas {
     no_handle=false;
 #ifdef HAVE_LIBPTHREAD
     pthread_mutex_unlock(&interactive_mutex);
-    // cerr << "handle unlock" << endl;
+    // cerr << "handle unlock" << '\n';
 #endif
     return res;
   }
@@ -4260,7 +4268,7 @@ namespace xcas {
       return 1;
     if (!hp)
       hp=geo_find_history_pack(this);
-    // cerr << event << " " << mode << endl;
+    // cerr << event << " " << mode << '\n';
     int res=common_in_handle(event);
     if (Fl::event_button()==FL_RIGHT_MOUSE && res && mode==255)
       return res; // right click desactivated
@@ -4326,7 +4334,7 @@ namespace xcas {
     context * contextptr = hp?hp->contextptr:0;
     int locked=0;
 #ifdef HAVE_LIBPTHREAD
-    // cerr << "geo2d draw lock" << endl;
+    // cerr << "geo2d draw lock" << '\n';
     locked=pthread_mutex_trylock(&interactive_mutex);
 #endif
     bool b,block;
@@ -4337,7 +4345,7 @@ namespace xcas {
       block_signal=true;
     }
     int clip_x,clip_y,clip_w,clip_h;
-    // cerr << "geo2d draw block signal " << this << endl;
+    // cerr << "geo2d draw block signal " << this << '\n';
     fl_clip_box(x(),y(),w(),h(),clip_x,clip_y,clip_w,clip_h);
     fl_push_clip(clip_x,clip_y,clip_w,clip_h);
     int vertical_pixels;
@@ -4360,11 +4368,11 @@ namespace xcas {
     ++animation_instructions_pos;    
     if (!locked){
       block_signal=block;
-      // cerr << "geo2d draw unblock signal " << this << endl;
+      // cerr << "geo2d draw unblock signal " << this << '\n';
       io_graph(contextptr)=b;
 #ifdef HAVE_LIBPTHREAD
       pthread_mutex_unlock(&interactive_mutex);
-    // cerr << "geo2d draw unlock" << endl;
+    // cerr << "geo2d draw unlock" << '\n';
 #endif
     }
   }
@@ -4378,7 +4386,7 @@ namespace xcas {
   void check_fl_draw(const char * ch,int i0,int j0,int imin,int jmin,int di,int dj,int delta_i,int delta_j){
     /* int n=fl_size();
        if (j0>=jmin-n && j0<=jmin+dj+n) */
-    // cerr << i0 << " " << j0 << endl;
+    // cerr << i0 << " " << j0 << '\n';
     if (strlen(ch)>2000)
       fl_draw("String too long for display",i0+delta_i,j0+delta_j);
     else
@@ -4592,6 +4600,62 @@ namespace xcas {
     }
   }
 
+  void draw_filled_polygon(const vector< vector<int> > & v){
+    if (v.empty()) return;
+    fl_push_matrix();
+    fl_begin_complex_polygon();
+    for (size_t i=0;i<v.size();++i){
+      fl_vertex(v[i][0],v[i][1]);
+    }
+    if (v.back()!=v.front())
+      fl_vertex(v[0][0],v[0][1]);
+    fl_end_complex_polygon();
+    fl_pop_matrix(); // Restore initial matrix
+  }
+
+  void fl_pie_seg(int x,int y,int rx,int ry,int theta1_deg,int theta2_deg,bool segment=false){
+    if (!segment){
+      fl_pie(x,y,rx,ry,theta1_deg,theta2_deg);
+      return;
+    }
+    // approximation by a filled polygon
+    // points: (x,y), (x+rx*cos(theta)/2,y+ry*sin(theta)/2) theta=theta1..theta2
+    while (theta2_deg<theta1_deg)
+      theta2_deg+=360;
+    if (theta2_deg-theta1_deg>=360){
+      theta1_deg=0;
+      theta2_deg=360;
+    }
+    int N0=theta2_deg-theta1_deg+1;
+    // reduce N if rx or ry is small
+    double red=double(rx)/1024*double(ry)/768;
+    if (red>1) red=1;
+    if (red<0.1) red=0.1;
+    int N=red*N0;
+    if (N<5)
+      N=N0>5?5:N0;
+    if (N<2)
+      N=2;
+    vector< vector<int> > v(segment?N+1:N+2,vector<int>(2));
+    x += rx/2;
+    y += ry/2;
+    int i=0;
+    if (!segment){
+      v[0][0]=x;
+      v[0][1]=y;
+      ++i;
+    }
+    double theta=theta1_deg*M_PI/180;
+    double thetastep=(theta2_deg-theta1_deg)*M_PI/(180*(N-1));
+    for (;i<v.size()-1;++i){
+      v[i][0]=int(x+rx*std::cos(theta)/2+.5);
+      v[i][1]=int(y-ry*std::sin(theta)/2+.5); // y is inverted
+      theta += thetastep;
+    }
+    v.back()=v.front();
+    draw_filled_polygon(v);
+  }
+
   // helper for Graph2d::draw method
   // plot_i is the position we are drawing in plot_instructions
   // f is the vector of arguments and s is the function: we draw s(f)
@@ -4762,7 +4826,7 @@ namespace xcas {
 	    }
 	    else {
 	      fl_arc(deltax+round(i0-i1),deltay+round(j0-j1),round(2*i1),round(2*j1),anglei*180/M_PI,anglef*180/M_PI);
-	      if (v.size()>=4){ // if cercle has the optionnal 5th arg
+	      if (v.size()>=4){ // if cercle has the optional 5th arg
 		if (v[3]==2)
 		  petite_fleche(i0+i1*std::cos(anglem),j0-j1*std::sin(anglem),-i1*std::sin(anglem),-j1*std::cos(anglem),deltax,deltay,width);
 		else {
@@ -4790,17 +4854,31 @@ namespace xcas {
 	  if (point._SYMBptr->feuille.type!=_VECT)
 	    return;
 	  vecteur &v=*point._SYMBptr->feuille._VECTptr;
-	  if (v.size()<3 || v[0].type!=_INT_ || v[1].type!=_INT_ || v[2].type!=_INT_)
+	  if (v.size()<3 || v[0].type!=_INT_ || v[1].type!=_INT_ )
 	    return;
 	  int delta_i=v[0].val,delta_j=v[1].val,psx=0,psy=0;
+	  delta_i *= pixon_size;
+	  delta_j *= pixon_size;
+	  if (v.back().type==_STRNG){
+	    int color=FL_BLACK;
+	    if (v[2].type==_INT_)
+	      color=v[2].val;
+	    xcas_color(color);
+	    int fontsize=12;
+	    if (v.size()>3 && v[3].type==_INT_)
+	      fontsize=giacmax(10,v[3].val);
+	    fl_font(FL_HELVETICA,fontsize);
+	    check_fl_draw(v.back()._STRNGptr->c_str(),deltax,deltay+fontsize-1,0,0,0,0,delta_i,delta_j);
+	    return;
+	  }
+	  if (v[2].type!=_INT_)
+	    return;
 	  if (v.size()>3 && v[3].type==_INT_){
 	    if (v[3].val>0) psy=v[3].val; else psx=-v[3].val;
 	  }
 	  psx=pixon_size*(psx+1);
 	  psy=pixon_size*(psy+1);
 	  xcas_color(v[2].val);
-	  delta_i *= pixon_size;
-	  delta_j *= pixon_size;
 	  if (delta_i>=0 && delta_i<mxw && delta_j>=0 && delta_j<myw){
 #if 1
 	    check_fl_rectf(deltax+delta_i,deltay+delta_j,psx,psy,clip_x,clip_y,clip_w,clip_h,0,0);
@@ -5154,12 +5232,12 @@ namespace xcas {
 	    approx_mode(true,contextptr);
 	  plot_tmp=symbolic(*function._FUNCptr,title_tmp);
 	  if (!lidnt(title_tmp).empty())
-	    ; // cerr << plot_tmp << endl;
+	    ; // cerr << plot_tmp << '\n';
 	  bool bb=io_graph(contextptr);
 	  int locked=0;
 	  if (bb){
 #ifdef HAVE_LIBPTHREAD
-	    // cerr << "plot title lock" << endl;
+	    // cerr << "plot title lock" << '\n';
 	    locked=pthread_mutex_trylock(&interactive_mutex);
 #endif
 	    if (!locked)
@@ -5170,7 +5248,7 @@ namespace xcas {
 	    io_graph(bb,contextptr);
 #ifdef HAVE_LIBPTHREAD
 	    pthread_mutex_unlock(&interactive_mutex);
-	    // cerr << "plot title unlock" << endl;
+	    // cerr << "plot title unlock" << '\n';
 #endif
 	  }
 	  if (!b)
@@ -5185,6 +5263,14 @@ namespace xcas {
   }
   
   void Graph2d::in_draw(int clip_x,int clip_y,int clip_w,int clip_h,int & vertical_pixels){
+    if (window_xmax-window_xmin<1e-100){
+      window_xmax=gnuplot_xmax;
+      window_xmin=gnuplot_xmin;
+    }
+    if (window_ymax-window_ymin<1e-100){
+      window_ymax=gnuplot_ymax;
+      window_ymin=gnuplot_ymin;
+    }
     struct timezone tz;
     gettimeofday(&animation_last,&tz);
     gen title_tmp;
@@ -5192,6 +5278,219 @@ namespace xcas {
     History_Pack * hp =get_history_pack(this);
     context * contextptr=hp?hp->contextptr:get_context(this);
     find_title_plot(title_tmp,plot_tmp,contextptr);
+#if 1 // changes by L. Marohnic
+    int horizontal_pixels=w()-(show_axes>0?int(ylegende*labelsize())+2:0);
+    vertical_pixels=h()-((show_axes?1:0)+(!title.empty()))*labelsize();//h()-((show_axes!=0 && show_axes!=2?2:0)+(!title.empty()))*labelsize();
+    int deltax=x(),deltay=y();
+    double y_scale=vertical_pixels/(window_ymax-window_ymin);
+    double x_scale=horizontal_pixels/(window_xmax-window_xmin);
+    // Then redraw the background
+    fl_color(FL_WHITE);
+    fl_rectf(clip_x, clip_y, clip_w, clip_h);
+    if (background_image){
+      if (!background_image->second || background_image->second->w()!=w() || background_image->second->h()!=h()){
+	if (background_image->second)
+	  delete background_image->second;
+	if (background_image->first)
+	  background_image->second=background_image->first->copy(w(),h());
+      }
+      if (background_image->second)
+	background_image->second->draw(x(),y(),w(),h());
+    }
+    // History draw
+    /****************/
+    int xx,yy,ww,hh;
+    fl_clip_box(clip_x,clip_y,horizontal_pixels,vertical_pixels,xx,yy,ww,hh);
+    fl_push_clip(xx,yy,ww,hh);
+    // fl_push_clip(clip_x,clip_y,horizontal_pixels,vertical_pixels);
+    /****************/
+    fl_color(FL_BLACK);
+    fl_font(FL_HELVETICA,labelsize());
+    if ( (display_mode & 2) && !animation_instructions.empty()){
+      gen tmp=animation_instructions[animation_instructions_pos % animation_instructions.size()];
+      fltk_draw(*this,-1,tmp,x_scale,y_scale,clip_x,clip_y,clip_w,clip_h);
+    }
+    if ( display_mode & 0x40 ){
+      fltk_draw(*this,-1,trace_instructions,x_scale,y_scale,clip_x,clip_y,clip_w,clip_h);
+    }
+    if (display_mode & 1) {
+      const_iterateur at=plot_instructions.begin(),atend=plot_instructions.end(),it,itend;
+      for (int plot_i=0;at!=atend;++at,++plot_i){
+	if (at->type==_INT_)
+	  continue;
+	update_infos(*at,contextptr);
+	if (at->is_symb_of_sommet(at_parameter)){
+	  gen ff = at->_SYMBptr->feuille;
+	  vecteur f;
+	  if (ff.type==_VECT && (f=*ff._VECTptr).size()==4){
+	    // parameters.push_back(f);
+	  }
+	  continue;
+	}
+	fltk_draw(*this,plot_i,*at,x_scale,y_scale,clip_x,clip_y,clip_w,clip_h);
+      } // end for at
+    }
+    vecteur plot_tmp_v=gen2vecteur(plot_tmp);
+    const_iterateur jt=plot_tmp_v.begin(),jtend=plot_tmp_v.end();
+    for (;jt!=jtend;++jt){
+      gen plot_tmp=*jt;
+      if (plot_tmp.is_symb_of_sommet(at_pnt) && plot_tmp._SYMBptr->feuille.type==_VECT && !plot_tmp._SYMBptr->feuille._VECTptr->empty()){
+	vecteur & v=*plot_tmp._SYMBptr->feuille._VECTptr;
+	// cerr << v << '\n';
+	if (v[1].type==_INT_)
+	  plot_tmp=symbolic(at_pnt,makevecteur(v[0],v[1].val | _DOT_LINE | _LINE_WIDTH_2));
+	else
+	  plot_tmp=symbolic(at_pnt,v);
+	try {
+	  fltk_draw(*this,-1,plot_tmp,x_scale,y_scale,clip_x,clip_y,clip_w,clip_h);
+	}
+	catch (...){
+	}
+      }
+    }
+    fl_line_style(0); // back to default line style
+    // Draw axis
+    double I0,J0;
+    findij(zero,x_scale,y_scale,I0,J0,contextptr);
+    int i_0=round(I0),j_0=round(J0);
+    if ( show_axes==1 &&  (window_ymax>=0) && (window_ymin<=0)){ // X-axis
+      fl_color(x_axis_color);
+      check_fl_line(deltax,deltay+j_0,deltax+horizontal_pixels,deltay+j_0,clip_x,clip_y,clip_w,clip_h,0,0);
+      fl_color(FL_CYAN);
+      check_fl_line(deltax+i_0,deltay+j_0,deltax+i_0+int(x_scale),deltay+j_0,clip_x,clip_y,clip_w,clip_h,0,0);
+      fl_color(x_axis_color);
+      if (x_tick>0 && (horizontal_pixels)/(x_scale*x_tick) < 40){
+	double nticks=(horizontal_pixels-I0)/(x_scale*x_tick);
+	int count=0;
+	for (int ii=int(-I0/(x_tick*x_scale));ii<=nticks && count<40;++ii,++count){
+	  int iii=int(I0+ii*x_scale*x_tick+.5);
+	  check_fl_line(deltax+iii,deltay+j_0+2,deltax+iii,deltay+j_0-2,clip_x,clip_y,clip_w,clip_h,0,0);
+	}
+      }
+      string tmp=(x_axis_name.empty()?"x":x_axis_name)+" ";
+      check_fl_draw(tmp.c_str(),deltax+horizontal_pixels-int(fl_width(tmp.c_str())),deltay+j_0+labelsize(),clip_x,clip_y,clip_w,clip_h,0,0);
+    }
+    if ( show_axes==1 && (window_xmax>=0) && (window_xmin<=0) ) {// Y-axis
+      fl_color(y_axis_color);
+      check_fl_line(deltax+i_0,deltay,deltax+i_0,deltay+vertical_pixels,clip_x,clip_y,clip_w,clip_h,0,0);
+      fl_color(FL_CYAN);
+      check_fl_line(deltax+i_0,deltay+j_0,deltax+i_0,deltay+j_0-int(y_scale),clip_x,clip_y,clip_w,clip_h,0,0);
+      fl_color(y_axis_color);
+      if (y_tick>0 && vertical_pixels/(y_tick*y_scale) <40 ){
+	double nticks=(vertical_pixels-J0)/(y_tick*y_scale);
+	int count=0;
+	for (int jj=int(-J0/(y_tick*y_scale));jj<=nticks && count<25;++jj,++count){
+	  int jjj=int(J0+jj*y_scale*y_tick+.5);
+	  check_fl_line(deltax+i_0-2,deltay+jjj,deltax+i_0+2,deltay+jjj,clip_x,clip_y,clip_w,clip_h,0,0);
+	}
+      }
+      string tmp=" "+(y_axis_name.empty()?"y":y_axis_name);
+      check_fl_draw(tmp.c_str(),deltax+i_0+2,deltay+labelsize(),clip_x,clip_y,clip_w,clip_h,0,0);
+    }
+    // Ticks
+    if (show_axes==1 && (horizontal_pixels)/(x_scale*x_tick) < 40 && vertical_pixels/(y_tick*y_scale) <40  ){
+      if (x_tick>0 && y_tick>0 ){
+  fl_color(FL_BLACK);
+	double nticks=(horizontal_pixels-I0)/(x_scale*x_tick);
+	double mticks=(vertical_pixels-J0)/(y_tick*y_scale);
+	int count=0;
+	for (int ii=int(-I0/(x_tick*x_scale));ii<=nticks;++ii){
+	  int iii=int(I0+ii*x_scale*x_tick+.5);
+	  for (int jj=int(-J0/(y_tick*y_scale));jj<=mticks && count<1600;++jj,++count){
+	    int jjj=int(J0+jj*y_scale*y_tick+.5);
+	    check_fl_point(deltax+iii,deltay+jjj,clip_x,clip_y,clip_w,clip_h,0,0);
+	  }
+	}
+      }
+    }
+    /****************/
+    fl_pop_clip();
+    /****************/
+    fl_color(FL_BLACK);
+    fl_font(FL_HELVETICA,labelsize());
+    if (!args_help.empty() && args_tmp.size()<= args_help.size()){
+      fl_draw((gettext("Click ")+args_help[giacmax(1,args_tmp.size())-1]).c_str(),x(),y()+labelsize()-2);
+    }
+    string mytitle(title);
+    if (!is_zero(title_tmp) && function_final.type==_FUNC)
+      mytitle=gen(symbolic(*function_final._FUNCptr,title_tmp)).print(contextptr);
+    if (!mytitle.empty()){
+      int dt=int(fl_width(mytitle.c_str()));
+      check_fl_draw(mytitle.c_str(),deltax+(horizontal_pixels-dt)/2,deltay+h()-labelsize()/4,clip_x,clip_y,clip_w,clip_h,0,0);
+    }
+    // Boundary values
+    fl_font(FL_HELVETICA,labelsize());
+    if (show_axes>=1){ 
+      int taille,affs,delta;
+      vecteur aff;
+      string tmp;
+      bool logx=display_mode & 0x400,logy=display_mode & 0x800;
+      if (show_axes!=2) {
+        // X
+        //fl_color(x_axis_color);
+        aff=ticks(window_xmin,window_xmax,true);
+        affs=aff.size();
+        double tickx,minx=DBL_MAX,maxx=DBL_MIN;
+        for (int i=0;i<affs;++i){
+    double d=evalf_double(aff[i],1,contextptr)._DOUBLE_val;
+    tmp=print_DOUBLE_(logx?std::pow(10,d):d);
+    delta=int(horizontal_pixels*(d-window_xmin)/(window_xmax-window_xmin));
+    taille=int(fl_width(tmp.c_str()));
+    if (delta>=taille/2 && delta<=horizontal_pixels){
+      tickx=x()+delta;
+      if (show_axes>1 || logx || d!=0)
+        fl_line(tickx,y()+vertical_pixels-1,tickx,y()+vertical_pixels-5);
+      if (minx>tickx) minx=tickx;
+      if (maxx<tickx) maxx=tickx;
+      if (args_tmp.empty()) {
+        if  (show_axes==1) fl_color(x_axis_color);
+        fl_draw(tmp.c_str(),tickx-taille/2,y()+vertical_pixels+labelsize());
+        if (show_axes==1) fl_color(FL_BLACK);
+      }
+    }
+        }
+        if (args_tmp.empty())
+    fl_draw(x_axis_unit.c_str(),x()+horizontal_pixels,y()+vertical_pixels+labelsize()-2);
+        if (show_axes==3 && maxx!=DBL_MIN && minx!=DBL_MAX)
+          fl_line(minx,y()+vertical_pixels,maxx,y()+vertical_pixels);
+      }
+      // Y
+      //fl_color(y_axis_color);
+      aff=ticks(window_ymin,window_ymax,true);
+      affs=aff.size();
+      taille=labelsize()/2;
+      double ticky,miny=DBL_MAX,maxy=DBL_MIN;
+      for (int j=0;j<affs;++j){
+	double d=evalf_double(aff[j],1,contextptr)._DOUBLE_val;
+  if (show_axes>=2 && !logy && d<0)
+    continue;
+	tmp=print_DOUBLE_(logy?std::pow(10,d):d)+y_axis_unit;
+	delta=int(vertical_pixels*(window_ymax-d)/(window_ymax-window_ymin));
+	if (delta>=taille && delta<=vertical_pixels-taille){
+    ticky=y()+delta;
+    if (show_axes>1 || logy || d!=0)
+      fl_line(x()+horizontal_pixels-1,ticky,x()+horizontal_pixels-5,ticky);
+    if (miny>ticky) miny=ticky;
+    if (maxy<ticky) maxy=ticky;
+    if (show_axes==1) fl_color(y_axis_color);
+    fl_draw(tmp.c_str(),x()+horizontal_pixels+3,ticky+taille);
+    if (show_axes==1) fl_color(FL_BLACK);
+	  int tmpi=fl_width(tmp.c_str());
+	  if (tmpi+horizontal_pixels+3>w()){
+	    ylegende=(tmpi+3.)/labelsize();
+	    redraw();
+	  }
+	}
+      }
+      if (show_axes>=2 && maxy!=DBL_MIN && miny!=DBL_MAX)
+        fl_line(x()+horizontal_pixels,miny,x()+horizontal_pixels,maxy);
+    }
+    if (show_axes==1 || background_image) {
+      fl_color(FL_BLACK);
+      if ( !(display_mode & 0x100) )
+        fl_rect(x(), y(), horizontal_pixels, vertical_pixels);
+    }
+#else
     int horizontal_pixels=w()-(show_axes?int(ylegende*labelsize()):0);
     vertical_pixels=h()-((show_axes?1:0)+(!title.empty()))*labelsize();
     int deltax=x(),deltay=y();
@@ -5252,7 +5551,7 @@ namespace xcas {
       gen plot_tmp=*jt;
       if (plot_tmp.is_symb_of_sommet(at_pnt) && plot_tmp._SYMBptr->feuille.type==_VECT && !plot_tmp._SYMBptr->feuille._VECTptr->empty()){
 	vecteur & v=*plot_tmp._SYMBptr->feuille._VECTptr;
-	// cerr << v << endl;
+	// cerr << v << '\n';
 	if (v[1].type==_INT_)
 	  plot_tmp=symbolic(at_pnt,makevecteur(v[0],v[1].val | _DOT_LINE | _LINE_WIDTH_2));
 	else
@@ -5377,6 +5676,7 @@ namespace xcas {
 	}
       }
     }
+#endif
   }
 
   void Graph2d::draw(){
@@ -5385,7 +5685,7 @@ namespace xcas {
       hp=geo_find_history_pack(this);
     context * contextptr = hp?hp->contextptr:0;
 #ifdef HAVE_LIBPTHREAD
-    // cerr << "graph2d draw lock" << endl;
+    // cerr << "graph2d draw lock" << '\n';
     int locked=pthread_mutex_trylock(&interactive_mutex);
     if (locked)
       return;
@@ -5394,7 +5694,7 @@ namespace xcas {
     io_graph(false,contextptr);
     bool block=block_signal;
     block_signal=true;
-    // cerr << "graph2d draw " << this << " block_signal" << endl;
+    // cerr << "graph2d draw " << this << " block_signal" << '\n';
     fl_clip_box(x(),y(),w(),h(),clip_x,clip_y,clip_w,clip_h);
     fl_push_clip(clip_x,clip_y,clip_w,clip_h);
     int horizontal_pixels=w()-(show_axes?int(ylegende*labelsize()):0);
@@ -5409,12 +5709,12 @@ namespace xcas {
     fl_pop_clip();
     if (!paused)
       ++animation_instructions_pos;
-    // cerr << "graph2d draw " << this << " restore block_signal" << endl;
+    // cerr << "graph2d draw " << this << " restore block_signal" << '\n';
     block_signal=block;
     io_graph(b,contextptr);
 #ifdef HAVE_LIBPTHREAD
     pthread_mutex_unlock(&interactive_mutex);
-    // cerr << "graph2d draw unlock" << endl;
+    // cerr << "graph2d draw unlock" << '\n';
 #endif
   }
 
@@ -5445,10 +5745,10 @@ namespace xcas {
 	    if (go->value().is_symb_of_sommet(at_parameter))
 	      ++pos;
 	  }
-	  // cerr << clock() << " ++pos " << pos << " " << last_event << endl;
+	  // cerr << clock() << " ++pos " << pos << " " << last_event << '\n';
 	}
 	else
-	  ; // cerr << clock() << " =pos " << pos << " " << last_event <<  endl;
+	  ; // cerr << clock() << " =pos " << pos << " " << last_event <<  '\n';
       }
     }
     else
@@ -5552,12 +5852,12 @@ namespace xcas {
 	    w=s->child(0);
 	  if (Multiline_Input_tab * m=dynamic_cast<Multiline_Input_tab *>(w)){
 	    if (strlen(m->value()))
-	      of << replace(m->value(),'\n',' ')+";" << endl;
+	      of << replace(m->value(),'\n',' ')+";" << '\n';
 	  }
 	  if (Xcas_Text_Editor * m=dynamic_cast<Xcas_Text_Editor *>(w)){
 	    string s=m->value();
 	    if (!s.empty())
-	      of << replace(s,'\n',' ')+";" << endl;
+	      of << replace(s,'\n',' ')+";" << '\n';
 	  }
 	}
       }
@@ -5827,19 +6127,19 @@ namespace xcas {
       fcnzuv->tooltip(gettext("Expression of z wrt to u and v (e.g u-v)"));
       varnamet=new Fl_Input(dx/2,2+dy/lignes,dx/2-4,dy/lignes-4,gettext("Var"));
       varnamet->value("t");
-      varnamet->tooltip(gettext("Independant variable name (e.g t)"));
+      varnamet->tooltip(gettext("Independent variable name (e.g t)"));
       varnameu=new Fl_Input(dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("1st var"));
       varnameu->value("u");
-      varnameu->tooltip(gettext("First independant variable name (e.g u)"));
+      varnameu->tooltip(gettext("First independent variable name (e.g u)"));
       varnamev=new Fl_Input(3*dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("2nd var"));
       varnamev->value("v");
-      varnamev->tooltip(gettext("Second independant variable name (e.g v)"));
+      varnamev->tooltip(gettext("Second independent variable name (e.g v)"));
       varnamex=new Fl_Input(dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("1st var"));
       varnamex->value("x");
-      varnamex->tooltip(gettext("First independant variable name (e.g x)"));
+      varnamex->tooltip(gettext("First independent variable name (e.g x)"));
       varnamey=new Fl_Input(3*dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("2nd var"));
       varnamey->value("y");
-      varnamey->tooltip(gettext("Second independant variable name (e.g y)"));
+      varnamey->tooltip(gettext("Second independent variable name (e.g y)"));
       varnametfield=new Fl_Input(dx/4,2+dy/lignes,dx/4-4,dy/lignes-4,gettext("Time var"));
       varnametfield->value("t");
       varnametfield->tooltip(gettext("Time variable name"));
@@ -6665,9 +6965,9 @@ namespace xcas {
     {gettext("Insert"), 0,  (Fl_Callback*)cb_Figure_Insert, 0, 0, 0, 0, 14, 56},
     {gettext("Export Print"), 0,  0, 0, 64, 0, 0, 14, 56},
     {gettext("EPS PNG and preview"), 0,  (Fl_Callback*)cb_Figure_Preview, 0, 0, 0, 0, 14, 56},
-    {gettext("to printer"), 0,  (Fl_Callback*)cb_Figure_Print, 0, 0, 0, 0, 14, 56},
-    {gettext("latex preview"), 0,  (Fl_Callback*)cb_Figure_LaTeX_Preview, 0, 0, 0, 0, 14, 56},
-    {gettext("latex printer"), 0,  (Fl_Callback*)cb_Figure_LaTeX_Print, 0, 0, 0, 0, 14, 56},
+    {gettext("To printer"), 0,  (Fl_Callback*)cb_Figure_Print, 0, 0, 0, 0, 14, 56},
+    {gettext("Latex preview"), 0,  (Fl_Callback*)cb_Figure_LaTeX_Preview, 0, 0, 0, 0, 14, 56},
+    {gettext("Latex printer"), 0,  (Fl_Callback*)cb_Figure_LaTeX_Print, 0, 0, 0, 0, 14, 56},
     {0}, // end print
     {0}, // end file
     {gettext("Edit"), 0,  0, 0, 64, 0, 0, 14, 56},
@@ -7125,6 +7425,7 @@ namespace xcas {
 	    fl_draw(current.s.c_str(),int(deltax+turtlezoom*(current.x-turtlex)),int(deltay+h()-turtlezoom*(current.y-turtley)));
 	  }
 	  else {
+	    fl_line_style(current.turtle_width>>5,current.turtle_width &0x1f);
 	    if (current.radius>0){
 	      int r=current.radius & 0x1ff; // bit 0-8
 	      double theta1,theta2;
@@ -7137,6 +7438,7 @@ namespace xcas {
 		theta2=prec.theta-double((current.radius >> 18) & 0x1ff); // bit 18-26
 	      }
 	      bool rempli=(current.radius >> 27) & 0x1;
+	      bool seg=(current.radius >> 28) & 0x1; // not yet supported 
 	      double angle;
 	      int x,y,R;
 	      R=int(2*turtlezoom*r+.5);
@@ -7152,13 +7454,13 @@ namespace xcas {
 	      xcas_color(current.color);
 	      if (current.direct){
 		if (rempli)
-		  fl_pie(deltax+x,deltay+h()-y,R,R,theta1-90,theta2-90);
+		  fl_pie_seg(deltax+x,deltay+h()-y,R,R,theta1-90,theta2-90,seg);
 		else
 		  fl_arc(deltax+x,deltay+h()-y,R,R,theta1-90,theta2-90);
 	      }
 	      else {
 		if (rempli)
-		  fl_pie(deltax+x,deltay+h()-y,R,R,90+theta2,90+theta1);
+		  fl_pie_seg(deltax+x,deltay+h()-y,R,R,90+theta2,90+theta1,seg);
 		else
 		  fl_arc(deltax+x,deltay+h()-y,R,R,90+theta2,90+theta1);
 	      }
@@ -7187,8 +7489,8 @@ namespace xcas {
 	int y=int(turtlezoom*(t.y-turtley)+.5);
 	double cost=std::cos(t.theta*deg2rad_d);
 	double sint=std::sin(t.theta*deg2rad_d);
-	int Dx=int(turtlezoom*t.turtle_length*cost/2+.5);
-	int Dy=int(turtlezoom*t.turtle_length*sint/2+.5);
+	int Dx=int(turtlezoom*turtle_length*cost/2+.5);
+	int Dy=int(turtlezoom*turtle_length*sint/2+.5);
 	xcas_color(t.color);
 	if (t.visible){
 	  fl_line(deltax+x+Dy,deltay+h()-(y-Dx),deltax+x-Dy,deltay+h()-(y+Dx));
@@ -7198,6 +7500,7 @@ namespace xcas {
 	  fl_line(deltax+x-Dy,deltay+h()-(y+Dx),deltax+x+3*Dx,deltay+h()-(y+3*Dy));
 	}
       }
+      fl_line_style(0);
       return;
     } // End logo mode
   }
@@ -7208,7 +7511,7 @@ namespace xcas {
     if (is_context_busy(contextptr))
       return 0;
 #endif
-    // cerr << event << endl;
+    // cerr << event << '\n';
     if ( (event==FL_ENTER) || (event==FL_LEAVE) ){
       if (event==FL_LEAVE)
 	redraw_cap_only=true;
@@ -7747,7 +8050,7 @@ namespace xcas {
     Graph2d *i=dynamic_cast<Graph2d *>(w);
     if (!i)
       return archive(os,string2gen("Done",false),contextptr);
-    os << _POINTER_ << " " << _FL_WIDGET_POINTER << endl;
+    os << _POINTER_ << " " << _FL_WIDGET_POINTER << '\n';
     archive(os,i->plot_instructions,contextptr);
     archive(os,makevecteur(i->x(),i->y(),i->w(),i->h(),i->window_xmin,i->window_xmax,i->window_ymin,i->window_ymax),contextptr);
     return os;

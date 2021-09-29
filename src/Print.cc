@@ -19,11 +19,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#ifndef IN_GIAC
-#include <giac/first.h>
-#else
 #include "first.h"
-#endif
 #include <string>
 #ifdef HAVE_LIBFLTK
 #include "Print.h"
@@ -112,7 +108,7 @@ namespace xcas {
   unsigned ck_page_height(Fl_Printer * p){
     int h=p->page_height();
     if (h<=0){
-      cerr << "Bad page height " << h << endl;
+      cerr << "Bad page height " << h << '\n';
       h=806;
     }
   }
@@ -120,7 +116,7 @@ namespace xcas {
   unsigned ck_page_width(Fl_Printer * p){
     int w=p->page_width();
     if (w<=0){
-      cerr << "Bad page width " << w << endl;
+      cerr << "Bad page width " << w << '\n';
       w=559;
     }
   }
@@ -445,11 +441,11 @@ namespace xcas {
   void compute_w_h(Fl_PrintDevice *p,double margin,double pixel_scale,int & wp,int &hp){
     p->printable_rect(&wp,&hp);
     if (wp<=1){
-      cerr << "Bad width " << wp << endl;
+      cerr << "Bad width " << wp << '\n';
       wp=559;
     }
     if (hp<=1){
-      cerr << "Bad height " << hp << endl;
+      cerr << "Bad height " << hp << '\n';
       hp=806;
     }
   }
@@ -905,7 +901,9 @@ namespace xcas {
       }
       ps_preview +="Program\\ Files/Ghostgum/gsview/gsview32.exe";
     }
+#ifndef __MINGW_H
     pngpdf |= 0x4;
+#endif
 #endif
     // translate into png, (inside GIMP Image->Transform->rotate, not anymore)
     // inside latex use includegraphics[width=\textwidth{filename}
@@ -946,7 +944,7 @@ namespace xcas {
       /*
       string fn=absolute_path(fname);
       if (system_no_deprecation((((ps_preview+" ")+fn)+" &").c_str())){
-	cerr << (("cygstart.exe '"+remove_extension(fname)+".jpg' &").c_str()) << endl;
+	cerr << (("cygstart.exe '"+remove_extension(fname)+".jpg' &").c_str()) << '\n';
 	system_no_deprecation((xcasroot()+"cygstart.exe '"+remove_extension(fname)+".jpg' &").c_str());
       }
       */

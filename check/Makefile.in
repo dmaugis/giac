@@ -71,7 +71,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/codeset.m4 \
 	$(top_srcdir)/m4/uintmax_t.m4 $(top_srcdir)/m4/ulonglong.m4 \
 	$(top_srcdir)/m4/wchar_t.m4 $(top_srcdir)/m4/wint_t.m4 \
 	$(top_srcdir)/m4/xsize.m4 $(top_srcdir)/acinclude.m4 \
-	$(top_srcdir)/configure.in
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -97,6 +97,7 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BERNMM_LIBS = @BERNMM_LIBS@
 BUILD_INCLUDED_LIBINTL = @BUILD_INCLUDED_LIBINTL@
 CATOBJEXT = @CATOBJEXT@
 CC = @CC@
@@ -104,14 +105,17 @@ CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 COCOA_LIBS = @COCOA_LIBS@
 CONFIG_AO = @CONFIG_AO@
+CONFIG_BERNMM = @CONFIG_BERNMM@
 CONFIG_COCOA = @CONFIG_COCOA@
 CONFIG_CURL = @CONFIG_CURL@
 CONFIG_DOC_PROGS = @CONFIG_DOC_PROGS@
+CONFIG_ECM = @CONFIG_ECM@
 CONFIG_GLPK = @CONFIG_GLPK@
 CONFIG_GMPXX = @CONFIG_GMPXX@
 CONFIG_GSL = @CONFIG_GSL@
 CONFIG_NTL = @CONFIG_NTL@
 CONFIG_PARI = @CONFIG_PARI@
+CONFIG_SAMPLERATE = @CONFIG_SAMPLERATE@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CURL_LIBS = @CURL_LIBS@
@@ -129,6 +133,7 @@ DVIPS = @DVIPS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
+ECM_LIBS = @ECM_LIBS@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
@@ -198,6 +203,7 @@ PATH_SEPARATOR = @PATH_SEPARATOR@
 PDFLATEX = @PDFLATEX@
 POSUB = @POSUB@
 RANLIB = @RANLIB@
+SAMPLERATE_LIBS = @SAMPLERATE_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
@@ -266,7 +272,8 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-TESTS = chk_integrate chk_factor chk_normalize chk_partfrac chk_limit \
+TESTS = chk_integrate  \
+		chk_factor chk_normalize chk_partfrac chk_limit \
 		chk_cas chk_geo chk_morley_demo chk_xavier \
 		chk_fhan1 chk_fhan2 chk_fhan3 chk_fhan4 chk_fhan5 \
 		chk_fhan6 chk_fhan8 chk_fhan0 \
@@ -274,13 +281,22 @@ TESTS = chk_integrate chk_factor chk_normalize chk_partfrac chk_limit \
 		chk_fhan16 chk_fhan17 chk_fhan19 chk_fhan20 \
 		chk_fhan21 chk_fhan9 chk_fhan18 chk_fhan7
 
-EXTRA_DIST = chk_integrate chk_factor chk_normalize chk_partfrac \
+EXTRA_DIST = chk_integrate chk_intinda chk_intindbo chk_intindbr \
+		chk_intindc chk_intindj chk_intindm \
+		chk_intindh chk_intinds chk_intindt chk_intindw \
+		chk_factor chk_normalize chk_partfrac \
 		chk_limit chk_cas chk_geo chk_fhan* chk_morley_demo chk_xavier \
-		testintegrate testfactor testnormalize testpartfrac \
+		testintegrate intinda intindbo intindbr \
+		intindc intindj intindm \
+		intindh intinds intindt intindw \
+		testfactor testnormalize testpartfrac \
 		testlimit testcas testgeo testother chk_other \
-		integrate.out factor.out normalize.out partfrac.out \
+		integrate.out intinda.out intindbo.out intindbr.out \
+		intindc.out intindj.out intindm.out \
+		intindh.out intinds.out intindt.out \
+		factor.out normalize.out partfrac.out \
 		limit.out cas.out geo.out flanex \
-		TP*sol.cas TP*sol.cas.out1 morley_demo.* xavier.* README
+		TP*sol.cas TP*sol.cas.out* morley_demo.* xavier.* README
 
 TESTS_ENVIRONMENT = top_srcdir=$(top_srcdir)
 all: all-am

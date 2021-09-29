@@ -19,7 +19,7 @@
  */
 
 using namespace std;
-#include <fstream>
+//#include <fstream>
 #include "gauss.h"
 #include "vecteur.h"
 #include "derive.h"
@@ -57,26 +57,18 @@ namespace giac {
     //A est un vecteur de vecteur=une matrice!
     //on met ds A :(la jacobienne de q)/2 
     for (int i=0;i<n;i++){
+      gen qxi(derive(q,x[i],contextptr));
       for (int j=i;j<n;j++){
-	qdd=derive(derive(q,x[i],contextptr),x[j],contextptr);
+	qdd=derive(qxi,x[j],contextptr);
 	qdd=recursive_normal(qdd,contextptr); 
-	//cout<<i<<","<<j<<qdd<<endl;
-	if (i==j){
-	  (*A[i]._VECTptr)[i]=rdiv(qdd,2,contextptr);
-	} 
-	else {
-	  (*A[i]._VECTptr)[j]=rdiv(qdd,2,contextptr);
-	  (*A[j]._VECTptr)[i]=rdiv(qdd,2,contextptr);
-	}
+	//cout<<i<<","<<j<<qdd<<'\n';
+	(*A[j]._VECTptr)[i]=(*A[i]._VECTptr)[j]=rdiv(qdd,2,contextptr);
       }
     }
     //2*A=jacobienne de q
     //on calcule qs=q en zero
-    //cout<<A<<endl;  
-    qs=q;
-    for (int i=0;i<n;i++){
-      qs=subst(qs,x[i],0,false,contextptr);
-    }
+    //cout<<A<<'\n';  
+    qs=subst(q,x,vecteur(n),false,contextptr);
     //qs=la valeur de q en 0
     if (qs !=0){
       b=0;
@@ -85,10 +77,7 @@ namespace giac {
     //on regarde si il y des termes lineaires
     for (int j=0;j<n;j++){
       dq=derive(q,x[j],contextptr);
-      dqs=dq;
-      for (int i=0;i<n;i++){
-	dqs=subst(dqs,x[i],0,false,contextptr);
-      }
+      dqs=subst(dq,x,vecteur(n),false,contextptr);
       //dqs=la diff de q en zero
       if (dqs!=0){
 	b=1;
@@ -136,7 +125,7 @@ namespace giac {
   gen _q2a(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG && args.subtype==-1) return  args;
     if (args.type!=_VECT)
-      return symb_q2a(args);
+      return _q2a(makesequence(args,lidnt(args)),contextptr);
     int s=int(args._VECTptr->size());
     if (s!=2)
       return gendimerr(contextptr);
@@ -149,65 +138,37 @@ namespace giac {
   define_unary_function_ptr5( at_q2a ,alias_at_q2a,&__q2a,0,true);
 
   vecteur gauss(const gen & q, const vecteur & x, vecteur & D, vecteur & U, vecteur & P,GIAC_CONTEXT){
-    int n=int(x.size());
-    int b;
-    gen u1;
-    gen u2;
-    gen q1; 
-    gen l1;
-    gen l2;
+    int n=int(x.size()),b;
+    gen u1,u2,q1,l1,l2;
     vecteur R(1);
-    vecteur A;
- 
-    vecteur I;
-    vecteur L;
-    for (int i=0;i<n;i++){
-      vecteur li(n);
-      A.push_back(li);
-    }
     vecteur PR;
     for (int i=0;i<n-1;i++){
-      vecteur li(n-1);
-      PR.push_back(li);
+      PR.push_back(vecteur(n-1));
     }
     vecteur PP;
     for (int i=0;i<n;i++){
-      vecteur li(n);
-      PP.push_back(li);
+      PP.push_back(vecteur(n));
     } 
-    for (int i=0;i<n;i++){
-      vecteur li(n);
-      li[i]=gen(1);
-      I.push_back(li);
-    }
-    //n=x.size();
-    //if (n==0){
-    //R[0]=q; 
-    //vecteur vide;
-    //D=vide;
-    //U=vide;
-    //P=vide;
-    //return(R);
-    //}
+    vecteur I;
+    if (n) I=midn(n);
+    vecteur L;
   
     //si q n'est pas quadratique b<>2 et on retourne q
-    A=quad(b,q,x,contextptr);
+    vecteur A(quad(b,q,x,contextptr));
     if (b!=2){
       R[0]=q;
-      vecteur vide;
-      D=vide;
-      U=vide;
-      return(R);
+      D.clear();
+      U.clear();
+      return R;
     }
     //la forme q est quadratique de matrice A
     if (q==0) { 
       //R[0]=q;    
       vecteur vide(n);
       D=vide; 
-      U=vide;
-    
+      U=vide;    
       P=I;
-      return(vide);
+      return vide;
     }
     if (n==1){
       gen q0=_factor(q,contextptr);
@@ -245,7 +206,7 @@ namespace giac {
       //q= 1/a_r_r*(u1)^2+... 
       R[0]=u1; 
       U=mergevecteur(R,U);      
-      //on _VECTlete la matrice PR de dim n-1 en la matrice PP de dim n
+      //on complete la matrice PR de dim n-1 en la matrice PP de dim n
       //1iere ligne les coeff de u1 et rieme colonne doit avoir des 0
       for (int i=0;i<n;i++){
 	(*PP[0]._VECTptr)[i]=recursive_normal(derive(u1,x[i],contextptr),contextptr); 
@@ -289,14 +250,14 @@ namespace giac {
     L=gauss(q1,y,D,U,PR,contextptr);
     //on rajoute 1/a_r1_r2 et -1/a_r1_r2 sur la diagonale D
     R[0]=rdiv(1,plus_two*A[r1][r2],contextptr);
-    R.push_back(rdiv(-1,plus_two*A[r1][r2],contextptr));
+    R.push_back(-R[0]);
     D=mergevecteur(R,D); 
     //on rajoute u1 et u2 au vecteur U constitue des formes lineaires
     //q= 1/a_r1_r2*(u1)^2 - 1/a_r1_r2*(u2)^2 + ... 
     R[0]=u1;
     R[1]=u2;
     U=mergevecteur(R,U);
-    //on _VECTlete la matrice PR de dim n-2 en la matrice PP de dim n
+    //on complete la matrice PR de dim n-2 en la matrice PP de dim n
     //1iere et 2ieme ligne les coeff de u1 et de u2 
     //r1ieme et r2ieme colonne doit avoir des 0
     for (int i=0;i<n;i++){
@@ -325,20 +286,24 @@ namespace giac {
     return gauss(q,x,D,U,P,contextptr);
   }
 
-  static gen symb_gauss(const gen & args){
-    return symbolic(at_gauss,args);
-  }
   gen _gauss(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG && args.subtype==-1) return  args;
     if (args.type!=_VECT)
-      return symb_gauss(args);
+      return _gauss(makesequence(args,lidnt(args)),contextptr);
     int s=int(args._VECTptr->size());
-    if (s!=2)
+    if (s<2)
       return gendimerr(contextptr);
-    if (args._VECTptr->back().type==_VECT)
-      return _plus(gauss(args._VECTptr->front(),*(args._VECTptr->back()._VECTptr),contextptr),contextptr);
+    const gen & arg1=(*args._VECTptr)[1];
+    if (arg1.type==_VECT){
+      const vecteur & v=*arg1._VECTptr;
+      vecteur D,U,P;
+      gen w=gauss(args._VECTptr->front(),v.empty()?lidnt(args):v,D,U,P,contextptr);
+      w=_plus(w,contextptr);
+      if (s>2|| v.empty())
+	return makesequence(w,D,P);
+      return w;
+    }
     return _randNorm(args,contextptr);
-    return symb_gauss(args);
   }
   static const char _gauss_s []="gauss";
   static define_unary_function_eval (__gauss,&_gauss,_gauss_s);
@@ -347,30 +312,16 @@ namespace giac {
   gen axq(const vecteur &A,const vecteur & x,GIAC_CONTEXT){
     //transforme une matrice carree (symetrique) en la forme quadratique q
     //(les variables sont dans x)
-    int d;
     //d nbre de variables
-    d=int(x.size());
-    int da;
     //il faut verifier que A est carree
     //A n'est pas forcement symetrique  
-    da=int(A.size());
-    if (!(is_squarematrix(A)) || (da!=d) ){
+    int d=int(x.size());
+    int da=int(A.size());
+    if (!(is_squarematrix(A)) || (da!=d) )
       return gensizeerr(gettext("Invalid dimension"));
-    } 
-    vecteur XL(1);
-    XL=makevecteur(x);
-    COUT<<XL<<endl;
-    vecteur XC;
-    for (int i=0;i<d;i++) {
-      vecteur elem;
-      elem=makevecteur(x[i]);
-      XC.push_back(elem);
-    }
-    vecteur QI(d);
-    vecteur Q(1);
-    QI=mmult(A,XC);
-    Q=mmult(XL,QI);
-    return(normal(Q[0][0],contextptr));
+    vecteur Ax;
+    multmatvecteur(A,x,Ax);
+    return normal(dotvecteur(x,Ax),contextptr);
   }
   
   static gen symb_a2q(const gen & args){
@@ -415,8 +366,10 @@ namespace giac {
     if (is_undef(M))
       return undef;
     gen Mx,My,x(x__IDNT_e),y(y__IDNT_e),t(t__IDNT_e);
-    ck_parameter_x(contextptr);
-    ck_parameter_y(contextptr);
+    if (!contains(eq,x))
+      ck_parameter_x(contextptr);
+    if (!contains(eq,y))
+      ck_parameter_y(contextptr);
     ck_parameter_t(contextptr);
     reim(M,Mx,My,contextptr);
     gen eqM=_quo(makesequence(subst(eq,makevecteur(x,y),makevecteur(Mx+x,My+t*x),false,contextptr),x),contextptr);
@@ -436,8 +389,10 @@ namespace giac {
     if (is_undef(M))
       return vecteur(1,undef);
     gen Mx,My,x(x__IDNT_e),y(y__IDNT_e),t(t__IDNT_e);
-    ck_parameter_x(contextptr);
-    ck_parameter_y(contextptr);
+    if (!contains(eq,x))
+      ck_parameter_x(contextptr);
+    if (!contains(eq,y))
+      ck_parameter_y(contextptr);
     ck_parameter_t(contextptr);
     reim(M,Mx,My,contextptr);
     gen eqM=_quo(makesequence(subst(eq,makevecteur(x,y),makevecteur(Mx+x,My+t*x),false,contextptr),x),contextptr);
@@ -510,7 +465,7 @@ namespace giac {
 	V1[0]=-V0[1]; V1[1]=V0[0];
 	Y0=-rdiv(d*a+e*b,norme*vp1,contextptr);
 	coeffy2=normal(a+c,contextptr);
-	//cout<<"Y0="<<Y0<<endl;	
+	//cout<<"Y0="<<Y0<<'\n';	
 	coeffx=normal(2*(d*b-e*a)/norme,contextptr);
 	if (coeffx!=0){
 	  // parabole
@@ -551,12 +506,12 @@ namespace giac {
 	gen coeffs=sign(coeff,contextptr);
 	if (is_minus_one(coeffs)){
 #ifndef GIAC_HAS_STO_38
-	  *logptr(contextptr) << gettext("Empty parabola") << endl;
+	  *logptr(contextptr) << gettext("Empty parabola") << '\n';
 #endif
 	  return true;
 	}
 #ifndef GIAC_HAS_STO_38
-	*logptr(contextptr) << gettext("2 parallel lines") << endl;
+	*logptr(contextptr) << gettext("2 parallel lines") << '\n';
 #endif
 	gen Y0=normalize_sqrt(sqrt(coeff,contextptr),contextptr);
 	// Y=Y0 : points (0,Y0), (1,Y0)
@@ -578,7 +533,11 @@ namespace giac {
 	Z=z0+zV0*Z;
 	if (is_undef(ratparam))
 	  ratparam=Z;
+#if defined POCKETCAS
+	param_curves.push_back(makevecteur(Z,t,-10,10,0.1,q,ratparam));
+#else
 	param_curves.push_back(makevecteur(Z,t,-4,4,0.1,q,ratparam));
+#endif
       }
     } 
     else {
@@ -624,19 +583,19 @@ namespace giac {
 	if (sprodvp>0){ // ellipse
 	  if (is_zero(coeffcst)){
 #ifndef GIAC_HAS_STO_38
-	    *logptr(contextptr) << gettext("Ellipsis reduced to (") << x0 << "," << y0 << ")" << endl;
+	    *logptr(contextptr) << gettext("Ellipsis reduced to (") << x0 << "," << y0 << ")" << '\n';
 #endif
 	    param_curves.push_back(z0);
 	    return true;
 	  }
 	  if (sprodcoeff>0){
 #ifndef GIAC_HAS_STO_38
-	    *logptr(contextptr) << gettext("Empty ellipsis") << endl;
+	    *logptr(contextptr) << gettext("Empty ellipsis") << '\n';
 #endif
 	    return true;
 	  }
 #ifndef GIAC_HAS_STO_38
-	  *logptr(contextptr) << gettext("Ellipsis of center (") << x0 << "," << y0 << ")" << endl;
+	  *logptr(contextptr) << gettext("Ellipsis of center (") << x0 << "," << y0 << ")" << '\n';
 #endif
 	  vp0=normalize_sqrt(sqrt(-coeffcst/vp0,contextptr),contextptr);
 	  vp1=normalize_sqrt(sqrt(-coeffcst/vp1,contextptr),contextptr);
@@ -666,7 +625,7 @@ namespace giac {
 	  if (is_zero(coeffcst)){
 	    // 2 secant lines at (x0,y0)
 #ifndef GIAC_HAS_STO_38
-	    *logptr(contextptr) << gettext("2 secant lines at (") << x0 << "," << y0 << ")" << endl;
+	    *logptr(contextptr) << gettext("2 secant lines at (") << x0 << "," << y0 << ")" << '\n';
 #endif
 	    // vp0*X^2+vp1*Y^2=0 => Y=+/-sqrt(-vp0/vp1)*X
 	    gen directeur=normalize_sqrt(sqrt(-vp0/vp1,contextptr),contextptr);
@@ -678,7 +637,7 @@ namespace giac {
 	  }
 	  // hyperbole
 #ifndef GIAC_HAS_STO_38
-	  *logptr(contextptr) << gettext("Hyperbola of center (") << x0 << "," << y0 << ")" << endl;
+	  *logptr(contextptr) << gettext("Hyperbola of center (") << x0 << "," << y0 << ")" << '\n';
 #endif
 	  if (sprodcoeff<0)
 	    vp0=-vp0;
@@ -704,7 +663,11 @@ namespace giac {
 	    ratparam=vp0*gen((sprodcoeff<0)?(t+plus_one/t)/2:(t-plus_one/t)/2)+cst_i*vp1*((sprodcoeff<0)?(t-plus_one/t)/2:(t+plus_one/t)/2);
 	    ratparam=z0+zV0*ratparam;
 	  }
+#if defined POCKETCAS
+	  param_curves.push_back(makevecteur(tmp,t,-10,10,0.1,q,ratparam));
+#else
 	  param_curves.push_back(makevecteur(tmp,t,-3.14,3.14,0.0314,q,ratparam));
+#endif
 	  if (noratparam){
 	    if (numeric){
 	      tmp=(sprodcoeff<0?-1:1)*evalf(vp0,1,contextptr)*symbolic(sprodcoeff<0?at_cosh:at_sinh,t)+(sprodcoeff<0?1:-1)*cst_i*evalf(vp1,1,contextptr)*symbolic(sprodcoeff<0?at_sinh:at_cosh,t);
@@ -714,7 +677,11 @@ namespace giac {
 	      tmp=(sprodcoeff<0?-1:1)*vp0*symbolic(sprodcoeff<0?at_cosh:at_sinh,t)+(sprodcoeff<0?1:-1)*cst_i*vp1*symbolic(sprodcoeff<0?at_sinh:at_cosh,t);
 	      tmp=z0+zV0*tmp;
 	    }
+#if defined POCKETCAS
+	    param_curves.push_back(makevecteur(tmp,t,-10,10,0.1,q,ratparam));
+#else
 	    param_curves.push_back(makevecteur(tmp,t,-3,3,0.1,q,ratparam));
+#endif
 	  }
 	}
       }
@@ -774,7 +741,7 @@ namespace giac {
     gen s2g=evalf_double(sign(s2,contextptr),1,contextptr);
     gen s3g=evalf_double(sign(s3,contextptr),1,contextptr);
     if (s1g.type!=_DOUBLE_ || s2g.type!=_DOUBLE_ || s3g.type!=_DOUBLE_){
-      *logptr(contextptr) << (gettext("Can't check sign ")+s1g.print(contextptr)+gettext(" or ")+s2g.print(contextptr)+gettext(" or ")+s3g.print(contextptr)) << endl;
+      *logptr(contextptr) << (gettext("Can't check sign ")+s1g.print(contextptr)+gettext(" or ")+s2g.print(contextptr)+gettext(" or ")+s3g.print(contextptr)) << '\n';
       return false; 
     }
     int s1s=int(s1g._DOUBLE_val), s2s=int(s2g._DOUBLE_val), s3s=int(s3g._DOUBLE_val);
@@ -814,8 +781,10 @@ namespace giac {
       if (!is_zero(s2)){
 	if (!is_zero(s3)){
 	  gen tmp=normal(-c1/s1*u-c2/s2*v-c3/s3*w,contextptr);
-	  if (tmp.type!=_VECT || tmp._VECTptr->size()!=3)
+	  if (tmp.type!=_VECT)
 	    return false;
+	  while (tmp._VECTptr->size()<3)
+	    tmp._VECTptr->insert(tmp._VECTptr->begin(),0);
 	  centre=*tmp._VECTptr;
 	  d=normal(subst(q,vxyz,centre,false,contextptr),contextptr);
 	  equation_reduite=s1*pow(x,2)+s2*pow(y,2)+s3*pow(z,2)+d;
@@ -830,7 +799,7 @@ namespace giac {
 	    else { // s1*x^2+s2*y^2=-s3*z^2 ->  x^2/a^2+y^2/b^2=z^2
 	      gen a(sqrt(-s3/s1,contextptr)),b(sqrt(-s3/s2,contextptr));
 	      gen eq=makevecteur(a*upar*symb_cos(vpar),b*upar*symb_sin(vpar),upar);
-	      *logptr(contextptr) << gettext("Cone of center ") << centre << endl;
+	      *logptr(contextptr) << gettext("Cone of center ") << centre << '\n';
 	      eq=centre+multmatvecteur(P,*eq._VECTptr);
 	      gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(-5,5)));
 	      gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(0,cst_two_pi)));
@@ -842,12 +811,12 @@ namespace giac {
 	  else { 
 	    if (s1s*s3s>0){
 	      if (s1s*ds>0)
-		*logptr(contextptr) << gettext("Empty ellipsoid") << endl;
+		*logptr(contextptr) << gettext("Empty ellipsoid") << '\n';
 	      else {
 		gen a=sqrt(-d/s1,contextptr),b=sqrt(-d/s2,contextptr),c=sqrt(-d/s3,contextptr);
 		// x^2/a^2+y^2/b^2+z^2/c^2=1
 		gen eq=makevecteur(a*symb_sin(upar)*symb_cos(vpar),b*symb_sin(upar)*symb_sin(vpar),c*symb_cos(upar));
-		*logptr(contextptr) << gettext("Ellipsoid of center ") << centre << endl;
+		*logptr(contextptr) << gettext("Ellipsoid of center ") << centre << '\n';
 		eq=centre+multmatvecteur(P,*eq._VECTptr);
 		gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(0,cst_pi)));
 		gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(0,cst_two_pi)));
@@ -862,7 +831,7 @@ namespace giac {
 		// x^2/a^2+y^2/b^2+1=z^2/c^2, hyperboloide, 2 nappes
 		gen eq=makevecteur(a*symb_sinh(upar)*symb_cos(vpar),b*symb_sinh(upar)*symb_sin(vpar),c*symb_cosh(upar));
 		eq=centre+multmatvecteur(P,*eq._VECTptr);
-		*logptr(contextptr) << gettext("2-fold hyperboloid of center ") << centre << endl;
+		*logptr(contextptr) << gettext("2-fold hyperboloid of center ") << centre << '\n';
 		gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(0,3)));
 		gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(0,cst_two_pi)));
 		ustep=symb_equal(ustep,3./20);
@@ -876,7 +845,7 @@ namespace giac {
 		gen a=sqrt(-d/s1,contextptr),b=sqrt(-d/s2,contextptr),c=sqrt(d/s3,contextptr);
 		// x^2/a^2+y^2/b^2=z^2/c^2+1, hyperboloide, 2 nappes
 		gen eq=makevecteur(a*symb_cosh(upar)*symb_cos(vpar),b*symb_cosh(upar)*symb_sin(vpar),c*symb_sinh(upar));
-		*logptr(contextptr) << gettext("2-fold hyperboloid of center ") << centre << endl;
+		*logptr(contextptr) << gettext("2-fold hyperboloid of center ") << centre << '\n';
 		eq=centre+multmatvecteur(P,*eq._VECTptr);
 		gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(-3,3)));
 		gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(0,cst_two_pi)));
@@ -900,7 +869,7 @@ namespace giac {
 	  int ds=int(dg._DOUBLE_val);
 	  equation_reduite=s1*pow(x,2)+s2*pow(y,2)+d;
 	  if (s1s*s2s>0){ 
-	    *logptr(contextptr) << gettext("Elliptic cylinder around ") << centre << endl;
+	    *logptr(contextptr) << gettext("Elliptic cylinder around ") << centre << '\n';
 
 	    if (is_zero(d)) // line (cylinder of radius 0)
 	      param_surface.push_back(makevecteur(centre,centre+w));
@@ -921,7 +890,7 @@ namespace giac {
 	  } // end s1 and s2 of same sign
 	  else { // s1 and s2 have opposite signs, s1*x^2+s2*y^2+d=0
 	    if (is_zero(d)){ // 2 plans
-	      *logptr(contextptr) << gettext("2 plans intersecting at ") << centre << endl;
+	      *logptr(contextptr) << gettext("2 plans intersecting at ") << centre << '\n';
 	      gen n=u+sqrt(-s2/s1,contextptr)*v;
 	      param_surface.push_back(symbolic(at_hyperplan,gen(makevecteur(n,centre),_SEQ__VECT)));
 	      n=u-sqrt(-s2/s1,contextptr)*v;
@@ -929,7 +898,7 @@ namespace giac {
 	      return true;
 	    }
 	    else { // hyperbolic cylinder
-	      *logptr(contextptr) << gettext("Hyperbolic cylinder around ") << centre << endl;
+	      *logptr(contextptr) << gettext("Hyperbolic cylinder around ") << centre << '\n';
 	      gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(-5,5)));
 	      gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(-3,3)));
 	      ustep=symb_equal(ustep,1./2);
@@ -968,7 +937,7 @@ namespace giac {
 	  equation_reduite=s1*pow(x,2)+s2*pow(y,2)+2*c3*z;
 	  // parametrization of s1*x^2+s2*y^2+2*c3*z=0
 	  if (s1s*s2s>0){
-	    *logptr(contextptr) << gettext("Elliptic paraboloid of center ") << centre << endl;
+	    *logptr(contextptr) << gettext("Elliptic paraboloid of center ") << centre << '\n';
 	    // if (s1s*s2s>0) x^2+y^2/(s1/s2)=-2*c3*z/s1
 	    // x=u*cos(t), y=u*sqrt(s1/s2)*sin(t), z=-u^2*s1/2/c3
 	    gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(0,5)));
@@ -983,7 +952,7 @@ namespace giac {
 	  }
 	  else {
 	    // if (s1s*s2s<0) x^2-y^2/(-s1/s2)=-2*c3*z/s1
-	    *logptr(contextptr) << gettext("Hyperbolic paraboloid of center ") << centre << endl;
+	    *logptr(contextptr) << gettext("Hyperbolic paraboloid of center ") << centre << '\n';
 	    gen ueq=symbolic(at_equal,makesequence(upar,symb_interval(-3,3)));
 	    ustep=symb_equal(ustep,0.3);
 	    gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(-3,3)));
@@ -1018,14 +987,14 @@ namespace giac {
 	gen veq=symbolic(at_equal,makesequence(vpar,symb_interval(-5,5)));
 	ustep=symb_equal(ustep,1./2);
 	vstep=symb_equal(vstep,1./2);
-	*logptr(contextptr) << gettext("Paraboloid cylinder") << endl;
+	*logptr(contextptr) << gettext("Paraboloid cylinder") << '\n';
 	gen eq=makevecteur(upar,vpar,-s1*pow(upar,2)/2/c4);
 	eq=centre+multmatvecteur(P,*eq._VECTptr);
 	param_surface.push_back(makevecteur(eq,ueq,veq,ustep,vstep));
 	return true;
       }
       else { // c2==0 and c3==0
-	*logptr(contextptr) << gettext("2 parallel plans") << endl;
+	*logptr(contextptr) << gettext("2 parallel plans") << '\n';
 	centre=*tmp._VECTptr;
 	gen dred=normal(subst(q,vxyz,centre,false,contextptr),contextptr);
 	equation_reduite=s1*pow(x,2)+dred;

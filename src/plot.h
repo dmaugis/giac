@@ -248,7 +248,7 @@ namespace giac {
   // return parametrization for a parametric curve and translate
   // ellipsis/hyperbola to a rational parametrization
   // m will contain the complex depending on gen_t 
-  bool find_curve_parametrization(const gen & geo_obj,gen & m,const gen & gen_t,double T,gen & tmin,gen & tmax,gen & tstep,GIAC_CONTEXT);
+  bool find_curve_parametrization(const gen & geo_obj,gen & m,const gen & gen_t,double T,gen & tmin,gen & tmax,bool tminmax_defined,GIAC_CONTEXT);
   // test if a point f is on a parametric curve e
   // compute t if true
   bool on(const gen & e_orig,const gen & f,gen & t,GIAC_CONTEXT);
@@ -455,6 +455,7 @@ namespace giac {
   extern const unary_function_ptr * const  at_homothetie;
   gen _est_coplanaire(const gen & args,GIAC_CONTEXT);
 
+  extern const unary_function_ptr * const  at_est_dans;
   gen _est_aligne(const gen & args,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_est_aligne;
 
@@ -630,8 +631,8 @@ namespace giac {
   gen _switch_axes(const gen & args,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_switch_axes;
 
-  int find_plotseq_args(const gen & args,gen & expr,gen & x,double & x0d,double & xmin,double & xmax,int & niter,vecteur & attributs,GIAC_CONTEXT);
-  gen plotseq(const gen& f,const gen&x,double x0,double xmin,double xmax,int niter,const vecteur & attributs,const context * contextptr);
+  int find_plotseq_args(const gen & args,gen & expr,gen & x,double & x0d,double & xmin,double & xmax,int & niter,vecteur & attributs,GIAC_CONTEXT,bool & print);
+  gen plotseq(const gen& f,const gen&x,double x0,double xmin,double xmax,int niter,const vecteur & attributs,const context * contextptr,bool print);
   gen _plotseq(const gen & args,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_plotseq;
   extern const unary_function_ptr * const  at_seqplot;

@@ -3,11 +3,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#ifndef IN_GIAC
-#include <giac/giac.h>
-#else
 #include "giac.h"
-#endif
 #include <fstream>
 #include <string>
 #include <stdio.h>
@@ -64,11 +60,11 @@ namespace giac {
   unsigned gl_translate(unsigned i);
   // utilities for matrix 4x4 represented as a double[16] 
   // written in columns
-  void mult4(double * colmat,double * vect,double * res);
-  void mult4(double * colmat,float * vect,double * res);
-  void mult4(double * c,double k,double * res);
-  double det4(double * c);
-  void inv4(double * c,double * res);
+  void mult4ddd(double * colmat,double * vect,double * res);
+  void mult4dfd(double * colmat,float * vect,double * res);
+  void mult4d(double * c,double k,double * res);
+  double det4d(double * c);
+  void inv4d(double * c,double * res);
   // return in i and j the distance to the BOTTOM LEFT of the window
   // use window()->h()-j for the FLTK coordinates in this window
   void dim32dim2(double * view,double * proj,double * model,double x0,double y0,double z0,double & i,double & j,double & depth);
@@ -88,9 +84,9 @@ namespace giac {
     // depends whether args.tmp.size()==mode
     giac::gen function_tmp,function_final,args_push; 
     giac::vecteur args_tmp; // WARNING should only contain numeric value
-    giac::context * contextptr;
     unsigned args_tmp_push_size;
   public:
+    const giac::context * contextptr;
     std::vector<std::string> args_help;
     bool no_handle; // disable mouse handling
     bool show_mouse_on_object; // FL_MOVE always handled or not

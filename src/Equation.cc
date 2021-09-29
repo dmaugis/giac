@@ -19,11 +19,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#ifndef IN_GIAC
-#include <giac/first.h>
-#else
 #include "first.h"
-#endif
 #include <string>
 #ifdef HAVE_LIBFLTK
 #include "Equation.h"
@@ -560,7 +556,7 @@ namespace xcas {
 
   // vertical merge with same baseline
   // for vertical merge of hp,yp at top (like ^) add fontsize to yp
-  // at bottom (like lower bound of int) substract fontsize from yp
+  // at bottom (like lower bound of int) subtract fontsize from yp
   void Equation_vertical_adjust(int hp,int yp,int & h,int & y){
     int yf=min(y,yp);
     h=max(y+h,yp+hp)-yf;
@@ -691,7 +687,7 @@ namespace xcas {
 	  else {
 	    Equation_vertical_adjust(vv.dy,vv.y,h,y);
 	    eqwdata v1=Equation_total_size(v[1]);
-	    x=max(a.fontsize,v1.dx)+a.fontsize/3; // var name size
+	    x=giacmax(a.fontsize,v1.dx)+a.fontsize/3; // var name size
 	    Equation_translate(v[1],0,-v1.dy-v1.y);
 	    Equation_vertical_adjust(v1.dy,-v1.dy,h,y);
 	    Equation_translate(v[0],x,0);
@@ -830,13 +826,14 @@ namespace xcas {
 	res.push_back(eqwdata(vv.dx+a.fontsize,vv.dy+4,vv.x,vv.y,a,at_sqrt,0));
 	return gen(res,_SEQ__VECT);
       }
-      if (vv.g.type==_FUNC || vv.g.is_symb_of_sommet(at_pow))
+      bool needpar=vv.g.type==_FUNC || vv.g.is_symb_of_sommet(at_pow) || need_parenthesis(vv.g);
+      if (needpar)
 	x=llp;
       Equation_translate(varg,x,0);
       Equation_vertical_adjust(vv.dy,vv.y,h,y);
       vecteur res(1,varg);
       // 2nd arg translated 
-      if (vv.g.type==_FUNC || vv.g.is_symb_of_sommet(at_pow))
+      if (needpar)
 	x+=vv.dx+lrp;
       else
 	x+=vv.dx+1;
@@ -992,7 +989,7 @@ namespace xcas {
 	    Equation_translate(*kt,0,currenth+y);
 	  h+=currenth;
 	  v.push_back(eqwdata(max(x,largeur),h,0,y,a,u,0));
-	  // cerr << v << endl;
+	  // cerr << v << '\n';
 	  return gen(v,_SEQ__VECT);
 	}
 	x += ls+3;
@@ -1188,7 +1185,7 @@ namespace xcas {
 	  Equation_translate(*jt,xshift,-y-w.y); v.push_back(*jt);
 	}
 	v.push_back(eqwdata(l,y,0,-y,a,at_makevector,0));
-	// cerr << v << endl;
+	// cerr << v << '\n';
 	gen res=gen(v,_HIST__VECT); Equation_translate(res,0,y); return res;
       } // END HISTORY
 #else
@@ -1329,8 +1326,8 @@ namespace xcas {
       int h=a.fontsize;
       int y=0;
       bool py=python_compat(contextptr);
-      int modsize=int(fl_width(py?" mod":"%"))+4;
-      bool paren=is_positive(-*g._MODptr,contextptr);
+      int modsize=int(fl_width(py?" mod ":"%"))+4;
+      bool paren=g._MODptr->type==_SYMB || is_positive(-*g._MODptr,contextptr);
       int llp=int(fl_width("("));
       int lrp=int(fl_width(")"));
       gen varg1=Equation_compute_size(*g._MODptr,a,windowhsize,contextptr);
@@ -1350,7 +1347,9 @@ namespace xcas {
       return gen(res,_SEQ__VECT);
     }
     if (g.type==_USER){
-      if (dynamic_cast<giac::galois_field *>(g._USERptr)){ 
+      if (giac::galois_field *gptr=dynamic_cast<giac::galois_field *>(g._USERptr)){ 
+	if (gptr->a.type==_VECT && gptr->a._VECTptr->size()==1)
+	  return Equation_compute_size(makemod(gptr->a._VECTptr->front(),gptr->p),a,windowhsize,contextptr);
 	gen g1(g.print(contextptr),contextptr); 
 	return Equation_compute_size(g1,a,windowhsize,contextptr);
       }
@@ -1367,6 +1366,32 @@ namespace xcas {
     /**********************
      *  SYMBOLIC HANDLING *
      **********************/
+    vecteur li(lidnt(g));
+    if (g.type==_SYMB && g._SYMBptr->sommet!=at_prod && g._SYMBptr->sommet!=at_pow && lvar(g)==li && lop(g,at_inv).empty()){
+      // polynomial check if it has modular coefficients
+      gen p,modulo;
+      try {
+	p=_symb2poly(makesequence(g,li),contextptr);
+      }
+      catch (std::runtime_error & error){
+	p=undef;
+      }
+      if (p.type==_POLY && has_mod_coeff(p,modulo)){
+	polynome & P=*p._POLYptr;
+	vector< monomial<gen> >::iterator it=P.coord.begin(),itend=P.coord.end();
+	for (;it!=itend;++it){
+	  if (it->value.type==_MOD){
+	    if (*(it->value._MODptr+1)!=modulo)
+	      break;
+	    it->value=*it->value._MODptr;
+	  }
+	}
+	if (it==itend){
+	  p=makemod(_poly2symb(makesequence(P,li),contextptr),modulo);
+	  return Equation_compute_size(p,a,windowhsize,contextptr);
+	}
+      }
+    }
     return Equation_compute_symb_size(g,a,windowhsize,contextptr);
     // return Equation_compute_symb_size(aplatir_fois_plus(g),a,windowhsize,contextptr);
     // aplatir_fois_plus is a problem for Equation_replace_selection
@@ -1469,7 +1494,7 @@ namespace xcas {
 	)
       font=FL_TIMES_BOLD_ITALIC; // FL_HELVETICA_BOLD_ITALIC;
     fl_font(font,fontsize);
-    // cerr << s.size() << endl;
+    // cerr << s.size() << '\n';
     check_fl_draw(s.c_str(),eq->x()+e.x-x,eq->y()+y-e.y,eq->clip_x,eq->clip_y,eq->clip_w,eq->clip_h,0,0);
     return;
   }
@@ -1488,7 +1513,7 @@ namespace xcas {
       return;
     gen tmp=v.back();
     if (tmp.type!=_EQW){
-      cerr << "EQW error:" << v << endl;
+      cerr << "EQW error:" << v << '\n';
       return;
     }
     eqwdata & w=*tmp._EQWptr;
@@ -1558,7 +1583,7 @@ namespace xcas {
 	eqwdata tmp=Equation_total_size(*it);
 	fl_font(FL_HELVETICA,tmp.eqw_attributs.fontsize);
 	fl_color(FL_BLUE);
-	// cerr << tmp << endl;
+	// cerr << tmp << '\n';
 	int yy;
 	// uncommented, seemed previously to be problematic with strings
 	if (tmp.hasbaseline)
@@ -1946,7 +1971,7 @@ namespace xcas {
 
   void Equation::draw(){
     fl_clip_box(x(),y(),w(),h(),clip_x,clip_y,clip_w,clip_h);
-    //cout << clip_x << " " << clip_y << " " << clip_w << " " << clip_h << endl;
+    //cout << clip_x << " " << clip_y << " " << clip_w << " " << clip_h << '\n';
     fl_push_clip(clip_x,clip_y,clip_w,clip_h);
     fl_color(attr.background);
     fl_rectf(clip_x, clip_y, clip_w, clip_h);
@@ -3148,7 +3173,7 @@ namespace xcas {
 	  eq->replace_selection(g1);
 	}
 	catch (std::runtime_error & er){
-	  cerr << er.what() << endl;
+	  cerr << er.what() << '\n';
 	}
       }
       return true;
@@ -3645,7 +3670,7 @@ namespace xcas {
     if (act){ // insert s
       string s;
       if (act->type!=_EQW || act->_EQWptr->g.type!=_STRNG){
-	cerr << "Error " << *act << endl;
+	cerr << "Error " << *act << '\n';
 	return false;
       }
       s=*act->_EQWptr->g._STRNGptr;
@@ -4582,7 +4607,7 @@ namespace xcas {
 
   Equation::Equation(int x, int y, int w, int h, const char* l,const gen & g,attributs myattr) : Fl_Group(x, y, max(w,20), max(h,20), l){ 
     const giac::context * contextptr = get_context(this);
-    labelsize(min(max(myattr.fontsize,10),16));
+    labelsize(giacmin(giacmax(myattr.fontsize,10),16));
     xleft=0;
     ytop=h;
     xcur=0;
@@ -4607,7 +4632,7 @@ namespace xcas {
   }
 
   Equation::Equation(int x, int y, int w, int h, const char* l,const gen & g,attributs myattr,GIAC_CONTEXT) : Fl_Group(x, y, max(w,20), max(h,20), l){ 
-    labelsize(min(max(myattr.fontsize,10),16));
+    labelsize(giacmin(giacmax(myattr.fontsize,10),16));
     xleft=0;
     ytop=h;
     xcur=0;

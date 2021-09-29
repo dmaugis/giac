@@ -293,7 +293,7 @@ namespace giac {
     int unknowns=0;
     for (;vit!=vitend;++vit){
       if (vit->mult>1)
-	break;
+	break; // return false might be more appropriate here
       unknowns += int(vit->fact.coord.size())-1; // lcoeff is known
     }
     if (unknowns>=giacmax(5,pcur.lexsorted_degree()/2) || unknowns==0)
@@ -320,6 +320,8 @@ namespace giac {
       vector< monomial<gen> >::const_iterator it=fact.coord.begin(),itend=fact.coord.end();
       gen Pi=lc*pow(mainvar,it->index.front());
       for (++it;it!=itend;++it){
+	if (pos>=la.size()) 
+	  return false;
 	Pi += la[pos]*pow(mainvar,it->index.front());
 	++pos;
       }
@@ -398,6 +400,25 @@ namespace giac {
       pt.coord.push_back(monomial<gen>(it->value,cur));
     }
     pt.tsort();
+    // Fix 2020 dec 4 for E:=c1^6*x2^5-c2^5*x1^6-c2^5*x2^6+c2^6*x2^5-4*b*c1^5*x2^5+2*b*c2^5*x1^5+7*b^2*c1^4*x2^5+b^2*c1^6*x2^3-2*b^2*c2^3*x1^6-2*b^2*c2^3*x2^6+3*b^2*c2^4*x2^5-2*b^2*c2^5*x2^4+b^2*c2^6*x2^3-6*b^3*c1^3*x2^5-2*b^3*c1^5*x2^3+2*b^3*c2^3*x1^5-2*b^3*c2^5*x1^3+2*b^4*c1^2*x2^5+b^4*c1^4*x2^3-2*b^4*c2^2*x2^5+2*b^4*c2^3*x1^4+4*b^4*c2^3*x2^4-3*b^4*c2^4*x2^3+b^4*c2^5*x1^2+b^4*c2^5*x2^2-2*b^5*c2^3*x1^3-2*c1^2*c2^3*x1^6-2*c1^2*c2^3*x2^6+3*c1^2*c2^4*x2^5-c1^4*c2*x1^6-c1^4*c2*x2^6+3*c1^4*c2^2*x2^5+2*c1^6*x1^2*x2^3+c1^6*x1^4*x2-3*c2^5*x1^2*x2^4-3*c2^5*x1^4*x2^2+2*c2^6*x1^2*x2^3+c2^6*x1^4*x2+4*b*c1*c2^3*x1^6+4*b*c1*c2^3*x2^6-4*b*c1*c2^4*x2^5+4*b*c1^2*c2^3*x1^5+4*b*c1^3*c2*x1^6+4*b*c1^3*c2*x2^6-8*b*c1^3*c2^2*x2^5+2*b*c1^4*c2*x1^5-8*b*c1^5*x1^2*x2^3-4*b*c1^5*x1^4*x2-2*b*c1^6*x1*x2^3-2*b*c1^6*x1^3*x2+2*b*c2^5*x1*x2^4+4*b*c2^5*x1^3*x2^2-2*b*c2^6*x1*x2^3-2*b*c2^6*x1^3*x2-8*b^2*c1*c2^3*x1^5-6*b^2*c1^2*c2*x1^6-6*b^2*c1^2*c2*x2^6+10*b^2*c1^2*c2^2*x2^5-4*b^2*c1^2*c2^3*x2^4+3*b^2*c1^2*c2^4*x2^3-8*b^2*c1^3*c2*x1^5-2*b^2*c1^4*c2*x2^4+3*b^2*c1^4*c2^2*x2^3+14*b^2*c1^4*x1^2*x2^3+7*b^2*c1^4*x1^4*x2+6*b^2*c1^5*x1*x2^3+6*b^2*c1^5*x1^3*x2+b^2*c1^6*x1^2*x2-6*b^2*c2^3*x1^2*x2^4-6*b^2*c2^3*x1^4*x2^2+6*b^2*c2^4*x1^2*x2^3+3*b^2*c2^4*x1^4*x2-2*b^2*c2^5*x1^2*x2^2+b^2*c2^6*x1^2*x2+4*b^3*c1*c2*x1^6+4*b^3*c1*c2*x2^6-6*b^3*c1*c2^2*x2^5+4*b^3*c1*c2^3*x1^4+4*b^3*c1*c2^3*x2^4-2*b^3*c1*c2^4*x2^3+10*b^3*c1^2*c2*x1^5-4*b^3*c1^2*c2^3*x1^3+4*b^3*c1^3*c2*x1^4+4*b^3*c1^3*c2*x2^4-4*b^3*c1^3*c2^2*x2^3-12*b^3*c1^3*x1^2*x2^3-6*b^3*c1^3*x1^4*x2-2*b^3*c1^4*c2*x1^3-8*b^3*c1^4*x1*x2^3-8*b^3*c1^4*x1^3*x2-2*b^3*c1^5*x1^2*x2+2*b^3*c2^3*x1*x2^4+4*b^3*c2^3*x1^3*x2^2-2*b^3*c2^5*x1*x2^2-8*b^4*c1*c2*x1^5-2*b^4*c1^2*c2*x1^4-2*b^4*c1^2*c2^2*x2^3+2*b^4*c1^2*c2^3*x1^2+2*b^4*c1^2*c2^3*x2^2+4*b^4*c1^2*x1^2*x2^3+2*b^4*c1^2*x1^4*x2+6*b^4*c1^3*x1*x2^3+6*b^4*c1^3*x1^3*x2+b^4*c1^4*c2*x1^2+b^4*c1^4*c2*x2^2+b^4*c1^4*x1^2*x2-4*b^4*c2^2*x1^2*x2^3-2*b^4*c2^2*x1^4*x2+6*b^4*c2^3*x1^2*x2^2-3*b^4*c2^4*x1^2*x2+4*b^5*c1*c2*x1^4-2*b^5*c1^2*c2*x1^3-2*b^5*c1^2*x1*x2^3-2*b^5*c1^2*x1^3*x2+2*b^5*c2^2*x1*x2^3+2*b^5*c2^2*x1^3*x2-2*b^5*c2^3*x1*x2^2-6*c1^2*c2^3*x1^2*x2^4-6*c1^2*c2^3*x1^4*x2^2+6*c1^2*c2^4*x1^2*x2^3+3*c1^2*c2^4*x1^4*x2-3*c1^4*c2*x1^2*x2^4-3*c1^4*c2*x1^4*x2^2+6*c1^4*c2^2*x1^2*x2^3+3*c1^4*c2^2*x1^4*x2+12*b*c1*c2^3*x1^2*x2^4+12*b*c1*c2^3*x1^4*x2^2-8*b*c1*c2^4*x1^2*x2^3-4*b*c1*c2^4*x1^4*x2+4*b*c1^2*c2^3*x1*x2^4+8*b*c1^2*c2^3*x1^3*x2^2-6*b*c1^2*c2^4*x1*x2^3-6*b*c1^2*c2^4*x1^3*x2+12*b*c1^3*c2*x1^2*x2^4+12*b*c1^3*c2*x1^4*x2^2-16*b*c1^3*c2^2*x1^2*x2^3-8*b*c1^3*c2^2*x1^4*x2+2*b*c1^4*c2*x1*x2^4+4*b*c1^4*c2*x1^3*x2^2-6*b*c1^4*c2^2*x1*x2^3-6*b*c1^4*c2^2*x1^3*x2-8*b^2*c1*c2^3*x1*x2^4-16*b^2*c1*c2^3*x1^3*x2^2+6*b^2*c1*c2^4*x1*x2^3+6*b^2*c1*c2^4*x1^3*x2-18*b^2*c1^2*c2*x1^2*x2^4-18*b^2*c1^2*c2*x1^4*x2^2+20*b^2*c1^2*c2^2*x1^2*x2^3+10*b^2*c1^2*c2^2*x1^4*x2-4*b^2*c1^2*c2^3*x1^2*x2^2+3*b^2*c1^2*c2^4*x1^2*x2-8*b^2*c1^3*c2*x1*x2^4-16*b^2*c1^3*c2*x1^3*x2^2+12*b^2*c1^3*c2^2*x1*x2^3+12*b^2*c1^3*c2^2*x1^3*x2-2*b^2*c1^4*c2*x1^2*x2^2+3*b^2*c1^4*c2^2*x1^2*x2+12*b^3*c1*c2*x1^2*x2^4+12*b^3*c1*c2*x1^4*x2^2-12*b^3*c1*c2^2*x1^2*x2^3-6*b^3*c1*c2^2*x1^4*x2+8*b^3*c1*c2^3*x1^2*x2^2-2*b^3*c1*c2^4*x1^2*x2+10*b^3*c1^2*c2*x1*x2^4+20*b^3*c1^2*c2*x1^3*x2^2-8*b^3*c1^2*c2^2*x1*x2^3-8*b^3*c1^2*c2^2*x1^3*x2-4*b^3*c1^2*c2^3*x1*x2^2+8*b^3*c1^3*c2*x1^2*x2^2-4*b^3*c1^3*c2^2*x1^2*x2-2*b^3*c1^4*c2*x1*x2^2-8*b^4*c1*c2*x1*x2^4-16*b^4*c1*c2*x1^3*x2^2+6*b^4*c1*c2^2*x1*x2^3+6*b^4*c1*c2^2*x1^3*x2-2*b^4*c1^2*c2*x1^2*x2^2-2*b^4*c1^2*c2^2*x1^2*x2+4*b^5*c1*c2*x1^2*x2^2-2*b^5*c1^2*c2*x1*x2^2; factor(E);
+    polynome pt1;
+    pt1.coord.reserve(pt.coord.size());
+    it=pt.coord.begin();itend=pt.coord.end();
+    cur[0]=(1<<15)-1;
+    for (;it!=itend;++it){
+      if (it->index==cur){
+	pt1.coord.back().value += it->value;
+      }
+      else {
+	if (!pt1.coord.empty() && is_zero(pt1.coord.back().value))
+	  pt1.coord.pop_back();
+	cur=it->index.iref();
+	pt1.coord.push_back(*it);
+      }
+    }
+    if (!pt1.coord.empty() && is_zero(pt1.coord.back().value))
+      pt1.coord.pop_back();
+    pt.coord.swap(pt1.coord);
   }
 
   // return true if none of the coefficients of p with same 1st degree are the same
@@ -441,7 +462,8 @@ namespace giac {
     index_t n(dim-1,1);
     for (;;){
       eval_tn(pcur,n,pt);
-      pt=pt/Tlgcd(pt);
+      ptcont=Tlgcd(pt);
+      pt=pt/ptcont;
       eval_tn(lcp,n,lcpt);
 #if POLY_SPARSE_BI
       factorization ft;
@@ -458,7 +480,7 @@ namespace giac {
       dbg=_factors(dbg,context0) ;
       if (dbg.type!=_VECT) return false;
       vecteur v=*dbg._VECTptr;
-      if (v.size()==2){
+      if (v.size()==2 && v.back()==1){
 	f.push_back(facteur<polynome>(pcur,mult));
 	return true;
       }
@@ -932,7 +954,7 @@ namespace giac {
 	if (!is_zero(*it))
 	  U[i].coord.push_back(monomial<gen>(*it,deg-n,1,pcur_adjusted.dim));
       }
-      // CERR << Tcontent(U[i]) << endl;
+      // CERR << Tcontent(U[i]) << '\n';
     }
     polynome quo(dim),rem(dim),tmp(dim);
     // we have now pcur_adjusted = product P_i + O(total_degree>=1)
@@ -951,7 +973,7 @@ namespace giac {
 	  tmp.coord.clear();
 	  mulpoly_truncate1(prod,P[i],tmp,-deg,tmp4,tmp5,tmp6,tmpi1,tmpi2);
 	  prod.coord.swap(tmp.coord);
-	  //if (prod!=prod1) CERR << "err " << deg << endl;
+	  //if (prod!=prod1) CERR << "err " << deg << '\n';
 	} // end loop on i
 	mulpoly_truncate1(prod,P[s-1],tmp,deg,tmp4,tmp5,tmp6,tmpi1,tmpi2);
 	prod.coord.swap(tmp.coord);
@@ -984,11 +1006,11 @@ namespace giac {
 	  }
 	  continue;
 	}
-	//CERR << Tcontent(prod) << endl;
+	//CERR << Tcontent(prod) << '\n';
 	for (int i=0;i<s;++i){
 	  // U[i] depends only on 1st var no need to reduce
 	  mulpoly(prod,U[i],rem,0);
-	  //CERR << "deg " << deg << " " << Tcontent(rem) << endl;
+	  //CERR << "deg " << deg << " " << Tcontent(rem) << '\n';
 	  if (!divrem1(rem,P0[i],quo,tmp,0) && !rem.TDivRem1(P0[i],quo,tmp,true,0))
 	    return false;
 	  rem.coord.swap(tmp.coord); // poly_truncate1(tmp,rem,deg);
@@ -1037,11 +1059,11 @@ namespace giac {
 	}
 	continue;
       }
-      //CERR << Tcontent(prod) << endl;
+      //CERR << Tcontent(prod) << '\n';
       for (int i=0;i<s;++i){
 	// U[i] depends only on 1st var no need to reduce
 	mulpoly(prod,U[i],rem,0);
-	//CERR << "deg " << deg << " " << Tcontent(rem) << endl;
+	//CERR << "deg " << deg << " " << Tcontent(rem) << '\n';
 	if (!divrem1(rem,P0[i],quo,tmp,0) && !rem.TDivRem1(P0[i],quo,tmp,true,0))
 	  return false;
 	reduce_poly(tmp,b,deg+1,rem);
@@ -1061,7 +1083,7 @@ namespace giac {
     vector<int> test(1);
     for (int k=1;k<=nfact/2;){
       if (debug_infolevel)
-	COUT << CLOCK() << "Testing combination of " << k << " factors" << endl;
+	COUT << CLOCK() << "Testing combination of " << k << " factors" << '\n';
       // FIXME check on cst coeff
       if (1){
 	polynome prodP(P[test[0]]);
@@ -1180,7 +1202,7 @@ namespace giac {
       // we are done. Since p-q*r is of order [n], we get the solution
       // r'=qu*(p-qr)/qrd and q'=ru*(p-qr)/qrd
       if (debug_infolevel)
-	CERR << "// Hensel " << n << " -> " << deg << endl;
+	CERR << "// Hensel " << n << " -> " << deg << '\n';
       if (n>deg)
 	return false;
       if (linear_lift)
@@ -1190,7 +1212,7 @@ namespace giac {
       if (maxop>0){
 	nop += double(q.coord.size())*r.coord.size();
 	if (debug_infolevel)
-	  CERR << "EZGCD " << nop << ":" << maxop << endl;
+	  CERR << "EZGCD " << nop << ":" << maxop << '\n';
 	if (nop>maxop)
 	  return false;
       }
@@ -1257,7 +1279,7 @@ namespace giac {
   }
 
   polynome peval_1(const polynome & p,const vecteur &v,const gen & mod){
-#if defined(NO_STDEXCEPT) && !defined(RTOS_THREADX) && !defined(VISUALC)
+#if defined(NO_STDEXCEPT) && !defined(RTOS_THREADX) && !defined(VISUALC) && !defined(KHICAS)
     assert(p.dim==signed(v.size()+1));
 #else
     if (p.dim!=signed(v.size()+1))
@@ -1347,20 +1369,20 @@ namespace giac {
       if (!is_zero(mod) && essai>mod.val)
 	return false;
       if (debuglog)
-	CERR << "Find_good_eval " << CLOCK() << " " << b << endl;
+	CERR << "Find_good_eval " << CLOCK() << " " << b << '\n';
       Fb=peval_1(F,b,mod);
       if (debuglog)
-	CERR << "Fb= " << CLOCK() << " " << gen(Fb) << endl;
+	CERR << "Fb= " << CLOCK() << " " << gen(Fb) << '\n';
       if (&F==&G)
 	Gb=Fb;
       else {
 	Gb=peval_1(G,b,mod);
       }
       if (debuglog)
-	CERR << "Gb= " << CLOCK() << " " << gen(Gb) << endl;
+	CERR << "Gb= " << CLOCK() << " " << gen(Gb) << '\n';
       if ( (Fb.lexsorted_degree()==Fdeg) && (Gb.lexsorted_degree()==Gdeg) ){
 	if (debuglog)
-	  CERR << "FOUND good eval" << CLOCK() << " " << b << endl;
+	  CERR << "FOUND good eval" << CLOCK() << " " << b << '\n';
 	return true;
       }
       b=vranm(nvars,0,0); // find another random point
@@ -1369,14 +1391,14 @@ namespace giac {
 
   // It is probably required that 0 is a good evaluation point to
   // have an efficient algorithm
-  // max_gcddeg is used when ezgcd was not successfull to find
+  // max_gcddeg is used when ezgcd was not successful to find
   // the gcd even with 2 evaluations leading to the same gcd degree
   // in this case ezgcd calls itself with a bound on the gcd degree
   // is_sqff is true if we know that F_orig or G_orig is squarefree
   // is_primitive is true if F_orig and G_orig is primitive
   bool ezgcd(const polynome & F_orig,const polynome & G_orig,polynome & GCD,bool is_sqff,bool is_primitive,int max_gcddeg,double maxop){
     if (debug_infolevel)
-      CERR << "// Starting EZGCD dimension " << F_orig.dim << endl;
+      CERR << "// Starting EZGCD dimension " << F_orig.dim << '\n';
     if (F_orig.dim<2){
 #ifdef NO_STDEXCEPT
       return false;
@@ -1415,12 +1437,12 @@ namespace giac {
     int old_gcddeg;
     for (;;){
       if (debug_infolevel)
-	CERR << "// Back to EZGCD dimension " << F_orig.dim << endl;
+	CERR << "// Back to EZGCD dimension " << F_orig.dim << '\n';
       find_good_eval(F,G,Fb,Gb,b);
       Db=gcd(Fb,Gb);
       old_gcddeg=Db.lexsorted_degree();
       if (debug_infolevel)
-	CERR << "// Eval at " << b << " gcd  degree " << old_gcddeg << endl;
+	CERR << "// Eval at " << b << " gcd  degree " << old_gcddeg << '\n';
       if (!old_gcddeg){
 	GCD=cFG;
 	return true;
@@ -1437,7 +1459,7 @@ namespace giac {
       polynome new_Db(gcd(new_Fb,new_Gb));
       int new_gcddeg=new_Db.lexsorted_degree();
       if (debug_infolevel)
-	CERR << "// Eval at " << new_b << " gcd  degree " << new_gcddeg << endl;
+	CERR << "// Eval at " << new_b << " gcd  degree " << new_gcddeg << '\n';
       if (!new_gcddeg){
 	GCD=cFG;
 	return true;
@@ -1466,7 +1488,7 @@ namespace giac {
       }
     }
     if (debug_infolevel)
-      CERR << "// EZGCD degree " << old_gcddeg << endl;
+      CERR << "// EZGCD degree " << old_gcddeg << '\n';
     if ( (old_gcddeg==Fdeg) || (old_gcddeg==Gdeg) )
       return false;
     // this algo is fast if 0 is a good eval & the degree of the gcd is small
@@ -1558,7 +1580,7 @@ namespace giac {
       if (result)
 	res=pres;
       else
-	return gensizeerr(gettext("GCD not successfull"));
+	return gensizeerr(gettext("GCD not successful"));
     }
     return r2e(res,lv,contextptr);
   }

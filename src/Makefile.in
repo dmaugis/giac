@@ -54,7 +54,8 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
-bin_PROGRAMS = icas$(EXEEXT) xcas$(EXEEXT) aide$(EXEEXT)
+bin_PROGRAMS = icas$(EXEEXT) xcas$(EXEEXT) aide$(EXEEXT) \
+	hevea2mml$(EXEEXT)
 subdir = src
 DIST_COMMON = README $(giacinclude_HEADERS) $(srcdir)/Makefile.am \
 	$(srcdir)/Makefile.in COPYING TODO input_lexer.cc \
@@ -78,7 +79,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/codeset.m4 \
 	$(top_srcdir)/m4/uintmax_t.m4 $(top_srcdir)/m4/ulonglong.m4 \
 	$(top_srcdir)/m4/wchar_t.m4 $(top_srcdir)/m4/wint_t.m4 \
 	$(top_srcdir)/m4/xsize.m4 $(top_srcdir)/acinclude.m4 \
-	$(top_srcdir)/configure.in
+	$(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 mkinstalldirs = $(SHELL) $(top_srcdir)/config/mkinstalldirs
@@ -128,20 +129,26 @@ am_libgiac_la_OBJECTS = input_lexer.lo sym2poly.lo gausspol.lo \
 	pari.lo cocoa.lo unary.lo usual.lo identificateur.lo gen.lo \
 	tinymt32.lo first.lo TmpLESystemSolver.lo TmpFGLM.lo help.lo \
 	lpsolve.lo optimization.lo signalprocessing.lo graphe.lo \
-	graphtheory.lo nautywrapper.lo
+	graphtheory.lo nautywrapper.lo markup.lo kdisplay.lo kadd.lo \
+	caseval.lo cutils.lo graphic.lo libbf.lo libregexp.lo \
+	libunicode.lo qjsgiac.lo quickjs.lo quickjs-libc.lo js.lo
 libgiac_la_OBJECTS = $(am_libgiac_la_OBJECTS)
 libxcas_la_DEPENDENCIES = libgiac.la $(am__DEPENDENCIES_1)
 am_libxcas_la_OBJECTS = History.lo Input.lo Xcas1.lo Equation.lo \
 	Print.lo Tableur.lo Editeur.lo Graph.lo Graph3d.lo Help1.lo \
 	Cfg.lo Flv_CStyle.lo Flve_Check_Button.lo Flve_Input.lo \
 	Flv_Style.lo Flv_Data_Source.lo Flve_Combo.lo Flv_List.lo \
-	Flv_Table.lo gl2ps.lo
+	Flv_Table.lo gl2ps.lo Python.lo
 libxcas_la_OBJECTS = $(am_libxcas_la_OBJECTS)
 PROGRAMS = $(bin_PROGRAMS)
 am_aide_OBJECTS = aide.$(OBJEXT)
 aide_OBJECTS = $(am_aide_OBJECTS)
-aide_DEPENDENCIES = libxcas.la $(am__DEPENDENCIES_1) \
+aide_DEPENDENCIES = libgiac.la $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1)
+am_hevea2mml_OBJECTS = hevea2mml.$(OBJEXT) lex_yy.$(OBJEXT) \
+	y_tab.$(OBJEXT)
+hevea2mml_OBJECTS = $(am_hevea2mml_OBJECTS)
+hevea2mml_DEPENDENCIES =
 am_icas_OBJECTS = icas.$(OBJEXT)
 icas_OBJECTS = $(am_icas_OBJECTS)
 icas_DEPENDENCIES = libxcas.la $(am__DEPENDENCIES_1) \
@@ -180,9 +187,10 @@ YACCCOMPILE = $(YACC) $(AM_YFLAGS) $(YFLAGS)
 LTYACCCOMPILE = $(LIBTOOL) $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) \
 	--mode=compile $(YACC) $(AM_YFLAGS) $(YFLAGS)
 SOURCES = $(libgiac_la_SOURCES) $(libxcas_la_SOURCES) $(aide_SOURCES) \
-	$(icas_SOURCES) $(xcas_SOURCES)
+	$(hevea2mml_SOURCES) $(icas_SOURCES) $(xcas_SOURCES)
 DIST_SOURCES = $(libgiac_la_SOURCES) $(libxcas_la_SOURCES) \
-	$(aide_SOURCES) $(icas_SOURCES) $(xcas_SOURCES)
+	$(aide_SOURCES) $(hevea2mml_SOURCES) $(icas_SOURCES) \
+	$(xcas_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -201,6 +209,7 @@ AUTOCONF = @AUTOCONF@
 AUTOHEADER = @AUTOHEADER@
 AUTOMAKE = @AUTOMAKE@
 AWK = @AWK@
+BERNMM_LIBS = @BERNMM_LIBS@
 BUILD_INCLUDED_LIBINTL = @BUILD_INCLUDED_LIBINTL@
 CATOBJEXT = @CATOBJEXT@
 CC = @CC@
@@ -208,14 +217,17 @@ CCDEPMODE = @CCDEPMODE@
 CFLAGS = @CFLAGS@
 COCOA_LIBS = @COCOA_LIBS@
 CONFIG_AO = @CONFIG_AO@
+CONFIG_BERNMM = @CONFIG_BERNMM@
 CONFIG_COCOA = @CONFIG_COCOA@
 CONFIG_CURL = @CONFIG_CURL@
 CONFIG_DOC_PROGS = @CONFIG_DOC_PROGS@
+CONFIG_ECM = @CONFIG_ECM@
 CONFIG_GLPK = @CONFIG_GLPK@
 CONFIG_GMPXX = @CONFIG_GMPXX@
 CONFIG_GSL = @CONFIG_GSL@
 CONFIG_NTL = @CONFIG_NTL@
 CONFIG_PARI = @CONFIG_PARI@
+CONFIG_SAMPLERATE = @CONFIG_SAMPLERATE@
 CPP = @CPP@
 CPPFLAGS = @CPPFLAGS@
 CURL_LIBS = @CURL_LIBS@
@@ -233,6 +245,7 @@ DVIPS = @DVIPS@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
+ECM_LIBS = @ECM_LIBS@
 EGREP = @EGREP@
 EXEEXT = @EXEEXT@
 FGREP = @FGREP@
@@ -302,6 +315,7 @@ PATH_SEPARATOR = @PATH_SEPARATOR@
 PDFLATEX = @PDFLATEX@
 POSUB = @POSUB@
 RANLIB = @RANLIB@
+SAMPLERATE_LIBS = @SAMPLERATE_LIBS@
 SED = @SED@
 SET_MAKE = @SET_MAKE@
 SHELL = @SHELL@
@@ -384,9 +398,11 @@ libgiac_la_SOURCES = input_lexer.ll sym2poly.cc gausspol.cc threaded.cc \
   path.h lexer.h \
   input_lexer.h input_parser.h threaded.h vector.h \
   help.cc  lpsolve.cc optimization.cc signalprocessing.cc \
-  graphe.cc graphtheory.cc nautywrapper.c # Ugh..
+  graphe.cc graphtheory.cc nautywrapper.c markup.cc kdisplay.cc kadd.cc \
+  caseval.c cutils.c graphic.c libbf.c libregexp.c libunicode.c \
+  qjsgiac.c quickjs.c quickjs-libc.c js.c
 
-libgiac_la_LIBADD = $(NTL_LIBS) $(COCOA_LIBS) $(PARI_LIBS) $(GSL_LIBS)
+libgiac_la_LIBADD = $(NTL_LIBS) $(COCOA_LIBS) $(PARI_LIBS) $(GSL_LIBS) 
 giacincludedir = $(includedir)/giac
 giacinclude_HEADERS = dispatch.h fraction.h gen.h desolve.h misc.h ti89.h \
 mathml.h identificateur.h unary.h symbolic.h index.h modpoly.h modfactor.h permu.h \
@@ -398,7 +414,10 @@ pari.h cocoa.h giac.h first.h maple.h help.h tinymt32.h tinymt32_license.h \
 static.h static_extern.h static_lexer.h static_lexer_.h\
 lexer_tab_int.h \
 static_help.h giacPCH.h giacintl.h gmp_replacements.h myostream.h \
-lpsolve.h optimization.h signalprocessing.h graphe.h graphtheory.h nautywrapper.h
+lpsolve.h optimization.h signalprocessing.h graphe.h graphtheory.h nautywrapper.h markup.h kdisplay.h k_csdk.h k_defs.h \
+fenv.h libregexp.h libregexp-opcode.h libunicode.h libunicode-table.h \
+libbf.h list.h cutils.h qjsgiac.h \
+quickjs.h js.h quickjs-atom.h quickjs-libc.h quickjs-opcode.h bf2gmp.h
 
 noinst_LTLIBRARIES = libxcas.la
 libxcas_la_LIBADD = libgiac.la $(GUI_LIBS)
@@ -408,14 +427,16 @@ libxcas_la_SOURCES = History.cc Input.cc Xcas1.cc Equation.cc Print.cc \
 	Flve_Check_Button.cc Flve_Input.cc Flv_Style.cc Flv_Data_Source.cc \
 	Flve_Combo.cc Flv_List.cc Flv_Table.cc gl2ps.c \
 	History.h Input.h Xcas1.h Equation.h Print.h Tableur.h \
-	Editeur.h Graph.h Graph3d.h Help1.h Cfg.h \
+	Editeur.h Graph.h Graph3d.h Help1.h Cfg.h Python.cc Python.h \
 	Flv_CStyle.H  Flve_Check_Button.H  Flve_Input.H  Flv_Style.H \
 	Flv_Data_Source.H  Flve_Combo.H Flv_List.H Flv_Table.H gl2ps.h
 
 icas_SOURCES = icas.cc 
 icas_LDADD = libxcas.la $(GINSH_LIBS) $(GSL_LIBS) $(LAPACK_LIBS)
 aide_SOURCES = aide.cc
-aide_LDADD = libxcas.la $(GINSH_LIBS) $(GSL_LIBS) $(LAPACK_LIBS)
+aide_LDADD = libgiac.la $(GINSH_LIBS) $(GSL_LIBS) $(LAPACK_LIBS)
+hevea2mml_SOURCES = hevea2mml.cc lex_yy.c y_tab.c
+hevea2mml_LDADD = 
 AM_CPPFLAGS = -DIN_GIAC -I$(srcdir) -I$(top_srcdir) -I$(builddir) \
 	      -I$(top_builddir) $(GMP_CFLAGS) $(NTL_CFLAGS) \
 	      $(COCOA_CFLAGS) $(PARI_CFLAGS)
@@ -425,27 +446,33 @@ xcas_LDADD = libxcas.la $(GSL_LIBS) $(LAPACK_LIBS)
 AM_YFLAGS = -p giac_yy -d
 EXTRA_DIST = .gdbinit xgiac pgiac prime.table gen_user \
 	input_parser.h softmath.h softmath.cc\
-	mkxcas mkwcas mkgcas mkaout Makefile.wince Makefile.osx\
+	mkxcas mkwcas mkgcas mkaout Makefile.wince Makefile.osx Makefile.mingw64 README.mingw64 Makefile.w64 \
 	Makefile.rpm Makefile.ipaq Makefilenew.ipaq ipaq_usr.tgz \
 	Makefile.fast Makefile.win Makefile.win64 config.h.win64 Makefile.O3 Makefile.64 \
-	Makefile.nspire khicas.lua luagiac.c luabridge.cc luabridge.h \
-	giacnspire.cc config.h.nspire missing.c ndlessconfigure\
+	Makefile.nspire README.nspire khicas.lua luagiac.c luabridge.cc luabridge.h \
+	giacnspire.cc config.h.nspire missing.c ndlessconfigure \
+	sha256.h sha256.c \
 	normalize.cc integrate.cc partfrac.cc factor.cc xcas.cc \
 	hist.fl hist.h hist.cxx hist.menus\
 	renee.cc renee.h cas2.cc README.ipaq README.WIN   \
 	readme.doc latex.bat xdvi.bat dvips.bat xcasfr.bat xcases.bat \
-	xcasfr.sh xcases.sh xcasen.sh mkstat mkhist mkdyn mkdyn10 mkxdyn10 \
-        update.sh update.bat opengl.cc opengl.h freeglut_stroke_roman.c\
+	xcasfr.sh xcases.sh xcasen.sh mkstat mkhist \
+	mkdylib10 mkdyn10 mkxdyn10 mklocal10 mkxlocal10 \
+        update.sh update.bat \
+	opengl.cc opengl.h freeglut_stroke_roman.c mp.cc mp.h \
 	giac.pl cas2html.cc all_global_var find_global_var.cc static_init \
 	Fl_GDI_Printer.cxx  Fl_PS_Printer.cxx Fl_Gl_Choice.H \
 	casce.cc xcasce.cc xcasctrl.cc casctrl.cc \
 	Makefile.vcc config.h.vcc giac_oo.cpp giaclib.vcproj \
 	Makefile.android compile.android.arm compile.android.x86 config.h.android Makefile.mingw \
 	config.h.iphone Makefile.iphone \
-	config.h.numworks Makefile.numworks \
+	config.h.numworks.* Makefile.numworks.* \
+	stdstream \
 	f2c.h clapack.h blaswrap.h mklocal64 pnt_gen \
 	giac.i runme.java archive_java archive_java_linux32 archive_java_linux64  javascript.cxx giacjs.i README.javascript \
-	Makefile.jni README.jni README.nacl mkdylib mkdylib10 mkgiacpy mkgiacpy10 giac_wrap.cxx aspen_translate.h translate.cc
+	Makefile.jni README.jni README.nacl mkdylib mkdylib10 mkgiacpy mkgiacpy10 giac_wrap.cxx aspen_translate.h numworks_translate.h translate.cc \
+	itex2MML.* y_tab.h static_lexer_numworks.h static_lexer__numworks.h k_csdk.c \
+	qjscalcjs.js xcasjs.js tijs.js mklibjs mkjs.cc
 
 bin_SCRIPTS = pgiac
 all: all-am
@@ -579,6 +606,9 @@ clean-binPROGRAMS:
 aide$(EXEEXT): $(aide_OBJECTS) $(aide_DEPENDENCIES) $(EXTRA_aide_DEPENDENCIES) 
 	@rm -f aide$(EXEEXT)
 	$(CXXLINK) $(aide_OBJECTS) $(aide_LDADD) $(LIBS)
+hevea2mml$(EXEEXT): $(hevea2mml_OBJECTS) $(hevea2mml_DEPENDENCIES) $(EXTRA_hevea2mml_DEPENDENCIES) 
+	@rm -f hevea2mml$(EXEEXT)
+	$(CXXLINK) $(hevea2mml_OBJECTS) $(hevea2mml_LDADD) $(LIBS)
 icas$(EXEEXT): $(icas_OBJECTS) $(icas_DEPENDENCIES) $(EXTRA_icas_DEPENDENCIES) 
 	@rm -f icas$(EXEEXT)
 	$(CXXLINK) $(icas_OBJECTS) $(icas_LDADD) $(LIBS)
@@ -644,14 +674,17 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/History.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Input.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Print.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Python.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Tableur.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/TmpFGLM.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/TmpLESystemSolver.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/Xcas1.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/aide.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/alg_ext.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/caseval.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cocoa.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/csturm.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cutils.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/derive.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/desolve.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ezgcd.Plo@am__quote@
@@ -662,8 +695,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/gl2ps.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/global.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/graphe.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/graphic.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/graphtheory.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/help.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hevea2mml.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/icas.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/identificateur.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ifactor.Plo@am__quote@
@@ -673,9 +708,17 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/intg.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/intgab.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/isom.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/js.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kadd.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kdisplay.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lex_yy.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libbf.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libregexp.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libunicode.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lin.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/lpsolve.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/maple.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/markup.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mathml.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/misc.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/modfactor.Plo@am__quote@
@@ -688,7 +731,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/plot.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/plot3d.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/prog.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/qjsgiac.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/quater.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/quickjs-libc.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/quickjs.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/risch.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rpn.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/series.Plo@am__quote@
@@ -706,6 +752,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/usual.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/vecteur.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/xcas.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/y_tab.Po@am__quote@
 
 .C.o:
 @am__fastdepCXX_TRUE@	$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -1043,6 +1090,18 @@ uninstall-am: uninstall-binPROGRAMS uninstall-binSCRIPTS \
 	uninstall-libLTLIBRARIES
 
 
+libjs.a:	qjscalcjs.js xcasjs.js
+	./mklibjs
+
+js.c: mkjs qjscalcjs.js xcasjs.js
+	./mkjs
+
+js.h: mkjs qjscalcjs.js xcasjs.js
+	./mkjs
+
+mkjs: mkjs.cc
+	g++ mkjs.cc -o mkjs
+
 install-exec-hook:
 	rm -f $(DESTDIR)$(bindir)/cas_help
 	mv $(DESTDIR)$(bindir)/aide$(EXEEXT) $(DESTDIR)$(bindir)/cas_help
@@ -1051,6 +1110,10 @@ install-exec-hook:
 	ln -sf cas_help $(DESTDIR)$(bindir)/fr_cas_help
 	ln -sf icas $(DESTDIR)$(bindir)/giac
 	ln -sf xcas $(DESTDIR)$(bindir)/xcasnew
+	mkdir -p $(DESTDIR)$(includedir)/giac
+	cp -f config.h $(DESTDIR)$(includedir)/giac
+	cp -f input_lexer.h $(DESTDIR)$(includedir)/giac
+	cp -f input_parser.h $(DESTDIR)$(includedir)/giac
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

@@ -32,6 +32,9 @@ extern "C" {
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
+#if !defined GIAC_HAS_STO_38 && !defined NSPIRE && !defined FXCG
+#include <fstream>
+#endif
 #include "prog.h"
 #include "identificateur.h"
 #include "symbolic.h"
@@ -73,6 +76,11 @@ extern "C" {
 #undef HAVE_LIBPARI
 #endif
 
+#ifdef NSPIRE_NEWLIB
+#include <os.h>
+extern "C" double millis();
+#endif
+
 //#ifdef BESTA_OS
 //unsigned int PrimeGetNow(); 
 //#endif
@@ -86,8 +94,12 @@ extern "C" uint32_t mainThreadStack[];
 #endif
 #endif
 
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
 #include <emscripten.h>
+#endif
+
+#ifdef KHICAS
+#include "kdisplay.h"
 #endif
 
 #ifndef NO_NAMESPACE_GIAC
@@ -106,15 +118,15 @@ namespace giac {
 #endif
 
   void alert(const string & s,GIAC_CONTEXT){
-#ifdef EMCC
+#if defined(EMCC) || defined(EMCC2)
     EM_ASM_ARGS({
-	if (UI.warnpy){
-          var msg = Pointer_stringify($0); // Convert message to JS string
+	if (typeof UI!=='undefined' && UI.warnpy){
+          var msg = UTF8ToString($0);// Pointer_stringify($0); // Convert message to JS string
           alert(msg);                      // Use JS version of alert          
         }
       }, s.c_str());
 #endif
-    *logptr(contextptr) << s << endl;
+    *logptr(contextptr) << s << '\n';
   }
 
   gen equaltosto(const gen & g,GIAC_CONTEXT){
@@ -181,7 +193,11 @@ namespace giac {
   }
 
   gen check_secure(){
-    if (secure_run)
+    if (secure_run
+#ifdef KHICAS
+	|| exam_mode || nspire_exam_mode
+#endif
+	)
       return gensizeerr(gettext("Running in secure mode"));
     return 0;
   }
@@ -240,7 +256,7 @@ namespace giac {
   }
 
   void increment_instruction(const gen & arg,debug_struct * dbgptr){
-    // cerr << debug_ptr(contextptr)->current_instruction << " " << arg <<endl;
+    // cerr << debug_ptr(contextptr)->current_instruction << " " << arg <<'\n';
     ++dbgptr->current_instruction;
     if (arg.type!=_SYMB)
       return;
@@ -433,7 +449,7 @@ namespace giac {
       return;
     }
     if (u==at_try_catch){
-      // cerr << f << endl;
+      // cerr << f << '\n';
       v.push_back(string(indent2(contextptr)+"try"));
       debug_ptr(contextptr)->indent_spaces += 1;
       debug_print(f._VECTptr->front(),v,contextptr);
@@ -500,7 +516,7 @@ namespace giac {
     if (g.is_symb_of_sommet(at_ifte) || g.is_symb_of_sommet(at_when)){
       vecteur v=lop(g,at_array_sto);
       if (!v.empty() && logptr(contextptr))
-	*logptr(contextptr) << gettext("Warning, =< is in-place assign, check ") << v << endl;
+	*logptr(contextptr) << gettext("Warning, =< is in-place assign, check ") << v << '\n';
     }
     if (g.is_symb_of_sommet(at_bloc) || 
 	g.is_symb_of_sommet(at_for) || g.is_symb_of_sommet(at_pour) ||
@@ -547,7 +563,7 @@ namespace giac {
     return g==cst_pi || g==cst_euler_gamma || is_inf(g) || is_undef(g) || (g.type==_IDNT && (strcmp(g._IDNTptr->id_name,"i")==0 || strcmp(g._IDNTptr->id_name,"None")==0 || strcmp(g._IDNTptr->id_name,"cmath")==0 || strcmp(g._IDNTptr->id_name,"math")==0 || strcmp(g._IDNTptr->id_name,"kandinsky")==0 || strcmp(g._IDNTptr->id_name,"pass")==0));
   }
 
-  bool warn_equal_in_prog=true;
+  bool warn_equal_in_prog=true,warn_symb_program_sto=true;
   gen _warn_equal_in_prog(const gen & g,GIAC_CONTEXT){
     if (is_zero(g) && g.type!=_VECT){
       warn_equal_in_prog=false;
@@ -588,7 +604,16 @@ namespace giac {
     if (f.type!=_VECT || f._VECTptr->size()!=3)
       return gettext("// Invalid program");
     vecteur & v =*f._VECTptr;
-    vecteur vars=rm_checktype(gen2vecteur(v[0]),contextptr),res1,res2(1,undef),res3,res4;
+    vecteur vars=gen2vecteur(v[0]),res1,res2,res3,res4;
+    // add implicit declaration of global var in argument optional value
+    for (int i=0;i<vars.size();i++){
+      if (vars[i].is_symb_of_sommet(at_equal)){
+	gen g=vars[i]._SYMBptr->feuille[1];
+	res2=mergevecteur(res2,lidnt(g));
+      }
+    }
+    res2.push_back(undef);
+    vars=rm_checktype(vars,contextptr);
     for (unsigned i=0;i<vars.size();++i){
       if (equalposcomp(vars,vars[i])!=int(i+1))
 	res += gettext("// Warning, duplicate argument name: ")+vars[i].print(contextptr)+'\n';
@@ -810,6 +835,7 @@ namespace giac {
     return res;
   }
 
+  static string printasbloc(const gen & feuille,const char * sommetstr,GIAC_CONTEXT);
   static string printasprogram(const gen & feuille,const char * sommetstr,GIAC_CONTEXT){
     if ( (feuille.type!=_VECT) || (feuille._VECTptr->size()!=3) )
       return string(sommetstr)+('('+feuille.print(contextptr)+')');
@@ -910,9 +936,16 @@ namespace giac {
 	vect=*feuille._VECTptr->back()._VECTptr;
     }
     if (test){
+      gen & fb=feuille._VECTptr->back();
       if (xcas_mode(contextptr)==3)
-	return res+":Func "+feuille._VECTptr->back().print(contextptr)+"\n:EndFunc\n";
-      return res+feuille._VECTptr->back().print(contextptr);
+	return res+":Func "+fb.print(contextptr)+"\n:EndFunc\n";
+      if (fb.is_symb_of_sommet(at_local)){
+	gen fb0=fb._SYMBptr->feuille[0];
+	//fb0=fb0[0];
+	if (fb0.type==_VECT && fb0._VECTptr->empty())
+	  return res+'{'+fb.print(contextptr)+'}';
+      }
+      return res+(fb.type==_VECT?printasbloc(fb,sommetstr,contextptr):fb.print(contextptr));
     }
     if (xcas_mode(contextptr)>0){
       if (xcas_mode(contextptr)==3)
@@ -975,6 +1008,19 @@ namespace giac {
     return s;
   }
 
+  // parser helper
+  gen symb_test_equal(const gen & a,const gen & op,const gen & b){
+    if (a.is_symb_of_sommet(at_and) && a._SYMBptr->feuille[1].is_symb_of_sommet(*op._FUNCptr)){
+      vecteur v=*a._SYMBptr->feuille._VECTptr;
+      v.push_back(symbolic(*op._FUNCptr,makesequence(v[1]._SYMBptr->feuille[1],b)));
+      return symbolic(at_and,gen(v,_SEQ__VECT));
+    }
+    if (is_inequation(a) || a.is_symb_of_sommet(at_different) || (a.is_symb_of_sommet(at_same) && (b.type!=_INT_ || b.subtype!=_INT_BOOLEAN))){ 
+      return symb_and(a,symbolic(*op._FUNCptr,gen(makevecteur(a._SYMBptr->feuille[1],b),_SEQ__VECT)));
+    } 
+    return symbolic(*op._FUNCptr,gen(makevecteur(a,b),_SEQ__VECT));  
+  }
+
   // utility for default argument handling
   static void default_args(gen & a,gen & b,GIAC_CONTEXT){
 #ifndef GIAC_DEFAULT_ARGS
@@ -999,7 +1045,7 @@ namespace giac {
       a=a._SYMBptr->feuille[0];
       return;
     }
-    b=string2gen(gettext("Unitialized parameter ")+a.print(contextptr),false);
+    b=string2gen(gettext("Uninitialized parameter ")+a.print(contextptr),false);
     b.subtype=-1;
   }
 
@@ -1020,7 +1066,7 @@ namespace giac {
       if (it->is_symb_of_sommet(at_sto) || it->is_symb_of_sommet(at_check_type) || it->is_symb_of_sommet(at_equal)) // FIXME check 1st arg too
 	continue;
       if (it->is_symb_of_sommet(at_of)){
-	*logptr(contextptr) << gettext("Invalid argument name ") << *it << gettext(". You should use ") << it->_SYMBptr->feuille._VECTptr->front() << gettext(" instead, even if the argument should be of type function") << endl;
+	*logptr(contextptr) << gettext("Invalid argument name ") << *it << gettext(". You should use ") << it->_SYMBptr->feuille._VECTptr->front() << gettext(" instead, even if the argument should be of type function") << '\n';
 	*it=it->_SYMBptr->feuille._VECTptr->front();
       }
       if (it->is_symb_of_sommet(at_deuxpoints)){
@@ -1039,22 +1085,22 @@ namespace giac {
 	  v1.push_back(theid);
 	  // add = 
 	  if (thetype.val==_ZINT){
-	    newid=*it=gen(theid.print(contextptr)+"_i",contextptr);
+	    newid=*it=gen(identificateur(theid.print(contextptr)+"_i"));
 	    if (egal!=0)
 	      *it=symb_equal(*it,egal);
 	  }
 	  if (thetype.val==_DOUBLE_ || thetype.val==_REAL){
-	    newid=*it=gen(theid.print(contextptr)+"_d",contextptr);
+	    newid=*it=gen(identificateur(theid.print(contextptr)+"_d"));
 	    if (egal!=0)
 	      *it=symb_equal(*it,egal);
 	  }
 	  if (thetype.val==_CPLX){
-	    newid=*it=gen(theid.print(contextptr)+"_c",contextptr);
+	    newid=*it=gen(identificateur(theid.print(contextptr)+"_c"));
 	    if (egal!=0)
 	      *it=symb_equal(*it,egal);
 	  }
 	  if (thetype.val==_FRAC){
-	    newid=*it=gen(theid.print(contextptr)+"_f",contextptr);
+	    newid=*it=gen(identificateur(theid.print(contextptr)+"_f"));
 	    if (egal!=0)
 	      *it=symb_equal(*it,egal);
 	  }
@@ -1063,7 +1109,7 @@ namespace giac {
 	}
 	if (thetype==at_real || thetype==at_float){
 	  v1.push_back(theid);
-	  *it=gen(theid.print(contextptr)+"_d",contextptr);
+	  *it=gen(identificateur(theid.print(contextptr)+"_d"));
 	  if (egal!=0)
 	    *it=symb_equal(*it,egal);
 	  v2.push_back(*it);
@@ -1071,7 +1117,7 @@ namespace giac {
 	}
 	if (thetype==at_complex){
 	  v1.push_back(theid);
-	  *it=gen(theid.print(contextptr)+"_c",contextptr);
+	  *it=gen(identificateur(theid.print(contextptr)+"_c"));
 	  if (egal!=0)
 	    *it=symb_equal(*it,egal);
 	  v2.push_back(*it);
@@ -1079,7 +1125,7 @@ namespace giac {
 	}
 	if (thetype==at_vector){
 	  v1.push_back(theid);
-	  newid=*it=gen(theid.print(contextptr)+"_v",contextptr);
+	  newid=*it=gen(identificateur(theid.print(contextptr)+"_v"));
 	  if (egal!=0)
 	    *it=symb_equal(*it,egal);
 	  v2.push_back(newid);
@@ -1087,7 +1133,7 @@ namespace giac {
 	}
 	if (thetype==at_string){
 	  v1.push_back(theid);
-	  newid=*it=gen(theid.print(contextptr)+"_s",contextptr);
+	  newid=*it=gen(identificateur(theid.print(contextptr)+"_s"));
 	  if (egal!=0)
 	    *it=symb_equal(*it,egal);
 	  v2.push_back(newid);
@@ -1095,7 +1141,7 @@ namespace giac {
 	}
 	if (thetype==at_integrate || thetype==at_int){ // int==integrate
 	  v1.push_back(theid);
-	  newid=*it=gen(theid.print(contextptr)+"_i",contextptr);
+	  newid=*it=gen(identificateur(theid.print(contextptr)+"_i"));
 	  if (egal!=0)
 	    *it=symb_equal(*it,egal);
 	  v2.push_back(newid);
@@ -1120,7 +1166,7 @@ namespace giac {
 	  *it = *(new identificateur(s));
 	  syms()[s] = *it;
 	} else {
-	  // std::cerr << "lexer" << s << endl;
+	  // std::cerr << "lexer" << s << '\n';
 	  *it = i->second;
 	}
 	unlock_syms_mutex();  
@@ -1131,7 +1177,7 @@ namespace giac {
     if (v1.empty())
       newb=b;
     else {
-      *logptr(contextptr) << gettext("Invalid or typed variable(s) name(s) were replaced by creating special identifiers, check ") << v1 << endl;
+      *logptr(contextptr) << gettext("Invalid or typed variable(s) name(s) were replaced by creating special identifiers, check ") << v1 << '\n';
       newb=quotesubst(b,v1,v2,contextptr);
     }
   }
@@ -1159,13 +1205,13 @@ namespace giac {
     bool warn=false;
 #ifndef GIAC_HAS_STO_38
     if (logptr(contextptr) && calc_mode(contextptr)!=1)
-      warn=true;
+      warn=warn_symb_program_sto; // true;
 #endif
     if (warn){
-      *logptr(contextptr) << gettext("// Parsing ") << d << endl;
+      *logptr(contextptr) << gettext("// Parsing ") << d << '\n';
       lastprog_name(d.print(contextptr),contextptr);
       if (c.is_symb_of_sommet(at_derive))
-	*logptr(contextptr) << gettext("Warning, defining a derivative function should be done with function_diff or unapply: ") << c << endl;
+	*logptr(contextptr) << gettext("Warning, defining a derivative function should be done with function_diff or unapply: ") << c << '\n';
        if (c.type==_SYMB && c._SYMBptr->sommet!=at_local && c._SYMBptr->sommet!=at_bloc && c._SYMBptr->sommet!=at_when && c._SYMBptr->sommet!=at_for && c._SYMBptr->sommet!=at_ifte){
 	 vecteur lofc=lop(c,at_of);
 	 vecteur lofc_no_d;
@@ -1175,19 +1221,22 @@ namespace giac {
 	     lofc_no_d.push_back(lofc[i]);
 	 }
 	 if (!lofc_no_d.empty()){
-	   *logptr(contextptr) << gettext("Warning: algebraic function defined in term of others functions may lead to evaluation errors") << endl;
-	   CERR << c.print(contextptr) << endl;
+	   *logptr(contextptr) << gettext("Warning: algebraic function defined in term of others functions may lead to evaluation errors") << '\n';
+	   CERR << c.print(contextptr) << '\n';
 	   *logptr(contextptr) << gettext("Perhaps you meant ") << d.print(contextptr) << ":=unapply(" << c.print(contextptr) << ",";
 	   if (a.type==_VECT && a.subtype==_SEQ__VECT && a._VECTptr->size()==1)
-	     *logptr(contextptr) << a._VECTptr->front().print(contextptr) << ")" << endl;
+	     *logptr(contextptr) << a._VECTptr->front().print(contextptr) << ")" << '\n';
 	   else
-	     *logptr(contextptr) << a.print(contextptr) << ")" << endl;
+	     *logptr(contextptr) << a.print(contextptr) << ")" << '\n';
 	 }
        }
     }
     vecteur newcsto(lop(c,at_sto)),newc1,newc2;
     for (size_t i=0;i<newcsto.size();++i){
-      gen var=newcsto[i]._SYMBptr->feuille[1];
+      gen & val=newcsto[i]._SYMBptr->feuille._VECTptr->front();
+      if (val.type==_VECT && (is_numericv(*val._VECTptr) || is_integer_vecteur(*val._VECTptr))) // in-place modification
+	val=symbolic(at_copy,val);
+      gen var=newcsto[i]._SYMBptr->feuille._VECTptr->back();
       if (var.type==_FUNC && (python_compat(contextptr) || !archive_function_index(*var._FUNCptr))){
 	newc1.push_back(var);
 	newc2.push_back(identificateur(mkvalid(var._FUNCptr->ptr()->print(contextptr))+"_rep"));
@@ -1215,8 +1264,17 @@ namespace giac {
     }
     gen newa,newc;
     replace_keywords(a,((embedd&&c.type==_VECT)?makevecteur(c):c),newa,newc,contextptr);
-    //cout << c._SYMBptr->sommet << endl;
-    if (python_compat(contextptr) && !c.is_symb_of_sommet(at_local)){
+    //cout << c._SYMBptr->sommet << '\n';
+    bool cloc=newc.is_symb_of_sommet(at_local),glob=false;
+    gen clocg;
+    if (cloc){
+      clocg=newc._SYMBptr->feuille;
+      if (clocg.type==_VECT && !clocg._VECTptr->empty()){
+	clocg=clocg._VECTptr->front();
+	glob=clocg.type==_VECT && clocg._VECTptr->size()==2 && clocg._VECTptr->front().type==_VECT && clocg._VECTptr->front()._VECTptr->empty();
+      }
+    }
+    if (python_compat(contextptr) && (!cloc || glob) ){
       vecteur res1,non_decl,res3,res4,Newa=gen2vecteur(newa);
       for (int i=0;i<int(Newa.size());++i){
 	if (Newa[i].is_symb_of_sommet(at_equal))
@@ -1231,7 +1289,11 @@ namespace giac {
       for (size_t i=0;i<stoprog.size();++i){
 	stoprog[i]=stoprog[i]._SYMBptr->feuille[0];
       }
-      stov=lidnt(mergevecteur(stov,stoprog));
+      vecteur stofor(lop(newc,at_for));
+      for (size_t i=0;i<stofor.size();++i){
+	stofor[i]=stofor[i]._SYMBptr->feuille[0];
+      }
+      stov=lidnt(mergevecteur(mergevecteur(stov,stoprog),stofor));
       int rs=int(non_decl.size());
       for (int i=0;i<rs;i++){
 	// remove var that are not assigned (assumed global), constant idnt and recursive def
@@ -1256,8 +1318,11 @@ namespace giac {
 	}
       }
       if (!non_decl.empty()){
-	*logptr(contextptr) << gettext("Auto-declared local variables : ") << gen(non_decl,_SEQ__VECT) << endl;
-	newc=symb_local(non_decl,newc,contextptr);
+	*logptr(contextptr) << gettext("Auto-declared local variables : ") << gen(non_decl,_SEQ__VECT) << '\n';
+	if (glob)
+	  newc=symb_local(makesequence(non_decl,clocg._VECTptr->back()),newc._SYMBptr->feuille._VECTptr->back(),contextptr);
+	else
+	  newc=symb_local(non_decl,newc,contextptr);
       }
     }
     symbolic g=symbolic(at_program,gen(makevecteur(newa,b,newc),_SEQ__VECT));
@@ -1268,11 +1333,11 @@ namespace giac {
       // check that a local variable name does not shadow a parameter name
       gen & newcf=newc._SYMBptr->feuille;
       if (newcf.type==_VECT && newcf._VECTptr->size()==2){
-	gen & vars = newcf._VECTptr->front();
+	gen & vars = newcf._VECTptr->front(); // local vars, back is global vars
 	gen inters=_intersect(gen(makevecteur(vars,newa),_SEQ__VECT),contextptr);
 	if (inters.type==_VECT && !inters._VECTptr->empty()){
 	  inters.subtype=_SEQ__VECT;
-	  *logptr(contextptr) << gettext("Warning: Local variables shadow function arguments ") << inters << endl;
+	  *logptr(contextptr) << gettext("Warning: Local variables shadow function arguments ") << inters << '\n';
 	}
       }
     }
@@ -1281,10 +1346,10 @@ namespace giac {
       python_compat(printprog/256,contextptr);
       if (g.sommet==at_sto){
 	lastprog_name(g.feuille[1].print(contextptr),contextptr);
-	COUT << g.feuille[0].print(contextptr) <<endl;	
+	COUT << g.feuille[0].print(contextptr) <<'\n';	
       }
       else
-	COUT << g <<endl;
+	COUT << g <<'\n';
       python_compat(p,contextptr);
     }
     return g;
@@ -1407,7 +1472,7 @@ namespace giac {
 
   void program_leave(const gen & save_debug_info,bool save_sst_mode,debug_struct * dbgptr){
     dbgptr->args_stack.pop_back();
-    // *logptr(contextptr) << "Leaving " << args << endl;
+    // *logptr(contextptr) << "Leaving " << args << '\n';
     if (!dbgptr->sst_at_stack.empty()){
       dbgptr->sst_at=dbgptr->sst_at_stack.back();
       dbgptr->sst_at_stack.pop_back();
@@ -1432,16 +1497,16 @@ namespace giac {
     context * newcontextptr=(context *)contextptr;
     const_iterateur it,itend;
     gen res,newres,label,vars,values,prog,save_debug_info;
-    // *logptr(contextptr) << & res << endl;
+    // *logptr(contextptr) << & res << '\n';
 #ifdef RTOS_THREADX
     if ((void *)&res<= (void *)&mainThreadStack[1024]) { 
       gensizeerr(gettext("Too many recursions"),res);
       return res;
     }
 #else
-#if !defined(WIN32) && defined HAVE_PTHREAD_H
+#if !defined(WIN32) && defined HAVE_LIBPTHREAD
     if (contextptr){
-      // CERR << &slevel << " " << thread_param_ptr(contextptr)->stackaddr << endl;
+      // CERR << &slevel << " " << thread_param_ptr(contextptr)->stackaddr << '\n';
       if ( ((size_t) &res) < ((size_t) thread_param_ptr(contextptr)->stackaddr)+8192){
 	gensizeerr(gettext("Too many recursion levels"),res); 
 	return res;
@@ -1468,7 +1533,7 @@ namespace giac {
     dbgptr->current_instruction=0;
     bool save_sst_mode = dbgptr->sst_mode,findlabel,calc_save ;
     int protect=0;
-    // *logptr(contextptr) << "Entering prog " << args << " " << dbgptr->sst_in_mode << endl;
+    // *logptr(contextptr) << "Entering prog " << args << " " << dbgptr->sst_in_mode << '\n';
     if (dbgptr->sst_in_mode){
       dbgptr->sst_in_mode=false;
       dbgptr->sst_mode=true;
@@ -1494,7 +1559,7 @@ namespace giac {
       vars=gen(makevecteur(vars));
     if (values.type!=_VECT || values.subtype!=_SEQ__VECT || (vars._VECTptr->size()==1 && values._VECTptr->size()>1))
       values=gen(makevecteur(values));
-    // *logptr(contextptr) << vars << " " << values << endl;
+    // *logptr(contextptr) << vars << " " << values << '\n';
     dbgptr->args_stack.push_back(gen(mergevecteur(vecteur(1,name),*values._VECTptr)));
     // removed sst test so that when a breakpoint is evaled
     // the correct info is displayed
@@ -1760,7 +1825,8 @@ namespace giac {
       res += printasinnerbloc(it->_SYMBptr->feuille,contextptr);
     else {
       res += it->print(contextptr);
-      if (res[res.size()-1]!=';') 
+      char reslast=res[res.size()-1];
+      if (reslast!=';' && reslast!='}') 
 	res += ";";
     }
     debug_ptr(contextptr)->indent_spaces -=2;
@@ -1895,12 +1961,12 @@ namespace giac {
 #endif
     bool rt;
     vecteur *argsptr=args._VECTptr;
-    // *logptr(contextptr) << "Ifte " << debug_ptr(contextptr)->current_instruction << endl ;
+    // *logptr(contextptr) << "Ifte " << debug_ptr(contextptr)->current_instruction << '\n' ;
     if (is_zero(test)){ // test false, do the else part
       if (isifte){
 	debug_struct * dbgptr=debug_ptr(contextptr);
 	increment_instruction((*argsptr)[1],dbgptr);
-	// *logptr(contextptr) << "Else " << debug_ptr(contextptr)->current_instruction << endl ;
+	// *logptr(contextptr) << "Else " << debug_ptr(contextptr)->current_instruction << '\n' ;
 	++dbgptr->current_instruction;
 	if (dbgptr->debug_mode){
 	  debug_loop(test,contextptr);
@@ -1918,7 +1984,7 @@ namespace giac {
 	res=clause_fausse;
       if (rt && (res.type!=_SYMB || res._SYMBptr->sommet!=at_return))
 	res=symb_return(res);
-      // *logptr(contextptr) << "Else " << debug_ptr(contextptr)->current_instruction << endl ;
+      // *logptr(contextptr) << "Else " << debug_ptr(contextptr)->current_instruction << '\n' ;
     }
     else { // test true, do the then part
       if (isifte){
@@ -1938,10 +2004,10 @@ namespace giac {
 	res=clause_vraie;
       if (rt && (res.type!=_SYMB || res._SYMBptr->sommet!=at_return) )
 	res=symb_return(res);
-      // *logptr(contextptr) << "Then " << debug_ptr(contextptr)->current_instruction << endl ;
+      // *logptr(contextptr) << "Then " << debug_ptr(contextptr)->current_instruction << '\n' ;
       if (isifte)
 	increment_instruction(argsptr->back(),contextptr);
-      // *logptr(contextptr) << "Then " << debug_ptr(contextptr)->current_instruction << endl ;
+      // *logptr(contextptr) << "Then " << debug_ptr(contextptr)->current_instruction << '\n' ;
     }
     return res;
   }
@@ -2086,8 +2152,10 @@ namespace giac {
 	  }
 	}
       }
+      bool dodone=false;
       if (it->is_symb_of_sommet(at_for) && it->_SYMBptr->feuille.type==_VECT && it->_SYMBptr->feuille._VECTptr->size()==2){
 	res = "for "+it->_SYMBptr->feuille._VECTptr->front().print(contextptr)+" in "+ it->_SYMBptr->feuille._VECTptr->back().print(contextptr)+ " do ";
+	dodone=true;
       }
       else {
 	if (maplemode>0){
@@ -2098,7 +2166,7 @@ namespace giac {
 	      res += printasinnerbloc(it->_SYMBptr->feuille,contextptr);
 	    else
 	      res += it->print(contextptr) +";";
-	    return res+indent(contextptr)+"EndLoop";
+	    return res+indent(contextptr)+"'EndLoop";
 	  }
 	  if (maplemode==3)
 	    res = "While "+ sametoequal(*it).print(contextptr) +indent(contextptr);
@@ -2111,12 +2179,12 @@ namespace giac {
       ++it;
       ++it;
       debug_ptr(contextptr)->indent_spaces += 2;
-      if ((maplemode>0) && (it->type==_SYMB) && (it->_SYMBptr->sommet==at_bloc))
+      if ((maplemode>0 || res.substr(res.size()-3,3)=="do ") && (it->type==_SYMB) && (it->_SYMBptr->sommet==at_bloc))
 	res += printasinnerbloc(it->_SYMBptr->feuille,contextptr)+";";
       else
 	res += it->print(contextptr) +";";
       debug_ptr(contextptr)->indent_spaces -= 2;
-      if (maplemode==1)
+      if (maplemode==1 || dodone)
 	return res+indent(contextptr)+" od;";
       if (maplemode==2)
 	return res+indent(contextptr)+" end_while;";
@@ -2623,7 +2691,7 @@ namespace giac {
 #endif
 	      if (ctrl_c || interrupted || (res.type==_STRNG && res.subtype==-1)){
 		interrupted = true; ctrl_c=false;
-		*logptr(contextptr) << gettext("Stopped in loop") << endl;
+		*logptr(contextptr) << gettext("Stopped in loop") << '\n';
 		gensizeerr(gettext("Stopped by user interruption."),res);
 		break;
 	      }
@@ -2694,7 +2762,34 @@ namespace giac {
 
   // returns level or -RAND_MAX on error
   int giac_bind(const vecteur & vals_,const vecteur & vars_,context * & contextptr){
-    vecteur vals(vals_),vars(vars_);
+    vecteur vals(vals_),vars(vars_),vals1,vars1;
+    // reorder: search in vals_ var=value and corresponding vars in vars_
+    for (int i=0;i<vals_.size();++i){
+      if (!vals[i].is_symb_of_sommet(at_equal))
+	continue;
+      gen f=vals[i]._SYMBptr->feuille;
+      if (f.type!=_VECT || f._VECTptr->size()!=2 || f._VECTptr->front().type!=_IDNT)
+	continue;
+      gen var=f._VECTptr->front(),val=f._VECTptr->back();int j=0;
+      for (;j<vars.size();++j){
+	if (!vars[i].is_symb_of_sommet(at_equal))
+	  continue;
+	f=vars[j]._SYMBptr->feuille;
+	if (f.type!=_VECT || f._VECTptr->size()!=2 || f._VECTptr->front()!=var)
+	  continue;
+	break;
+      }
+      if (j<vars.size()){
+	vars1.push_back(var);
+	vals1.push_back(val);
+	vars.erase(vars.begin()+j);
+	vals.erase(vals.begin()+i);
+	--i;
+      }
+    }
+    // add remaining
+    vals=mergevecteur(vals1,vals);
+    vars=mergevecteur(vars1,vars);
 #if 1
     int ins=int(vals.size());
     for (int i=int(vars.size())-1;i>=0;--i){
@@ -2719,6 +2814,10 @@ namespace giac {
       if (vars[i].is_symb_of_sommet(at_equal))
 	vars[i]=vars[i]._SYMBptr->feuille[0];
     }
+#ifdef KHICAS
+    if (vals.size()==1 && vars.size()!=1 && vals.front().type==_VECT)
+      vals=*vals.front()._VECTptr;
+#endif
     if (vals.size()!=vars.size()){
 #ifdef DEBUG_SUPPORT
       setsizeerr(gen(vals).print(contextptr)+ " size() != " + gen(vars).print(contextptr));
@@ -2775,7 +2874,7 @@ namespace giac {
 	  switch (name[bl-1]){
 	  case 'd':
 	    if (a.type!=_INT_ && a.type!=_DOUBLE_ && a.type!=_FRAC){
-	      *logptr(contextptr) << gettext("Unable to convert to float ")+a.print(contextptr) << endl;
+	      *logptr(contextptr) << gettext("Unable to convert to float ")+a.print(contextptr) << '\n';
 	      return -RAND_MAX;
 	    }
 	    break;
@@ -2786,13 +2885,13 @@ namespace giac {
 	    if (a.type==_DOUBLE_ && a._DOUBLE_val<=RAND_MAX && a._DOUBLE_val>=-RAND_MAX){
 	      int i=int(a._DOUBLE_val);
 	      if (i!=a._DOUBLE_val)
-		*logptr(contextptr) << gettext("Converting ") << a._DOUBLE_val << gettext(" to integer ") << i << endl;
+		*logptr(contextptr) << gettext("Converting ") << a._DOUBLE_val << gettext(" to integer ") << i << '\n';
 	      a=i;
 	    }
 	    else{
 	      if (a.type!=_INT_){
 		if (a.type!=_ZINT || mpz_sizeinbase(*a._ZINTptr,2)>62){
-		  *logptr(contextptr) << gettext("Unable to convert to integer ")+a.print(contextptr) << endl;
+		  *logptr(contextptr) << gettext("Unable to convert to integer ")+a.print(contextptr) << '\n';
 		  return -RAND_MAX;
 		}
 	      }
@@ -2800,7 +2899,7 @@ namespace giac {
 	    break;
 	  case 'v':
 	    if (a.type!=_VECT){
-	      *logptr(contextptr) << gettext("Unable to convert to vector ")+a.print(contextptr) << endl;
+	      *logptr(contextptr) << gettext("Unable to convert to vector ")+a.print(contextptr) << '\n';
 	      return -RAND_MAX;
 	    }
 	    break;
@@ -2819,7 +2918,7 @@ namespace giac {
 #ifndef NO_STDEXCEPT
 	  setsizeerr(gettext("Reserved word:")+tmp.print(contextptr));
 #else
-	  *logptr(contextptr) << gettext("Reserved word:")+tmp.print(contextptr) << endl;
+	  *logptr(contextptr) << gettext("Reserved word:")+tmp.print(contextptr) << '\n';
 #endif
 	  return -RAND_MAX;
 	}
@@ -2827,7 +2926,7 @@ namespace giac {
 #ifndef NO_STDEXCEPT
 	  setsizeerr(gettext("Not bindable")+tmp.print(contextptr));
 #else
-	  *logptr(contextptr) << gettext("Not bindable")+tmp.print(contextptr) << endl;
+	  *logptr(contextptr) << gettext("Not bindable")+tmp.print(contextptr) << '\n';
 #endif
 	  return -RAND_MAX;
 	}
@@ -2968,10 +3067,13 @@ namespace giac {
     debug_ptr(contextptr)->indent_spaces +=2;
     ++it;
     for ( ;;){
-      if (it->type!=_VECT)
-	res += indent(contextptr)+it->print(contextptr);
+      gen tmp=*it;
+      if (tmp.is_symb_of_sommet(at_bloc))
+	tmp=tmp._SYMBptr->feuille;
+      if (tmp.type!=_VECT)
+	res += indent(contextptr)+tmp.print(contextptr);
       else {
-	const_iterateur jt=it->_VECTptr->begin(),jtend=it->_VECTptr->end();
+	const_iterateur jt=tmp._VECTptr->begin(),jtend=tmp._VECTptr->end();
 	for (;jt!=jtend;++jt){
 	  res += indent(contextptr)+jt->print(contextptr);
 	  if (xcas_mode(contextptr)!=3)
@@ -3034,7 +3136,7 @@ namespace giac {
       if (it->type==_IDNT){
 	names.push_back(*it);
 #if 1
-	gen err=string2gen(gettext("Unitialized local variable ")+it->print(contextptr),false);
+	gen err=string2gen(gettext("Uninitialized local variable ")+it->print(contextptr),false);
 	err.subtype=-1;
 	values.push_back(err);
 #else
@@ -3082,7 +3184,7 @@ namespace giac {
 	  control_c();
 #endif
 	  ++debug_ptr(newcontextptr)->current_instruction;
-	  // cout << *it << endl;
+	  // cout << *it << '\n';
 	  if (debug_ptr(newcontextptr)->debug_mode){
 	    debug_loop(res,newcontextptr);
 	    if (!is_undef(res)){
@@ -3268,7 +3370,10 @@ namespace giac {
     }
 #endif
     if (do_else_try){
-      res=args._VECTptr->back().eval(eval_level(contextptr),contextptr);
+      if ((res.type==_SYMB && res._SYMBptr->sommet==at_return) || (res.type==_FUNC && (res==at_return || res==at_break || res==at_continue)))
+	;
+      else
+	res=args._VECTptr->back().eval(eval_level(contextptr),contextptr);
     }
     debug_ptr(contextptr)->current_instruction=save_current_instruction;
     increment_instruction(args._VECTptr->front(),contextptr);
@@ -3327,6 +3432,15 @@ namespace giac {
 	return feuille_(args._VECTptr->front(),args._VECTptr->back(),contextptr);
       return gen(*args._VECTptr,_SEQ__VECT);
     }
+    if (args.type==_MAP){
+      const gen_map & m=*args._MAPptr;
+      gen_map::const_iterator it=m.begin(),itend=m.end();
+      vecteur res;
+      for (;it!=itend;++it){
+	res.push_back(makevecteur(it->first,it->second));
+      }
+      return res;
+    }
     if (args.type!=_SYMB)
       return args;
     gen tmp=args._SYMBptr->feuille;
@@ -3378,7 +3492,7 @@ namespace giac {
     const_iterateur it=v.begin(),itend=v.end();
     for (;it!=itend;++it){
       if ( (!is_equal(*it) && !it->is_symb_of_sommet(at_same)) || it->_SYMBptr->feuille.type!=_VECT || it->_SYMBptr->feuille._VECTptr->size()!=2){
-	*logptr(contextptr) << gettext("Unknown subsop rule ") << *it << endl;
+	*logptr(contextptr) << gettext("Unknown subsop rule ") << *it << '\n';
 	continue;
       }
       vecteur w=*it->_SYMBptr->feuille._VECTptr;
@@ -3480,6 +3594,8 @@ namespace giac {
     vecteur v(*it->_VECTptr);
     int subtype=it->subtype;
     ++it;
+    if (v.size()+(itend-it)>LIST_SIZE_LIMIT)
+      return gendimerr(contextptr);
     for (;it!=itend;++it)
       v.push_back(*it);
     return gen(v,subtype);
@@ -3576,7 +3692,7 @@ namespace giac {
       if (selecting)
 	return symb_select(args);
       else {
-	if (f.type==_VECT){ // remove 1st occurence of v
+	if (f.type==_VECT){ // remove 1st occurrence of v
 	  vecteur w=*f._VECTptr;
 	  for (unsigned i=0;i<w.size();++i){
 	    if (w[i]==v){
@@ -3686,8 +3802,14 @@ namespace giac {
   static define_unary_function_eval (__concat,&_concat,_concat_s);
   define_unary_function_ptr5( at_concat ,alias_at_concat,&__concat,0,true);
 
+  gen _extend(const gen & args,GIAC_CONTEXT){
+    if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+    if (args.type!=_VECT || args._VECTptr->size()!=2 || args._VECTptr->front().type!=_VECT || args._VECTptr->back().type!=_VECT)
+      return gensizeerr(contextptr);
+    return gen(mergevecteur(*args._VECTptr->front()._VECTptr,*args._VECTptr->back()._VECTptr),args._VECTptr->front().subtype);
+  }
   static const char _extend_s []="extend";
-  static define_unary_function_eval (__extend,&_concat,_extend_s);
+  static define_unary_function_eval (__extend,&_extend,_extend_s);
   define_unary_function_ptr5( at_extend ,alias_at_extend,&__extend,0,true);
 
   static gen symb_option(const gen & args){
@@ -3969,6 +4091,15 @@ namespace giac {
       return args._USERptr->rand(contextptr);
     if (args.is_symb_of_sommet(at_rootof))
       return vranm(1,args,contextptr)[0];
+#ifndef USE_GMP_REPLACEMENTS
+    if (args.is_symb_of_sommet(at_discreted))
+      return vranm(1,args,contextptr)[0];
+#endif
+    if (args.type==_VECT && args._VECTptr->front()==at_multinomial) {
+      vecteur v=*args._VECTptr;
+      v.insert(v.begin(),1);
+      return _randvector(v,contextptr)._VECTptr->at(0);
+    }
     int nd=is_distribution(args);
     if (nd==1 && args.type==_FUNC)
       return randNorm(contextptr);
@@ -4060,7 +4191,7 @@ namespace giac {
   define_unary_function_ptr5( at_random ,alias_at_random,&__random,0,true);
 
   gen _randint(const gen & args,GIAC_CONTEXT){
-    if (args.type==_INT_)
+    if (args.type==_INT_ || args.type==_ZINT)
       return (abs_calc_mode(contextptr)==38?0:1)+_rand(args,contextptr);
     if (args.type!=_VECT || args._VECTptr->size()!=2)
       return gensizeerr(contextptr);
@@ -4119,17 +4250,38 @@ namespace giac {
   static define_unary_function_eval (__shuffle,&_shuffle,_shuffle_s);
   define_unary_function_ptr5( at_shuffle ,alias_at_shuffle,&__shuffle,0,true);
 
+#ifndef USE_GMP_REPLACEMENTS
   gen _sample(const gen & args,GIAC_CONTEXT){
-    if (args.type!=_VECT || args._VECTptr->size()!=2)
+    if (args.is_symb_of_sommet(at_discreted) || is_distribution(args)>0)
+      return _rand(args,contextptr);
+    if (args.type==_SYMB || args.type==_IDNT)
+      return _randvector(makesequence(1,args),contextptr)._VECTptr->front();
+    if (args.type!=_VECT || args._VECTptr->size()<2)
       return gensizeerr(contextptr);
-    gen a=args._VECTptr->front(),b=args._VECTptr->back();
-    if (a.type!=_VECT || !is_integral(b) || b.type==_ZINT || b.val<0)
+    vecteur &argv=*args._VECTptr;
+    gen a=argv.front(),b=argv.back();
+    if (a==at_multinomial) {
+      if (argv.size()==3) {
+        vecteur v=argv;
+        v.insert(v.begin(),1);
+        return _randvector(v,contextptr)._VECTptr->at(0);
+      } if (argv.size()==4 && b.is_integer()) {
+        return _randvector(makesequence(b,at_multinomial,argv[1],argv[2]),contextptr);
+      }
+      return gensizeerr(contextptr);
+    }
+    if (args._VECTptr->size()!=2 || !is_integral(b) || b.type==_ZINT || b.val<0)
+      return gensizeerr(contextptr);
+    if (a.is_symb_of_sommet(at_discreted) || is_distribution(a)>0 || a.type==_SYMB || a.type==_IDNT)
+      return _randvector(makesequence(b,a),contextptr);
+    if (a.type!=_VECT)
       return gensizeerr(contextptr);
     return _rand(makesequence(b,a),contextptr);
   }
   static const char _sample_s []="sample";
   static define_unary_function_eval (__sample,&_sample,_sample_s);
   define_unary_function_ptr5( at_sample ,alias_at_sample,&__sample,0,true);
+#endif
 
   gen _srand(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG &&  args.subtype==-1) return  args;
@@ -4151,7 +4303,7 @@ namespace giac {
 #ifdef FXCG
       int t=RTC_GetTicks();
 #else
-      int t=int(time(NULL));
+      int t=int(time(0));
 #endif // FXCG
 #endif // RTOS/BESTA
       t = (1000000000*ulonglong(t))% 2147483647;
@@ -4335,10 +4487,11 @@ namespace giac {
     opt[0]=objet;
     if (objet.type!=_VECT)
       return to_map(opt,contextptr);
+    bool multimap=!matrix && opt.size()>1 && ckmatrix(opt);
     const_iterateur it=objet._VECTptr->begin(),itend=objet._VECTptr->end();
     vecteur res;
     res.reserve(itend-it);
-    for (;it!=itend;++it){
+    for (int k=0;it!=itend;++it,++k){
       if (matrix && it->type==_VECT){
 	const vecteur & tmp = *it->_VECTptr;
 	const_iterateur jt=tmp.begin(),jtend=tmp.end();
@@ -4352,7 +4505,13 @@ namespace giac {
       }
       else {
 	opt[0]=*it;
-	res.push_back(to_map(gen(opt,_SEQ__VECT),contextptr));
+	gen arg=gen(opt,_SEQ__VECT);
+	if (multimap){
+	  vecteur & v=*arg._VECTptr;
+	  for (int j=1;j<v.size();++j)
+	    v[j]=(*v[j]._VECTptr)[k];
+	} 
+	res.push_back(to_map(arg,contextptr));
       }
     }
     return res;
@@ -4374,6 +4533,9 @@ namespace giac {
     gen to_apply=v.front();
     int n=to_apply.subtype;
     int n2=int(v.size());
+    int subt=0;
+    if (n2>=2 && v[1].type==_VECT)
+      subt=v[1].subtype;
     for (int i=2;i<n2;++i){
       if (v[i]==at_matrix){
 	swapgen(v[0],v[1]);
@@ -4391,7 +4553,13 @@ namespace giac {
 	vecteur tmp;
 	bool finished=true;
 	for (int j=1;j<=n;++j){
-	  gen & g=v[j];
+	  gen g=v[j];
+	  if (g.type==_STRNG){
+	    vecteur w(g._STRNGptr->size());
+	    for (size_t i=0;i<g._STRNGptr->size();++i)
+	      w[i]=string2gen(g._STRNGptr->substr(i,1),false);
+	    g=w;
+	  }
 	  if (g.type!=_VECT)
 	    tmp.push_back(g);
 	  else {
@@ -4414,7 +4582,7 @@ namespace giac {
 	else
 	  res.push_back(to_apply(tmp,contextptr));
       }
-      return res;
+      return gen(res,subt);
     }
     else
       return gensizeerr(contextptr);
@@ -4459,6 +4627,8 @@ namespace giac {
     }
     if (is_zero(step))
       return gensizeerr(gettext("Invalid null step"));
+    if (is_greater((fin-debut)/step,LIST_SIZE_LIMIT,contextptr))
+      return gendimerr(contextptr);
     vecteur w;
     if (is_greater(fin,debut,contextptr)){
       step=abs(step,contextptr);
@@ -4820,6 +4990,12 @@ namespace giac {
   }
   gen _makemat(const gen & args,const context * contextptr){
     if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+    if (args.type==_INT_ && args.val>0 && double(args.val)*args.val<LIST_SIZE_LIMIT){
+      vecteur res;
+      for (int i=0;i<args.val;++i)
+	res.push_back(vecteur(args.val,0));
+      return gen(res,_MATRIX__VECT);
+    }
     if (args.type!=_VECT)
       return symb_makemat(args);
     int s=int(args._VECTptr->size());
@@ -5279,7 +5455,12 @@ namespace giac {
   static define_unary_function_eval_quoted (__rmbreakpoint,&_rmbreakpoint,_rmbreakpoint_s);
   define_unary_function_ptr5( at_rmbreakpoint ,alias_at_rmbreakpoint,&__rmbreakpoint,_QUOTE_ARGUMENTS,true);
 
-#if defined EMCC && !defined GIAC_GGB
+#ifdef KHICAS
+#ifdef NSPIRE_NEWLIB
+#define lineh 14
+#else
+#define lineh 12
+#endif
   void debug_loop(gen &res,GIAC_CONTEXT){
     if (!debug_ptr(contextptr)->debug_allowed || (!debug_ptr(contextptr)->sst_mode && !equalposcomp(debug_ptr(contextptr)->sst_at,debug_ptr(contextptr)->current_instruction)) )
       return;
@@ -5306,6 +5487,203 @@ namespace giac {
     if (w2.type==_VECT && w2._VECTptr->size()>3)
       w2=w2[2];
     //*logptr(contextptr) << w2 << endl;
+    w.push_back(w2);
+    w.push_back(res);
+    w.push_back(debug_ptr(contextptr)->current_instruction);
+    vecteur dw=debug_ptr(contextptr)->debug_watch;
+    if (contextptr && dw.empty()){
+      // put the last 2 environments
+      const context * cur=contextptr;
+      sym_tab::const_iterator it=cur->tabptr->begin(),itend=cur->tabptr->end();
+      for (;it!=itend;++it){
+	dw.push_back(identificateur(it->first));
+      }
+      if (cur->previous && cur->previous!=cur->globalcontextptr){
+	cur=cur->previous;
+	sym_tab::const_iterator it=cur->tabptr->begin(),itend=cur->tabptr->end();
+	for (;it!=itend;++it){
+	  dw.push_back(identificateur(it->first));
+	}
+      }
+    }
+    w.push_back(dw);
+    os_fill_rect(0,0,LCD_WIDTH_PX,LCD_HEIGHT_PX,_WHITE);
+    int dispx=0,dispy=12;
+    // print debugged program instructions from current-2 to current+3
+    progs="debug "+w[0].print(contextptr)+'\n';
+    if (w[4].type==_INT_){
+      vector<string> ws;
+#if 1
+      ws.push_back("");
+      debug_print(w[2],ws,contextptr);
+#else
+      int l=s.size();
+      string cur;
+      for (int i=0;i<l;++i){
+	if (s[i]=='\n'){
+	  ws.push_back(cur);
+	  cur="";
+	}
+	else cur+=s[i];
+      }
+      ws.push_back(cur);
+#endif
+      int m=giacmax(0,w[4].val-2),M=giacmin(w[4].val+3,ws.size()-1);
+      if (M-m<5)
+	M=giacmin(m+5,ws.size()-1);
+      if (M-m<5)
+	m=giacmax(0,M-5);
+      for (int i=m;i<=M;++i){
+	os_draw_string_small(dispx,dispy,(i==w[4].val?_WHITE:_BLACK),(i==w[4].val?_BLACK:_WHITE),(print_INT_(i)+":"+ws[i]).c_str());
+	//mPrintXY(dispx,dispy,(print_INT_(i)+":"+ws[i]).c_str(),(i==w[4].val?TEXT_MODE_INVERT:TEXT_MODE_TRANSPARENT_BACKGROUND),TEXT_COLOR_BLACK);
+	dispy+=lineh;
+	dispx=0;
+	// progs += print_INT_(i)+((i==w[4].val)?" => ":"    ")+ws[i]+'\n';
+      }
+    }
+    else {
+      string s=w[2].print(contextptr);
+      progs += "\nprg: "+s+" # "+w[4].print(contextptr);
+    }
+    os_draw_string_small_(dispx,dispy,"----------------");
+    dispx=0;
+    dispy += lineh-3;
+    // progs += "======\n";
+    // evaluate watch with debug_ptr(contextptr)->debug_allowed=false
+    debug_ptr(contextptr)->debug_allowed=false;
+    string evals,breaks;
+    iterateur it=dw.begin(),itend=dw.end();
+    int nvars=itend-it;
+    bool fewvars=nvars<7;
+    for (int nv=0;it!=itend;++nv,++it){
+      evals += it->print(contextptr)+"=";
+      gen tmp=protecteval(*it,1,contextptr);
+      string s=tmp.print(contextptr);
+      if (!fewvars && s.size()>37)
+	s=s.substr(0,35)+"...";
+      evals += s+",";
+      if (fewvars || (nv % 2)==1 || nv==nvars-1){
+	os_draw_string_small_(dispx,dispy,evals.c_str());
+	dispy+=lineh;
+	evals="";
+	// evals += '\n';
+      }
+      else
+	evals += "    ";
+    }
+    if (evals.size()!=0)
+      os_draw_string_small_(dispx,dispy,evals.c_str());
+    dispx=0;
+    dispy=LCD_HEIGHT_PX-18;
+    os_draw_string_small_(dispx,dispy,"down: next, right: in, EXE: cont. EXIT: kill");
+    w.push_back(dw);
+    debug_ptr(contextptr)->debug_allowed=true;
+    *dbgptr->debug_info_ptr=w;
+    while (1){
+      clear_abort();
+      int key;
+      GetKey(&key);
+      set_abort();
+      // convert key to i
+      int i=0;
+      if (key==KEY_CTRL_DOWN || key==KEY_CTRL_OK){
+	i=-1;
+      }
+      if (key==KEY_CTRL_RIGHT){
+	i=-2;
+      }
+      if (key==KEY_CTRL_EXE){
+	i=-3;
+      }
+      if (key==KEY_CTRL_EXIT){
+	i=-4;
+      }
+      if (key==KEY_CTRL_F5){
+	i=-5;
+      }
+      if (key==KEY_CTRL_F6){
+	i=-6;
+      }
+      if (i>0){
+	gen tmp=i;
+	if (tmp.is_symb_of_sommet(at_equal))
+	  tmp=equaltosto(tmp,contextptr);
+	evals=string("eval: ")+tmp.print(contextptr)+" => "+protecteval(tmp,1,contextptr).print(contextptr)+'\n';
+	cout << evals ;
+	iterateur it=dw.begin(),itend=dw.end();
+	for (;it!=itend;++it){
+	  evals += it->print(contextptr)+"=";
+	  gen tmp=protecteval(*it,1,contextptr);
+	  evals += tmp.print(contextptr)+",";
+	}
+      }
+      // CERR << i << endl;
+      if (i==-1){
+	dbgptr->sst_in_mode=false;
+	dbgptr->sst_mode=true;
+	os_hide_graph();
+	return;
+      }
+      if (i==-2){
+	dbgptr->sst_in_mode=true;
+	dbgptr->sst_mode=true;
+	os_hide_graph();
+	return;
+      }
+      if (i==-3){
+	dbgptr->sst_in_mode=false;
+	dbgptr->sst_mode=false;
+	os_hide_graph();
+	return;
+      }
+      if (i==-4){
+	dbgptr->sst_in_mode=false;
+	dbgptr->sst_mode=false;
+	//debug_ptr(contextptr)->current_instruction_stack.clear();
+	//debug_ptr(contextptr)->sst_at_stack.clear();
+	//debug_ptr(contextptr)->args_stack.clear();
+	ctrl_c=interrupted=true;
+	os_hide_graph();
+	return;
+      }
+      if (i==-5){
+	breaks="break line "+print_INT_(w[4].val)+'\n';
+	_breakpoint(makesequence(w[0][0],w[4]),contextptr);
+      }
+      if (i==-6){
+	breaks="remove break line "+print_INT_(w[4].val)+'\n';
+	_rmbreakpoint(makesequence(w[0][0],w[4]),contextptr);
+      }
+    } // end while(1)
+  }
+#else // KHICAS
+#if (defined EMCC || defined EMCC2 ) && !defined GIAC_GGB
+  void debug_loop(gen &res,GIAC_CONTEXT){
+    if (!debug_ptr(contextptr)->debug_allowed || (!debug_ptr(contextptr)->sst_mode && !equalposcomp(debug_ptr(contextptr)->sst_at,debug_ptr(contextptr)->current_instruction)) )
+      return;
+    // Fill dbgptr->debug_info_ptr and fast_debug_info_ptr 
+    // with debugging infos to be displayed
+    debug_struct * dbgptr=debug_ptr(contextptr);
+    vecteur w;
+    string progs;
+    // w[0]=function, args,
+    // w[1]=breakpoints
+    // w[2] = instruction to eval or program if debugging a prog
+    // w[3]= evaluation result
+    // w[4]= current instruction number 
+    // w[5] = watch vector, w[6] = watch values
+    if (!debug_ptr(contextptr)->args_stack.empty()){
+      w.push_back(debug_ptr(contextptr)->args_stack.back());
+      w.push_back(vector_int_2_vecteur(debug_ptr(contextptr)->sst_at,contextptr));
+    }
+    else {
+      w.push_back(undef);
+      w.push_back(undef);
+    }
+    gen w2=(*debug_ptr(contextptr)->fast_debug_info_ptr);
+    if (w2.type==_VECT && w2._VECTptr->size()>3)
+      w2=w2[2];
+    //*logptr(contextptr) << w2 << '\n';
     w.push_back(w2);
     w.push_back(res);
     w.push_back(debug_ptr(contextptr)->current_instruction);
@@ -5378,13 +5756,13 @@ namespace giac {
     // need a way to pass w to EM_ASM like environment and call HTML5 prompt
 #if 0
     EM_ASM_ARGS({
-        var msg = Pointer_stringify($0); // Convert message to JS string
+        var msg = UTF8ToString($0);//Pointer_stringify($0); // Convert message to JS string
         alert(msg);                      // Use JS version of alert          
       }, (progs+evals).c_str());
 #else
     while (1){
       int i=EM_ASM_INT({
-	  var msg = Pointer_stringify($0); // Convert message to JS string
+	  var msg = UTF8ToString($0);//Pointer_stringify($0); // Convert message to JS string
 	  var tst=prompt(msg,'n');             // Use JS version of alert
 	  if (tst==null) return -4;
 	  if (tst=='next' || tst=='n' || tst=='sst') return -1;
@@ -5410,7 +5788,7 @@ namespace giac {
 	  evals += tmp.print(contextptr)+",";
 	}
       }
-      // CERR << i << endl;
+      // CERR << i << '\n';
       if (i==-1){
 	dbgptr->sst_in_mode=false;
 	dbgptr->sst_mode=true;
@@ -5554,11 +5932,11 @@ namespace giac {
 	  } // end if (*dbgptr->debug_info_ptr)
 	  thread_eval_status(2,contextptr); // Back to level 2
 	} // end if (thread_eval_status()==1)
-      } // end endless for loop
+      } // end '\n'ess for loop
     } // end thread debugging
 #if (defined WIN32) || (!defined HAVE_SIGNAL_H_OLD)
-    *logptr(contextptr) << gettext("Sorry! Debugging requires a true operating system") << endl;
-    *logptr(contextptr) << gettext("Please try xcas on Linux or an Unix") << endl;
+    *logptr(contextptr) << gettext("Sorry! Debugging requires a true operating system") << '\n';
+    *logptr(contextptr) << gettext("Please try xcas on Linux or an Unix") << '\n';
     return;
 #else // WIN32
     if (child_id)
@@ -5602,7 +5980,7 @@ namespace giac {
 #endif
       ofstream child_out(cas_sortie_name().c_str());
       gen e(symbolic(at_debug,w));
-      *logptr(contextptr) << gettext("Archiving ") << e << endl;
+      *logptr(contextptr) << gettext("Archiving ") << e << '\n';
       archive(child_out,e,contextptr);
       archive(child_out,zero,contextptr);
       child_out << "Debugging\n" << '¤' ;
@@ -5611,7 +5989,7 @@ namespace giac {
       ifstream child_in(cas_entree_name().c_str());
       w[1]= unarchive(child_in,contextptr);
       child_in.close();
-      *logptr(contextptr) << gettext("Click reads ") << w[1] << endl;
+      *logptr(contextptr) << gettext("Click reads ") << w[1] << '\n';
       if (w[1].type==_SYMB){
 	if (w[1]._SYMBptr->sommet==at_sst){
 	  debug_ptr(contextptr)->sst_in_mode=false;
@@ -5648,7 +6026,7 @@ namespace giac {
   }
 #endif // GIAC_HAS_STO_38
 #endif // EMCC
-
+#endif // KHICAS
   static string printasbackquote(const gen & feuille,const char * sommetstr,GIAC_CONTEXT){
     return "`"+feuille.print(contextptr)+"`";
   }
@@ -5716,7 +6094,7 @@ namespace giac {
       }
     }
 #ifndef RTOS_THREADX
-#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG
+#if !defined BESTA_OS && !defined NSPIRE && !defined FXCG && !defined KHICAS
 #ifdef HAVE_LIBPTHREAD
     pthread_mutex_lock(&context_list_mutex);
 #endif
@@ -5801,7 +6179,7 @@ namespace giac {
   }
 
   static bool maple2mupad(const gen & args,int in_maple_mode,int out_maple_mode,GIAC_CONTEXT){
-#if defined NSPIRE || defined FXCG
+#if defined NSPIRE || defined FXCG || defined GIAC_HAS_STO_38
     return false;
 #else
     if (is_undef(check_secure()))
@@ -5838,7 +6216,7 @@ namespace giac {
     ofstream outfile(bs.c_str());
     const_iterateur it=v.begin(),itend=v.end();
     for (;it!=itend;++it)
-      outfile << *it << endl;
+      outfile << *it << '\n';
     xcas_mode(contextptr)=save_maple_mode;
     return true;
 #endif
@@ -5900,7 +6278,54 @@ namespace giac {
     return g;
   }
 
+  int (*micropy_ptr) (cstcharptr)=0;
   gen _python(const gen & args,GIAC_CONTEXT){
+#if defined MICROPY_LIB
+    if (micropy_ptr && args.type==_VECT && args._VECTptr->size()==2){
+      gen a=args._VECTptr->front(),b=args._VECTptr->back();
+      if (a.type==_STRNG && b==at_python){
+	const char * ptr=a._STRNGptr->c_str();
+	(*micropy_ptr)(ptr);
+	return string2gen("Done",false);
+      }
+    }
+#endif
+#if defined HAVE_LIBMICROPYTHON
+    if (micropy_ptr && args.type==_VECT && args._VECTptr->size()==2){
+      gen a=args._VECTptr->front(),b=args._VECTptr->back();
+      if (a.type==_STRNG && b==at_python){
+	const char * ptr=a._STRNGptr->c_str();
+	while (*ptr==' ')
+	  ++ptr;
+	bool gr= strcmp(ptr,"show()")==0 || strcmp(ptr,",")==0;
+	bool pix =strcmp(ptr,";")==0;
+	bool turt=strcmp(ptr,".")==0;
+	bool xc=strcmp(ptr,"xcas")==0;
+	python_contextptr=contextptr;
+	python_console()="";
+	gen g;
+	if (!gr && !xc && !turt && !pix ){
+	  (*micropy_ptr)(ptr);
+	}
+	context * cascontextptr=(context *)caseval("caseval contextptr");
+	if (freezeturtle || turt){
+	  // copy caseval turtle to this context
+	  turtle(contextptr)=turtle(cascontextptr);
+	  turtle_stack(contextptr)=turtle_stack(cascontextptr);
+	  return _avance(0,contextptr);
+	}
+	if (freeze || pix)
+	  return _show_pixels(0,contextptr);
+	if (gr)
+	  return history_plot(cascontextptr);
+	if (python_console().empty())
+	  return string2gen("Done",false);
+	if (python_console()[python_console().size()-1]=='\n')
+	  python_console()=python_console().substr(0,python_console().size()-1);
+	return string2gen(python_console().empty()?"Done":python_console(),false);
+      }
+    }
+#endif
     return python_xcas(args,1,contextptr);
   }
   static const char _python_s []="python";
@@ -5914,7 +6339,52 @@ namespace giac {
   static define_unary_function_eval_quoted (__xcas,&_xcas,_xcas_s);
   define_unary_function_ptr5( at_xcas ,alias_at_xcas,&__xcas,_QUOTE_ARGUMENTS,true);
 
+  char * (*quickjs_ptr) (cstcharptr)=0;
   gen _javascript(const gen & args,GIAC_CONTEXT){
+#if defined QUICKJS
+    if (quickjs_ptr && args.type==_VECT && args._VECTptr->size()==2){
+      gen a=args._VECTptr->front(),b=args._VECTptr->back();
+      if (a.type==_STRNG && b==at_javascript){
+	const char * ptr=a._STRNGptr->c_str();
+	while (*ptr==' ')
+	  ++ptr;
+	bool gr= strcmp(ptr,"show()")==0 || strcmp(ptr,",")==0;
+	bool pix =strcmp(ptr,";")==0;
+	bool turt=strcmp(ptr,".")==0;
+	bool xc=strcmp(ptr,"xcas")==0;
+	python_contextptr=contextptr;
+	gen g; string ans;
+	if (!gr && !xc && !turt && !pix ){
+	  char * ansptr=(*quickjs_ptr)(ptr);
+	  if (ansptr){
+	    ans=ansptr;
+	    free(ansptr);
+	  }
+	}
+	context * cascontextptr=(context *)caseval("caseval contextptr");
+	if (freeze || pix)
+	  return _show_pixels(0,cascontextptr);
+	if (gr || ans=="Graphic_object" )
+	  return history_plot(cascontextptr);
+	if (ans.empty())
+	  return string2gen("Done",false);
+	if (ans[ans.size()-1]=='\n')
+	  ans=ans.substr(0,ans.size()-1);
+	g=gen(ans,contextptr);
+	if (first_error_line(contextptr)>0) g=string2gen(ans.empty()?"Done":ans,false);
+#ifndef KHICAS
+	if (freezeturtle || turt || islogo(g) || ans=="Logo_turtle"){
+	  // copy caseval turtle to this context
+	  turtle(contextptr)=turtle(cascontextptr);
+	  turtle_stack(contextptr)=turtle_stack(cascontextptr);
+	  return _avance(0,contextptr);
+	}
+	CERR << "";
+#endif
+	return g;
+      }
+    }
+#endif
     return python_xcas(args,2,contextptr);
   }
   static const char _javascript_s []="javascript";
@@ -5993,7 +6463,7 @@ namespace giac {
 	      }
 	      else { // other user directory
 		current=current.substr(1,current.size()-1);
-#if !defined HAVE_NO_PWD_H && !defined NSPIRE_NEWLIB
+#if !defined HAVE_NO_PWD_H && !defined NSPIRE_NEWLIB && !defined KHICAS
 		passwd * p=getpwnam(current.c_str());
 		if (!p)
 		  return gensizeerr(gettext("No such user ")+current);
@@ -6029,7 +6499,7 @@ namespace giac {
     if (!child_id)
       _signal(symb_quote(g),contextptr);
 #endif
-    // *logptr(contextptr) << g << endl;
+    // *logptr(contextptr) << g << '\n';
     return g;
   }
   static const char _cd_s []="cd";
@@ -6038,8 +6508,10 @@ namespace giac {
 
   gen _scientific_format(const gen & g,GIAC_CONTEXT){
     if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+#ifndef KHICAS
     gen tmp=check_secure();
     if (is_undef(tmp)) return tmp;
+#endif
     gen args(g);
     if (g.type==_DOUBLE_)
       args=int(g._DOUBLE_val);    
@@ -6054,8 +6526,9 @@ namespace giac {
 
   gen _integer_format(const gen & g,GIAC_CONTEXT){
     if ( g.type==_STRNG &&  g.subtype==-1) return  g;
-    gen tmp=check_secure();
-    if (is_undef(tmp)) return tmp;
+#ifndef KHICAS
+    gen tmp=check_secure(); if (is_undef(tmp)) return tmp;
+#endif
     gen args(g);
     if (g.type==_DOUBLE_)
       args=int(g._DOUBLE_val);    
@@ -6077,7 +6550,7 @@ namespace giac {
     if (args.type!=_INT_)
       return xcas_mode(contextptr);
     xcas_mode(contextptr)=args.val & 0xff;
-    python_compat(args.val>=256,contextptr);
+    python_compat(args.val/256,contextptr);
     return string2gen(gettext("Warning: some commands like subs might change arguments order"),false);
   }
   static const char _xcas_mode_s []="xcas_mode";
@@ -6088,12 +6561,24 @@ namespace giac {
   define_unary_function_ptr5( at_maple_mode ,alias_at_maple_mode,&__maple_mode,0,true);
   gen _python_compat(const gen & g,GIAC_CONTEXT){
     if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+    int p=python_compat(contextptr);
     gen args(g);
     if (g.type==_DOUBLE_)
-      args=int(g._DOUBLE_val);    
+      args=int(g._DOUBLE_val);
+    if (args.type==_VECT && args._VECTptr->size()==3){
+      vecteur & v=*args._VECTptr;
+      gen a=v[0],b=v[1],c=v[2];
+      if (is_integral(a) && is_integral(b) && is_integral(c)){
+	python_compat(a.val,contextptr) ;
+#ifdef KHICAS
+	pythonjs_heap_size=giacmax(absint(b.val),16*1024);
+	pythonjs_stack_size=giacmax(absint(c.val),8*1024);
+#endif
+	return p;
+      }
+    }
     if (args.type!=_INT_)
-      return python_compat(contextptr);
-    int p=python_compat(contextptr);
+      return gensizeerr(contextptr);
     python_compat(args.val,contextptr) ;
     return p;
   }
@@ -6107,7 +6592,7 @@ namespace giac {
       args=int(g._DOUBLE_val);    
     if (args.type!=_INT_)
       return eval_level(contextptr);
-    eval_level(contextptr)=args.val;
+    eval_level(contextptr)=giacmax(args.val,1);
     DEFAULT_EVAL_LEVEL=args.val;
     return args;
   }
@@ -6158,6 +6643,21 @@ namespace giac {
   static define_unary_function_eval2 (__all_trig_solutions,&_all_trig_solutions,_all_trig_solutions_s,&printasDigits);
   define_unary_function_ptr( at_all_trig_solutions ,alias_at_all_trig_solutions ,&__all_trig_solutions);
 
+  gen _increasing_power(const gen & g,GIAC_CONTEXT){
+    if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+    gen args(g);
+    if (g.type==_DOUBLE_)
+      args=int(g._DOUBLE_val);    
+    if (args.type!=_INT_)
+      return increasing_power(contextptr);
+    increasing_power((args.val)!=0,contextptr);
+    parent_cas_setup(contextptr);
+    return args;
+  }
+  static const char _increasing_power_s []="increasing_power";
+  static define_unary_function_eval2 (__increasing_power,&_increasing_power,_increasing_power_s,&printasDigits);
+  define_unary_function_ptr( at_increasing_power ,alias_at_increasing_power ,&__increasing_power);
+
   gen _ntl_on(const gen & g,GIAC_CONTEXT){
     if ( g.type==_STRNG &&  g.subtype==-1) return  g;
     gen args(g);
@@ -6202,6 +6702,53 @@ namespace giac {
   static const char _keep_algext_s []="keep_algext";
   static define_unary_function_eval2 (__keep_algext,&_keep_algext,_keep_algext_s,&printasDigits);
   define_unary_function_ptr( at_keep_algext ,alias_at_keep_algext ,&__keep_algext);
+
+  gen _auto_assume(const gen & g,GIAC_CONTEXT){
+    if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+    gen args(g);
+    if (g.type==_DOUBLE_)
+      args=int(g._DOUBLE_val);
+    if (g.type==_SYMB || g.type==_IDNT)
+      return autoassume(g,vx_var,contextptr);
+    if (args.type!=_INT_)
+      return auto_assume(contextptr);
+    auto_assume((args.val)!=0,contextptr);
+    parent_cas_setup(contextptr);
+    return args;
+  }
+  static const char _auto_assume_s []="auto_assume";
+  static define_unary_function_eval (__auto_assume,&_auto_assume,_auto_assume_s);
+  define_unary_function_ptr5( at_auto_assume ,alias_at_auto_assume ,&__auto_assume,0,true);
+
+  gen _parse_e(const gen & g,GIAC_CONTEXT){
+    if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+    gen args(g);
+    if (g.type==_DOUBLE_)
+      args=int(g._DOUBLE_val);
+    if (args.type!=_INT_)
+      return parse_e(contextptr);
+    parse_e((args.val)!=0,contextptr);
+    parent_cas_setup(contextptr);
+    return args;
+  }
+  static const char _parse_e_s []="parse_e";
+  static define_unary_function_eval (__parse_e,&_parse_e,_parse_e_s);
+  define_unary_function_ptr5( at_parse_e ,alias_at_parse_e ,&__parse_e,0,true);
+
+  gen _convert_rootof(const gen & g,GIAC_CONTEXT){
+    if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+    gen args(g);
+    if (g.type==_DOUBLE_)
+      args=int(g._DOUBLE_val);
+    if (args.type!=_INT_)
+      return convert_rootof(contextptr);
+    convert_rootof((args.val)!=0,contextptr);
+    parent_cas_setup(contextptr);
+    return args;
+  }
+  static const char _convert_rootof_s []="convert_rootof";
+  static define_unary_function_eval (__convert_rootof,&_convert_rootof,_convert_rootof_s);
+  define_unary_function_ptr5( at_convert_rootof ,alias_at_convert_rootof ,&__convert_rootof,0,true);
 
   gen _angle_radian(const gen & g,GIAC_CONTEXT){
     if ( g.type==_STRNG &&  g.subtype==-1) return  g;
@@ -6536,6 +7083,7 @@ namespace giac {
     if (args.type!=_INT_)
       return decimal_digits(contextptr);
     set_decimal_digits(args.val,contextptr);
+    bf_global_prec=std::ceil(M_LN10/M_LN2*giacmax(absint(args.val),1));
     _cas_setup(cas_setup(contextptr),contextptr);
     return decimal_digits(contextptr);
   }
@@ -6623,14 +7171,14 @@ namespace giac {
       setsizeerr (string(dlerror()));
     }
     // if (debug_infolevel)
-    //  *logptr(contextptr) << registered_lexer_functions << endl;
+    //  *logptr(contextptr) << registered_lexer_functions << '\n';
     giac_modules_tab[libname]=module_info(registered_lexer_functions(),handle);
 #ifdef HAVE_SIGNAL_H_OLD
     if (!child_id)
       _signal(symb_quote(symbolic(at_insmod,args)),contextptr);
     else
 #endif
-      if (debug_infolevel) *logptr(contextptr) << gettext("Parent insmod") <<endl;
+      if (debug_infolevel) *logptr(contextptr) << gettext("Parent insmod") <<'\n';
     return 1+_xport(args,contextptr);
 #else // HAVE_LIBDL
     return zero;
@@ -6639,6 +7187,7 @@ namespace giac {
   static const char _insmod_s []="insmod";
   static define_unary_function_eval (__insmod,&_insmod,_insmod_s);
   define_unary_function_ptr5( at_insmod ,alias_at_insmod,&__insmod,0,true);
+  // QUOTE_ARGUMENTS ??
 
   gen _rmmod(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG &&  args.subtype==-1) return  args;
@@ -6704,7 +7253,7 @@ namespace giac {
 #ifndef NO_STDEXCEPT
 	setsizeerr(gettext("Unable to sort ")+c.print(contextptr));
 #else
-	*logptr(contextptr) << gettext("Unable to sort ") << c << endl;
+	*logptr(contextptr) << gettext("Unable to sort ") << c << '\n';
 #endif
 	return true;
       }
@@ -6813,6 +7362,7 @@ namespace giac {
   }
   gen _simplifier(const gen & g,GIAC_CONTEXT){
     if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+    if (g.type<_IDNT) return g;
     if (is_equal(g))
       return apply_to_equal(g,_simplifier,contextptr);
     if (g.type!=_VECT)
@@ -7143,6 +7693,14 @@ namespace giac {
     return gensizeerr("Interval arithmetic support not compiled. Please install MPFI and recompile");
   }
 
+  gen os_nary_workaround(const gen & g){
+#ifdef KHICAS
+    if (g.type==_VECT && g._VECTptr->size()==1 && g._VECTptr->front().type==_VECT)
+      return change_subtype(g._VECTptr->front(),_SEQ__VECT);
+#endif
+    return g;
+  }
+
   gen denest_sto(const gen & g){
     if (g.type==_VECT){
       vecteur v(*g._VECTptr);
@@ -7212,6 +7770,10 @@ namespace giac {
     }
     vecteur v=*args._VECTptr;
     int s=int(v.size());
+    if (s==3 && v[0].type==_INT_ && v[0].subtype==_INT_PLOT && v[0].val==_AXES && v[2].type==_INT_ && v[2].subtype==_INT_PLOT && v[2].val==_SET__VECT){
+      // axes.set(xlabel="",ylabel="")
+      return v[1].type==_VECT?change_subtype(v[1],_SEQ__VECT):v[1];
+    }
     if (s>=1 && v.front().type==_POLY){
       int dim=v.front()._POLYptr->dim;
       vecteur idx(dim);
@@ -7427,7 +7989,7 @@ namespace giac {
       if (g.type==_MAP){
 	if (f==at_matrix || f==at_vector){
 	  if (g.subtype==_SPARSE_MATRIX)
-	    *logptr(contextptr) << gettext("Run convert(matrix,array) for dense conversion") << endl;
+	    *logptr(contextptr) << gettext("Run convert(matrix,array) for dense conversion") << '\n';
 	  g.subtype=_SPARSE_MATRIX;
 	  return g;
 	}
@@ -7451,6 +8013,10 @@ namespace giac {
 	}
 	if ( f==at_vector || f==at_array){
 	  g.subtype=_MATRIX__VECT;
+	  return g;
+	}
+	if (f==at_seq){
+	  g.subtype=_SEQ__VECT;
 	  return g;
 	}
 	if (f==at_table){
@@ -7546,6 +8112,13 @@ namespace giac {
 	  }
 	  g.subtype=0;
 	  return g;
+	case _SET__VECT:
+	  if (g.type==_VECT){
+	    vecteur v(*g._VECTptr);
+	    comprim(v);
+	    g=gen(v,_SET__VECT);
+	    return g;
+	  }
 	default:
 	  return gensizeerr(contextptr);
 	}
@@ -7572,7 +8145,7 @@ namespace giac {
   static define_unary_function_eval4 (__deuxpoints,&_deuxpoints,_deuxpoints_s,&printsommetasoperator,&texprintsommetasoperator);
   define_unary_function_ptr( at_deuxpoints ,alias_at_deuxpoints ,&__deuxpoints);
 
-#ifdef FXCG
+#if defined FXCG || defined GIAC_HAS_STO_38
   gen _read(const gen & args,GIAC_CONTEXT){ return 0;}   
   gen _write(const gen & args,GIAC_CONTEXT){ return 0;}    
   static const char _read_s []="read";
@@ -7690,11 +8263,11 @@ namespace giac {
     inf.getline(thebuf,BUFFER_SIZE,'\n');
     string lu=thebuf;
     lu=lu.substr(6,lu.size()-7);
-    CERR << "Function name: " << lu << endl;
+    CERR << "Function name: " << lu << '\n';
     of << ":" << lu;
     inf.getline(thebuf,BUFFER_SIZE,'\n');  
     inf.getline(thebuf,BUFFER_SIZE,'\n');  
-    of << thebuf << endl;
+    of << thebuf << '\n';
     for (;inf.good();){
       inf.getline(thebuf,BUFFER_SIZE,'\n');
       lu=thebuf;
@@ -7705,7 +8278,7 @@ namespace giac {
       }
       lu = tiasc_translate(lu);
       if (lu.size())
-        of << ":" << lu << endl;
+        of << ":" << lu << '\n';
     }
   }
 
@@ -7714,6 +8287,21 @@ namespace giac {
     if (args.type!=_STRNG)
       return symbolic(at_read,args);
     string fichier=*args._STRNGptr;
+#ifdef KHICAS
+    const char * s=read_file(fichier.c_str());
+    if (!s)
+      return undef;
+    gen g(s,contextptr);
+    return g;
+#else // KHICAS
+#if defined(EMCC) || defined(EMCC2)
+    string s=fetch(fichier);
+    return gen(s,contextptr);
+#endif
+    if (fichier.size()>4 && fichier.substr(0,4)=="http"){
+      string s=fetch(fichier);
+      return gen(s,contextptr);
+    }
 #ifdef NSPIRE
     file inf(fichier.c_str(),"r");
 #else
@@ -7741,7 +8329,7 @@ namespace giac {
       mws_translate(inf,of);
       of.close();
       xcas_mode(contextptr)=1;
-      *logptr(contextptr) << gettext("Running maple text translation __.map") << endl;
+      *logptr(contextptr) << gettext("Running maple text translation __.map") << '\n';
       fichier="__.map";
     }
     if (lu.size()>6 && lu.substr(0,6)=="**TI92"){ // TI archive
@@ -7761,7 +8349,7 @@ namespace giac {
       of.close();
 #endif
       xcas_mode(contextptr)=3;
-      *logptr(contextptr) << gettext("Running TI89 text translation __.ti") << endl;
+      *logptr(contextptr) << gettext("Running TI89 text translation __.ti") << '\n';
       fichier="__.ti";
     } // end file of type TI
 #ifdef NSPIRE
@@ -7773,11 +8361,36 @@ namespace giac {
     vecteur v;
     readargs_from_stream(inf2,v,contextptr);
     return v.size()==1?v.front():gen(v,_SEQ__VECT);
+#endif // KHICAS
+  }
+  bool is_address(const gen & g,size_t & addr){
+    if (g.type==_INT_){
+      addr=(g.val/4)*4; // align
+      return true;
+    }
+    if (g.type!=_ZINT)
+      return false;
+    addr = modulo(*g._ZINTptr,(unsigned)0x80000000);
+    addr = (addr/4)*4;
+    addr += 0x80000000;
+    return true;
   }
   gen _read(const gen & args,GIAC_CONTEXT){
+#ifdef KHICAS
+    if (exam_mode || nspire_exam_mode)
+      return gensizeerr("Exam mode");
+#endif
     if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+    size_t addr;
+    if (is_address(args,addr))
+      return (int) *(unsigned char *) addr;
     if (args.type==_VECT && !args._VECTptr->empty() && args._VECTptr->front().type==_STRNG){
-      FILE * f=fopen(args._VECTptr->front()._STRNGptr->c_str(),"r");
+      string file=*args._VECTptr->front()._STRNGptr;
+      if (file.size()>4 && file.substr(0,4)=="http"){
+	string s=fetch(file);
+	return string2gen(s,false);
+      }
+      FILE * f=fopen(file.c_str(),"r");
       if (!f)
 	return undef;
       string s;
@@ -7794,13 +8407,130 @@ namespace giac {
   static define_unary_function_eval (__read,&_read,_read_s);
   define_unary_function_ptr5( at_read ,alias_at_read ,&__read,0,T_RETURN);
 
+  gen _read16(const gen & args,GIAC_CONTEXT){
+    if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+    size_t addr;
+    if (is_address(args,addr))
+      return (int) *(unsigned short *) addr;
+    if (args.type==_STRNG){
+#ifdef KHICAS
+      if (exam_mode || nspire_exam_mode)
+	return gensizeerr("Exam mode");
+#endif
+      FILE * f=fopen(args._STRNGptr->c_str(),"r");
+      if (!f)
+	return undef;
+      vecteur v,l; char buf[9]; buf[8]=0; int i;
+      for (i=0;;++i){
+	unsigned char c=fgetc(f);
+	buf[i&7]=(c>=32 && c<=127)?c:'.';
+	if (feof(f))
+	  break;
+	l.push_back(c);
+	if ((i&0x7)==0x7){
+	  l.insert(l.begin(),string2gen(buf,false));
+	  l.insert(l.begin(),i-7);
+	  v.push_back(l);
+	  l.clear();
+	}
+      }
+      if (!l.empty()){
+	for (int j=l.size();j<8;++j)
+	  l.push_back(-1);
+	l.insert(l.begin(),string2gen(buf,false));
+	l.insert(l.begin(),int(i&0xfffffff8));
+	v.push_back(l);
+      }
+      fclose(f);
+      return v;
+    }
+    return gensizeerr(contextptr);
+  }
+  static const char _read16_s []="read16";
+  static define_unary_function_eval (__read16,&_read16,_read16_s);
+  define_unary_function_ptr5( at_read16 ,alias_at_read16 ,&__read16,0,true);
+
+  gen _read32(const gen & args,GIAC_CONTEXT){
+    if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+    size_t addr;
+    if (args.type==_VECT && args._VECTptr->size()==2 && args._VECTptr->back().type==_INT_){
+      int n=args._VECTptr->back().val;
+      if (n<=0 || !is_address(args._VECTptr->front(),addr)) 
+	return undef;
+      vecteur res;
+      for (int i=0;i<n;++i){
+	res.push_back(makevecteur((longlong) addr,(longlong) *(unsigned *) addr));
+	addr += 4;
+      }
+      return res;
+    }
+    if (is_address(args,addr))
+      return (longlong) *(unsigned *) addr;
+    return gensizeerr(contextptr);
+  }
+  static const char _read32_s []="read32";
+  static define_unary_function_eval (__read32,&_read32,_read32_s);
+  define_unary_function_ptr5( at_read32 ,alias_at_read32 ,&__read32,0,true);
+
+#ifdef NSPIRE_NEWLIB
+  gen _read_nand(const gen & args,GIAC_CONTEXT){
+    if ( args.type==_STRNG &&  args.subtype==-1)
+      return  args;
+    size_t addr;
+    if (args.type==_VECT && args._VECTptr->size()==2 && args._VECTptr->back().type==_INT_){
+      int n=args._VECTptr->back().val;
+      if (n<=0 || !is_address(args._VECTptr->front(),addr)) 
+	return undef;
+      // void read_nandd(void* dest, int size, int nand_offset, int unknown, int percent_max, void* progress_cb); // terminer par (...,0,0,NULL)
+      char * dest=(char *)malloc(4*n);
+      read_nand(dest,4*n,addr,0,0,NULL);
+      char buf[5]="aaaa";
+      vecteur res;
+      for (int i=0;i<n;++i,addr+=4,dest+=4){
+	strncpy(buf,dest,4);
+	res.push_back(makevecteur((longlong) addr,int(*dest),int(*(dest+1)),int(*(dest+2)),int(*(dest+3)),string2gen(buf,false)));
+      }
+      free(dest-4*n);
+      return res;
+    }
+    if (is_address(args,addr))
+      return _read_nand(makesequence(args,1),contextptr);
+    return gensizeerr(contextptr);
+  }
+#else
+  gen _read_nand(const gen & args,GIAC_CONTEXT){
+    return undef;
+  }
+#endif
+  static const char _read_nand_s []="read_nand";
+  static define_unary_function_eval (__read_nand,&_read_nand,_read_nand_s);
+  define_unary_function_ptr5( at_read_nand ,alias_at_read_nand ,&__read_nand,0,true);
+
+
   gen _write(const gen & args,GIAC_CONTEXT){
     if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+#ifdef KHICAS
+    return _ecris(args,contextptr);
+#endif
     gen tmp=check_secure();
     if (is_undef(tmp)) return tmp;
     if (args.type==_VECT){
       vecteur v=*args._VECTptr;
       v.front()=eval(v.front(),eval_level(contextptr),contextptr);
+      size_t addr;
+      if (v.size()==2 && is_address(v.front(),addr)){
+	gen vb=eval(v.back(),1,contextptr);
+	if (vb.type==_INT_){
+#ifdef KHICAS
+	  if (exam_mode)
+	    return gensizeerr("Exam mode");
+#endif
+	  unsigned char * ptr =(unsigned char *) addr;
+	  // int res=*ptr;
+	  *ptr=vb.val;
+	  return *ptr;//return res;
+	}
+      }
       if (v.size()<2 || v.front().type!=_STRNG)
 	return gensizeerr(contextptr);
       if (v.size()==2 && is_zero(v[1])){
@@ -7815,16 +8545,22 @@ namespace giac {
 #endif
       const_iterateur it=v.begin()+1,itend=v.end();
       for (;it!=itend;++it){
+	gen tmp=eval(*it,1,contextptr);
 	if (it->type==_IDNT){
-	  gen tmp=eval(*it,1,contextptr);
 	  gen tmp2=*it;
-	  inf << symb_sto(tmp,tmp2) << ";" << endl;
+	  inf << symb_sto(tmp,tmp2) << ";" << '\n';
 	}
+	else
+	  inf << tmp << ";" << '\n';
       }
       return plus_one;
     }
     if (args.type!=_STRNG)
       return symbolic(at_write,args);
+#ifndef KHICAS
+    if (turtle_stack(contextptr).size()>1)
+      return _ecris(args,contextptr);
+#endif
 #ifdef NSPIRE
     file inf(args._STRNGptr->c_str(),"w");
 #else
@@ -7835,13 +8571,68 @@ namespace giac {
       return zero;
     for (;it!=itend;++it){
       if (!it->is_symb_of_sommet(at_write))
-	inf << *it << ";" << endl;
+	inf << *it << ";" << '\n';
     }
     return plus_one;
   }
   static const char _write_s []="write";
   static define_unary_function_eval_quoted (__write,&_write,_write_s);
   define_unary_function_ptr5( at_write ,alias_at_write,&__write,_QUOTE_ARGUMENTS,true);
+
+  gen _write32(const gen & args,GIAC_CONTEXT){
+    if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+#ifdef KHICAS
+    if (exam_mode || nspire_exam_mode)
+      return gensizeerr("Exam mode");
+#endif
+    if (args.type!=_VECT)
+      return _read32(args,contextptr);
+    if (args.type==_VECT){
+      vecteur v=*args._VECTptr;
+      size_t addr;
+      if (v.size()==2 && is_address(v.front(),addr)){
+	gen vb=v.back();
+	unsigned * ptr =(unsigned *) addr;
+	if (vb.type==_INT_){
+	  *ptr=vb.val;
+	  return makevecteur(longlong(addr),longlong(*ptr));
+	}
+	if (vb.type==_ZINT){
+	  unsigned l =mpz_get_si(*vb._ZINTptr);
+	  *ptr=l;
+	  return makevecteur(longlong(addr),longlong(*ptr));
+	}
+      }
+    }
+    return gensizeerr(contextptr);
+  }
+  static const char _write32_s []="write32";
+  static define_unary_function_eval (__write32,&_write32,_write32_s);
+  define_unary_function_ptr5( at_write32 ,alias_at_write32,&__write32,0,true);
+
+  gen _write16(const gen & args,GIAC_CONTEXT){
+    if ( args.type==_STRNG &&  args.subtype==-1) return  args;
+#ifdef KHICAS
+    if (exam_mode || nspire_exam_mode)
+      return gensizeerr("Exam mode");
+#endif
+    if (args.type==_VECT){
+      vecteur v=*args._VECTptr;
+      size_t addr;
+      if (v.size()==2 && is_address(v.front(),addr)){
+	gen vb=v.back();
+	unsigned short * ptr =(unsigned short *) addr;
+	if (vb.type==_INT_){
+	  *ptr=vb.val;
+	  return int( (unsigned short) vb.val);
+	}
+      }
+    }
+    return gensizeerr(contextptr);
+  }
+  static const char _write16_s []="write16";
+  static define_unary_function_eval (__write16,&_write16,_write16_s);
+  define_unary_function_ptr5( at_write16 ,alias_at_write16,&__write16,0,true);
 
   gen _save_history(const gen & args,GIAC_CONTEXT){
 #ifdef NSPIRE
@@ -7856,7 +8647,7 @@ namespace giac {
     vecteur v(history_in(contextptr));
     if (!v.empty() && v.back().is_symb_of_sommet(at_save_history))
       v.pop_back();
-    of << gen(history_in(contextptr),_SEQ__VECT) << endl;
+    of << gen(history_in(contextptr),_SEQ__VECT) << '\n';
     return plus_one;
 #endif
   }
@@ -7945,9 +8736,9 @@ namespace giac {
     if (argss.size()>5 && argss.substr(0,5)=="pari_")
       return string2gen(pari_help(string2gen(argss.substr(5,argss.size()-5),false)),false);      
 #endif
-    const char * howto, * syntax, * related, *examples;
-    if (has_static_help(argss.c_str(),lang,howto,syntax,examples,related)){
-#ifdef EMCC
+    const char *cmdname=argss.c_str(),* howto=0, * syntax=0, * related=0, *examples=0;
+    if (has_static_help(cmdname,lang,howto,syntax,examples,related)){
+#if defined(EMCC) || defined(EMCC2)
       if (argss.size()>2 && argss[0]=='\'' && argss[argss.size()-1]=='\'')
 	argss=argss.substr(1,argss.size()-2);
       // should split related at commas, and display buttons
@@ -7965,11 +8756,31 @@ namespace giac {
 #ifdef NSPIRE
       if (argss.size()>2 && argss[0]=='\'' && argss[argss.size()-1]=='\'')
 	argss=argss.substr(1,argss.size()-2);
-      COUT << howto << endl << "Syntax: " << argss << "(" << syntax << ")" << endl << "See also: " << related << endl ;
-      COUT << "Examples: " << examples << endl;
+      COUT << howto << '\n' << "Syntax: " << argss << "(" << syntax << ")" << '\n' << "See also: " << related << '\n' ;
+      COUT << "Examples: " << examples << '\n';
       return 1;
 #else
-      return string2gen(string(howto)+'\n'+string(syntax)+'\n'+string(related)+'\n'+string(examples),false);
+      string related_str(related);
+      for (int i=related_str.size();i-->0;) {
+	if (related_str[i]==',')
+	  related_str.insert(related_str.begin()+i+1,' ');
+      }
+      string examples_str(examples);
+      for (int i=examples_str.size();i-->0;) {
+	if (i>0 && examples_str.substr(i-1,2)==";\\")
+	  examples_str.replace(i-1,2,"\n");
+      }
+      string helptext;
+      if (howto!=NULL && strlen(howto)>0)
+        helptext = string("Description: ") + howto + "\n";
+      if (strlen(syntax)>0)
+        helptext += "Usage: " + string(cmdname).substr(1,strlen(cmdname)-2) + "(" + syntax + ")\n";
+      if (related_str.size()>0)
+        helptext += "Related: " + related_str + "\n";
+      if (examples_str.size()>0)
+        helptext += "Examples:\n" + examples_str;
+      return string2gen(helptext,false);
+      // return string2gen(string(howto?howto:"")+'\n'+string(syntax)+'\n'+string(related)+'\n'+string(examples),false);
 #endif
     }
 #ifndef GIAC_HAS_STO_38
@@ -8098,6 +8909,9 @@ namespace giac {
     gen graphe=symbolic(at_plotfunc,
 			gen(makevecteur(_cell(makevecteur(vecteur(1,minus_one),vecteur(1,zero)),contextptr),
 					symb_equal(_cell(makevecteur(vecteur(1,minus_one),vecteur(1,minus_one)),contextptr),symb_interval(xstart,xmax))
+#ifdef NUMWORKS
+					,symb_equal(change_subtype(_NSTEP,_INT_PLOT),100)
+#endif
 				    ),_SEQ__VECT));
     graphe.subtype=_SPREAD__SYMB;
     vecteur l1(makevecteur(step,graphe));
@@ -8168,7 +8982,7 @@ namespace giac {
 				       _cell(makevecteur(zero,vecteur(1,zero)),contextptr),
 				       symb_equal(_cell(makevecteur(vecteur(1,-1),vecteur(1,zero)),contextptr),makevecteur(_cell(makevecteur(vecteur(1,plus_one),vecteur(1,zero)),contextptr),xmin,xmax)),
 				       //symb_equal(_cell(makevecteur(plus_one,vecteur(1,zero)),contextptr),makevecteur(_cell(makevecteur(vecteur(1,plus_one),vecteur(1,zero)),contextptr),xmin,xmax)),
-				       9),_SEQ__VECT
+				       9,at_tableseq),_SEQ__VECT
 			   )
 		       )
 	      );
@@ -8210,11 +9024,11 @@ namespace giac {
     if (cas_setup_save.size()>5 && cas_setup_save[5].type==_VECT && cas_setup_save[5]._VECTptr->size()==2){
       vecteur & v = *cas_setup_save[5]._VECTptr;
       if (is_strictly_greater(v[0],1e-6,contextptr)){
-	*logptr(contextptr) << gettext("Restoring epsilon to 1e-6 from ") << v[0] << endl;
+	*logptr(contextptr) << gettext("Restoring epsilon to 1e-6 from ") << v[0] << '\n';
 	epsilon(1e-6,contextptr);
       }
       if (is_strictly_greater(v[1],1e-6,contextptr)){
-	*logptr(contextptr) << gettext("Restoring proba epsilon to 1e-6 from ") << v[0] << endl;
+	*logptr(contextptr) << gettext("Restoring proba epsilon to 1e-6 from ") << v[0] << '\n';
 	proba_epsilon(contextptr)=1e-6;
       }
       cas_setup_save=cas_setup(contextptr);
@@ -8327,6 +9141,7 @@ namespace giac {
 	return gensizeerr(contextptr);
       return res;
     }
+    if (g.type==_INT_) return _makemat(g,contextptr);
     if (g.type!=_VECT)
       return gentypeerr(contextptr);
     vecteur v=*g._VECTptr;
@@ -8353,6 +9168,8 @@ namespace giac {
     if ( (v[0].type!=_INT_) || (v[1].type!=_INT_) )
       return gensizeerr(contextptr);
     int l(giacmax(v[0].val,1)),c(giacmax(v[1].val,1));
+    if (l*longlong(c)>LIST_SIZE_LIMIT)
+      return gendimerr(contextptr);
     if (vs==3 && v[2].type<=_IDNT){
       vecteur res(l);
       for (int i=0;i<l;++i)
@@ -8620,7 +9437,7 @@ namespace giac {
   // Eval everything except IDNT and symbolics with
   vecteur inputform_pre_analysis(const gen & g,GIAC_CONTEXT){
     vecteur v(gen2vecteur(g));
-    if (python_compat(contextptr)){
+    if (python_compat(contextptr) && (v.empty() || v.front()!=at_getKey)){
       gen g_=eval(g,1,contextptr);
       if (g_.type!=_STRNG)
 	g_=string2gen(g_.print(contextptr),false);
@@ -8651,11 +9468,11 @@ namespace giac {
     if ( args.type==_STRNG &&  args.subtype==-1) return  args;
     string cs(gettext("inputform may be used in a window environment only"));
 #if defined WIN32 || (!defined HAVE_SIGNAL_H_OLD)
-    *logptr(contextptr) << cs << endl;
+    *logptr(contextptr) << cs << '\n';
     return string2gen(cs,false);
 #else
     if (child_id){ 
-      *logptr(contextptr) << cs << endl;
+      *logptr(contextptr) << cs << '\n';
       return string2gen(cs,false);
     }
     // pre-analysis
@@ -8665,7 +9482,7 @@ namespace giac {
     // form
     ofstream child_out(cas_sortie_name().c_str());
     gen e(symbolic(at_inputform,args));
-    *logptr(contextptr) << gettext("Archiving ") << e << endl;
+    *logptr(contextptr) << gettext("Archiving ") << e << '\n';
     archive(child_out,e,contextptr);
     archive(child_out,e,contextptr);
     if ( (args.type==_VECT) && (args._VECTptr->empty()) )
@@ -8677,7 +9494,7 @@ namespace giac {
     ifstream child_in(cas_entree_name().c_str());
     res= unarchive(child_in,contextptr);
     child_in.close();
-    *logptr(contextptr) << gettext("Inputform reads ") << res << endl;
+    *logptr(contextptr) << gettext("Inputform reads ") << res << '\n';
     // post analysis
     return inputform_post_analysis(v,res,contextptr);
 #endif
@@ -8750,8 +9567,12 @@ namespace giac {
   }
 
   string printastifunction(const gen & feuille,const char * sommetstr,GIAC_CONTEXT){
-    if (feuille.type==_VECT && feuille.subtype==_SEQ__VECT && feuille._VECTptr->empty())
-      return string(sommetstr)+" ";
+    if (feuille.type==_VECT && feuille.subtype==_SEQ__VECT){
+      if (feuille._VECTptr->empty())
+	return string(sommetstr)+" ";
+      else
+	return sommetstr+(" ("+feuille.print(contextptr)+')');
+    }
     return sommetstr+(" "+feuille.print(contextptr));
   }
   gen _Text(const gen & args,GIAC_CONTEXT){
@@ -8827,7 +9648,10 @@ namespace giac {
     }
     if (args.type!=_STRNG)
       return symbolic(at_expr,args);
-    return eval(gen(*args._STRNGptr,contextptr),eval_level(contextptr),contextptr);
+    gen g(*args._STRNGptr,contextptr);
+    if (giac::first_error_line(contextptr))
+      return gensizeerr(string(gettext("Syntax compatibility mode "))+print_program_syntax(xcas_mode(contextptr))+gettext(". Parse error line ")+print_INT_(giac::first_error_line(contextptr)) + gettext(" column ")+print_INT_(giac::lexer_column_number(contextptr))+  gettext(" at ")  + giac::error_token_name(contextptr)) ;
+    return eval(g,eval_level(contextptr),contextptr);
   }
   static const char _expr_s []="expr";
   static define_unary_function_eval (__expr,&_expr,_expr_s);
@@ -8975,6 +9799,31 @@ namespace giac {
   static define_unary_function_eval2 (__Pause,&_Pause,_Pause_s,&printastifunction);
   define_unary_function_ptr5( at_Pause ,alias_at_Pause ,&__Pause,0,T_RETURN);
 
+  static const char _sleep_s []="sleep";
+  static define_unary_function_eval (__sleep,&_Pause,_sleep_s);
+  define_unary_function_ptr5( at_sleep ,alias_at_sleep,&__sleep,0,true);
+
+  gen _monotonic(const gen & g,GIAC_CONTEXT){
+    if ( g.type==_STRNG &&  g.subtype==-1) return  g;
+#ifdef NSPIRE_NEWLIB
+    return int(unsigned(millis()/1000.) & ((1u<<31)-1));
+#endif
+#ifdef FXCG
+    return RTC_GetTicks();
+#else
+#if defined __APPLE__ || defined EMCC || defined EMCC2 || !defined HAVE_LIBRT
+    return (int) clock();
+#else
+    timespec t;
+    clock_gettime(CLOCK_MONOTONIC,&t);
+    return t.tv_sec+t.tv_nsec*1e-9;
+#endif
+#endif
+  }
+  static const char _monotonic_s []="monotonic";
+  static define_unary_function_eval (__monotonic,&_monotonic,_monotonic_s);
+  define_unary_function_ptr5( at_monotonic ,alias_at_monotonic,&__monotonic,0,true);
+
   static const char _DelVar_s []="DelVar";
   static define_unary_function_eval2_quoted (__DelVar,&_purge,_DelVar_s,&printastifunction);
   define_unary_function_ptr5( at_DelVar ,alias_at_DelVar,&__DelVar,_QUOTE_ARGUMENTS,T_RETURN);
@@ -9105,9 +9954,9 @@ namespace giac {
       return g;
     return gen(*g._STRNGptr,contextptr);
   }
-  static const char _hash_s []="#";
+  static const char _hash_s []="make_symbol";
   static define_unary_function_eval_index (98,__hash,&_hash,_hash_s);
-  define_unary_function_ptr( at_hash ,alias_at_hash ,&__hash);
+  define_unary_function_ptr5( at_hash ,alias_at_hash ,&__hash,0,true);
 
   bool user_screen=false;
   int user_screen_io_x=0,user_screen_io_y=0;
@@ -9123,7 +9972,7 @@ namespace giac {
       return 0;
     ofstream child_out(cas_sortie_name().c_str());
     gen e(symbolic(at_interactive,args));
-    // *logptr(contextptr) << e << endl;
+    // *logptr(contextptr) << e << '\n';
     archive(child_out,e,contextptr);
     archive(child_out,e,contextptr);
     child_out.close();
@@ -9180,7 +10029,7 @@ namespace giac {
     }
     else
       m2=*v[1]._VECTptr;
-    // *logptr(contextptr) << m1 << " " << m2 << endl;
+    // *logptr(contextptr) << m1 << " " << m2 << '\n';
     return mergevecteur(m1,m2); 
   }
   static const char _ti_semi_s []=";";
@@ -9214,7 +10063,36 @@ namespace giac {
 #endif
   define_unary_function_ptr5( at_keyboard ,alias_at_keyboard,&__keyboard,0,true);
 
+#ifndef KHICAS // see kadd.cc
   gen current_sheet(const gen & g,GIAC_CONTEXT){
+#if (defined EMCC || defined EMCC2 ) && !defined GIAC_GGB
+    if (ckmatrix(g,true)){
+      matrice m=*g._VECTptr;
+      int R=m.size(),C=m.front()._VECTptr->size();
+      CERR << "current1 " << R << " " << C << '\n';
+      R=giacmin(R,EM_ASM_INT({ return UI.assistant_matr_maxrows; },0));
+      C=giacmin(C,EM_ASM_INT({ return UI.assistant_matr_maxcols; },0));
+      CERR << "current2 " << R << " " << C << '\n';
+      int save_r=printcell_current_row(contextptr);
+      int save_c=printcell_current_col(contextptr);
+      for (int i=0;i<R;++i){
+	printcell_current_row(contextptr)=i;
+	for (int j=0;j<C;++j){
+	  printcell_current_col(contextptr)=j;
+	  string s=m[i][j].print(contextptr);
+	  CERR << "current3 " << s << " " << i << " " << j << '\n';
+	  EM_ASM_ARGS({
+	      var s=UTF8ToString($0);//Pointer_stringify($0);//
+	      console.log(s);
+	      UI.sheet_set_ij(s,$1,$2);
+	    },s.c_str(),i,j);
+	}
+      }
+      printcell_current_col(contextptr)=save_c;
+      printcell_current_row(contextptr)=save_r;
+      EM_ASM_ARGS({var s=' ';UI.sheet_recompute(s.substr(0,0)); UI.open_sheet(true);},0);
+    }
+#endif
     if (interactive_op_tab && interactive_op_tab[5])
       return interactive_op_tab[5](g,contextptr);
     return zero;
@@ -9226,6 +10104,7 @@ namespace giac {
   unary_function_eval __current_sheet(1,&current_sheet,_current_sheet_s);
 #endif
   define_unary_function_ptr5( at_current_sheet ,alias_at_current_sheet,&__current_sheet,_QUOTE_ARGUMENTS,true);
+#endif
   
   static string printasmaple_lib(const gen & feuille,const char * sommetstr,GIAC_CONTEXT){
     if (feuille.type!=_VECT || feuille._VECTptr->size()!=2)
@@ -9277,50 +10156,6 @@ namespace giac {
     return tmp;
   }
 
-  // To each unit we associate a number and a vector of powers of kg, m, s
-  /*
-  map_charptr_gen unit_conversion_map;
-  gen mksa_register(const char * s,const gen & equiv){
-    unit_conversion_map[s+1]=equiv;
-    return find_or_make_symbol(s,false,context0);
-  }
-  */
-#ifdef USTL
-  ustl::map<const char *, const mksa_unit *,ltstr> & unit_conversion_map(){
-    static ustl::map<const char *, const mksa_unit *,ltstr> * unit_conversion_mapptr=0;
-    if (!unit_conversion_mapptr)
-      unit_conversion_mapptr=new ustl::map<const char *, const mksa_unit *,ltstr>;
-    return *unit_conversion_mapptr;
-  }
-#else
-  std::map<const char *, const mksa_unit *,ltstr> & unit_conversion_map(){
-    static std::map<const char *, const mksa_unit *,ltstr> * unit_conversion_mapptr=0;
-    if (!unit_conversion_mapptr)
-      unit_conversion_mapptr=new std::map<const char *, const mksa_unit *,ltstr>;
-    return *unit_conversion_mapptr;
-  }
-#endif
-
-  gen mksa_register(const char * s,const mksa_unit * equiv){
-#ifdef USTL
-    ustl::map<const char *, const mksa_unit *,ltstr>::const_iterator it=unit_conversion_map().find(s+1),itend=unit_conversion_map().end();
-#else
-    std::map<const char *, const mksa_unit *,ltstr>::const_iterator it=unit_conversion_map().find(s+1),itend=unit_conversion_map().end();
-#endif
-    gen res;
-    lock_syms_mutex();  
-    if (it!=itend)
-      res=syms()[s];
-    else {
-      unit_conversion_map()[s+1]=equiv;
-      res = (syms()[s] = new ref_identificateur(s));
-    }
-    unlock_syms_mutex();  
-    return res;
-  }
-  gen mksa_register_unit(const char * s,const mksa_unit * equiv){
-    return symbolic(at_unit,makevecteur(1,mksa_register(s,equiv)));
-  }
   // fundemental metric units
   const mksa_unit __m_unit={1,1,0,0,0,0,0,0,0};
   const mksa_unit __kg_unit={1,0,1,0,0,0,0,0,0};
@@ -9348,18 +10183,1784 @@ namespace giac {
   const mksa_unit __V_unit={1,2,1,-3,-1,0,0,0,0};
   const mksa_unit __W_unit={1,2,1,-3,0,0,0,0,0};
   const mksa_unit __Wb_unit={1,2,1,-2,-1,0,0,0,0};
-  vecteur & usual_units(){
-    static vecteur * usual_units_ptr=0;
-    if (!usual_units_ptr){
-      usual_units_ptr=new vecteur;
-      *usual_units_ptr=mergevecteur(
-				   mergevecteur(makevecteur(_C_unit,_F_unit,_Gy_unit,_H_unit,_Hz_unit,_J_unit,_mho_unit),
-						makevecteur(_N_unit,_Ohm_unit,_Pa_unit,_rad_unit,_S_unit,_Sv_unit,_T_unit)),
-				   makevecteur(_V_unit,_W_unit,_Wb_unit)
-				   );
-    }
-    return *usual_units_ptr;
+  const mksa_unit __Js_unit={1,2,1,-1,0,0,0,0,0};
+  // To each unit we associate a number and a vector of powers of kg, m, s
+  /*
+  map_charptr_gen unit_conversion_map;
+  gen mksa_register(const char * s,const gen & equiv){
+    unit_conversion_map[s+1]=equiv;
+    return find_or_make_symbol(s,false,context0);
   }
+  */
+#ifdef USTL
+  ustl::map<const char *, const mksa_unit *,ltstr> & unit_conversion_map(){
+    static ustl::map<const char *, const mksa_unit *,ltstr> * unit_conversion_mapptr=0;
+    if (!unit_conversion_mapptr)
+      unit_conversion_mapptr=new ustl::map<const char *, const mksa_unit *,ltstr>;
+    return *unit_conversion_mapptr;
+  }
+#else
+  std::map<const char *, const mksa_unit *,ltstr> & unit_conversion_map(){
+    static std::map<const char *, const mksa_unit *,ltstr> * unit_conversion_mapptr=0;
+    if (!unit_conversion_mapptr)
+      unit_conversion_mapptr=new std::map<const char *, const mksa_unit *,ltstr>;
+    return *unit_conversion_mapptr;
+  }
+#endif
+
+#ifdef STATIC_BUILTIN_LEXER_FUNCTIONS
+  static const alias_identificateur alias_identificateur_A_unit_rom={0,0,"_A",0,0};
+  const identificateur & _IDNT_id_A_unit_rom=* (const identificateur *) &alias_identificateur_A_unit_rom;
+  const alias_ref_identificateur ref_A_unit_rom={-1,0,0,"_A",0,0};
+  const define_alias_gen(alias_A_unit_rom,_IDNT,0,&ref_A_unit_rom);
+  const gen & A_unit_rom_IDNT_e = * (gen *) & alias_A_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Angstrom_unit_rom={0,0,"_Angstrom",0,0};
+  const identificateur & _IDNT_id_Angstrom_unit_rom=* (const identificateur *) &alias_identificateur_Angstrom_unit_rom;
+  const alias_ref_identificateur ref_Angstrom_unit_rom={-1,0,0,"_Angstrom",0,0};
+  const define_alias_gen(alias_Angstrom_unit_rom,_IDNT,0,&ref_Angstrom_unit_rom);
+  const gen & Angstrom_unit_rom_IDNT_e = * (gen *) & alias_Angstrom_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Bq_unit_rom={0,0,"_Bq",0,0};
+  const identificateur & _IDNT_id_Bq_unit_rom=* (const identificateur *) &alias_identificateur_Bq_unit_rom;
+  const alias_ref_identificateur ref_Bq_unit_rom={-1,0,0,"_Bq",0,0};
+  const define_alias_gen(alias_Bq_unit_rom,_IDNT,0,&ref_Bq_unit_rom);
+  const gen & Bq_unit_rom_IDNT_e = * (gen *) & alias_Bq_unit_rom;
+
+  static const alias_identificateur alias_identificateur_yd_unit_rom={0,0,"_yd",0,0};
+  const identificateur & _IDNT_id_yd_unit_rom=* (const identificateur *) &alias_identificateur_yd_unit_rom;
+  const alias_ref_identificateur ref_yd_unit_rom={-1,0,0,"_yd",0,0};
+  const define_alias_gen(alias_yd_unit_rom,_IDNT,0,&ref_yd_unit_rom);
+  const gen & yd_unit_rom_IDNT_e = * (gen *) & alias_yd_unit_rom;
+
+  static const alias_identificateur alias_identificateur_yr_unit_rom={0,0,"_yr",0,0};
+  const identificateur & _IDNT_id_yr_unit_rom=* (const identificateur *) &alias_identificateur_yr_unit_rom;
+  const alias_ref_identificateur ref_yr_unit_rom={-1,0,0,"_yr",0,0};
+  const define_alias_gen(alias_yr_unit_rom,_IDNT,0,&ref_yr_unit_rom);
+  const gen & yr_unit_rom_IDNT_e = * (gen *) & alias_yr_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Btu_unit_rom={0,0,"_Btu",0,0};
+  const identificateur & _IDNT_id_Btu_unit_rom=* (const identificateur *) &alias_identificateur_Btu_unit_rom;
+  const alias_ref_identificateur ref_Btu_unit_rom={-1,0,0,"_Btu",0,0};
+  const define_alias_gen(alias_Btu_unit_rom,_IDNT,0,&ref_Btu_unit_rom);
+  const gen & Btu_unit_rom_IDNT_e = * (gen *) & alias_Btu_unit_rom;
+
+  static const alias_identificateur alias_identificateur_R__unit_rom={0,0,"_R_",0,0};
+  const identificateur & _IDNT_id_R__unit_rom=* (const identificateur *) &alias_identificateur_R__unit_rom;
+  const alias_ref_identificateur ref_R__unit_rom={-1,0,0,"_R_",0,0};
+  const define_alias_gen(alias_R__unit_rom,_IDNT,0,&ref_R__unit_rom);
+  const gen & R__unit_rom_IDNT_e = * (gen *) & alias_R__unit_rom;
+
+  static const alias_identificateur alias_identificateur_epsilon0__unit_rom={0,0,"_epsilon0_",0,0};
+  const identificateur & _IDNT_id_epsilon0__unit_rom=* (const identificateur *) &alias_identificateur_epsilon0__unit_rom;
+  const alias_ref_identificateur ref_epsilon0__unit_rom={-1,0,0,"_epsilon0_",0,0};
+  const define_alias_gen(alias_epsilon0__unit_rom,_IDNT,0,&ref_epsilon0__unit_rom);
+  const gen & epsilon0__unit_rom_IDNT_e = * (gen *) & alias_epsilon0__unit_rom;
+
+  static const alias_identificateur alias_identificateur_a0__unit_rom={0,0,"_a0_",0,0};
+  const identificateur & _IDNT_id_a0__unit_rom=* (const identificateur *) &alias_identificateur_a0__unit_rom;
+  const alias_ref_identificateur ref_a0__unit_rom={-1,0,0,"_a0_",0,0};
+  const define_alias_gen(alias_a0__unit_rom,_IDNT,0,&ref_a0__unit_rom);
+  const gen & a0__unit_rom_IDNT_e = * (gen *) & alias_a0__unit_rom;
+
+  static const alias_identificateur alias_identificateur_RSun__unit_rom={0,0,"_RSun_",0,0};
+  const identificateur & _IDNT_id_RSun__unit_rom=* (const identificateur *) &alias_identificateur_RSun__unit_rom;
+  const alias_ref_identificateur ref_RSun__unit_rom={-1,0,0,"_RSun_",0,0};
+  const define_alias_gen(alias_RSun__unit_rom,_IDNT,0,&ref_RSun__unit_rom);
+  const gen & RSun__unit_rom_IDNT_e = * (gen *) & alias_RSun__unit_rom;
+
+  static const alias_identificateur alias_identificateur_REarth__unit_rom={0,0,"_REarth_",0,0};
+  const identificateur & _IDNT_id_REarth__unit_rom=* (const identificateur *) &alias_identificateur_REarth__unit_rom;
+  const alias_ref_identificateur ref_REarth__unit_rom={-1,0,0,"_REarth_",0,0};
+  const define_alias_gen(alias_REarth__unit_rom,_IDNT,0,&ref_REarth__unit_rom);
+  const gen & REarth__unit_rom_IDNT_e = * (gen *) & alias_REarth__unit_rom;
+
+  static const alias_identificateur alias_identificateur_Fdy_unit_rom={0,0,"_Fdy",0,0};
+  const identificateur & _IDNT_id_Fdy_unit_rom=* (const identificateur *) &alias_identificateur_Fdy_unit_rom;
+  const alias_ref_identificateur ref_Fdy_unit_rom={-1,0,0,"_Fdy",0,0};
+  const define_alias_gen(alias_Fdy_unit_rom,_IDNT,0,&ref_Fdy_unit_rom);
+  const gen & Fdy_unit_rom_IDNT_e = * (gen *) & alias_Fdy_unit_rom;
+
+  static const alias_identificateur alias_identificateur_F_unit_rom={0,0,"_F",0,0};
+  const identificateur & _IDNT_id_F_unit_rom=* (const identificateur *) &alias_identificateur_F_unit_rom;
+  const alias_ref_identificateur ref_F_unit_rom={-1,0,0,"_F",0,0};
+  const define_alias_gen(alias_F_unit_rom,_IDNT,0,&ref_F_unit_rom);
+  const gen & F_unit_rom_IDNT_e = * (gen *) & alias_F_unit_rom;
+
+  static const alias_identificateur alias_identificateur_FF_unit_rom={0,0,"_FF",0,0};
+  const identificateur & _IDNT_id_FF_unit_rom=* (const identificateur *) &alias_identificateur_FF_unit_rom;
+  const alias_ref_identificateur ref_FF_unit_rom={-1,0,0,"_FF",0,0};
+  const define_alias_gen(alias_FF_unit_rom,_IDNT,0,&ref_FF_unit_rom);
+  const gen & FF_unit_rom_IDNT_e = * (gen *) & alias_FF_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Faraday__unit_rom={0,0,"_Faraday_",0,0};
+  const identificateur & _IDNT_id_Faraday__unit_rom=* (const identificateur *) &alias_identificateur_Faraday__unit_rom;
+  const alias_ref_identificateur ref_Faraday__unit_rom={-1,0,0,"_Faraday_",0,0};
+  const define_alias_gen(alias_Faraday__unit_rom,_IDNT,0,&ref_Faraday__unit_rom);
+  const gen & Faraday__unit_rom_IDNT_e = * (gen *) & alias_Faraday__unit_rom;
+
+  static const alias_identificateur alias_identificateur_G__unit_rom={0,0,"_G_",0,0};
+  const identificateur & _IDNT_id_G__unit_rom=* (const identificateur *) &alias_identificateur_G__unit_rom;
+  const alias_ref_identificateur ref_G__unit_rom={-1,0,0,"_G_",0,0};
+  const define_alias_gen(alias_G__unit_rom,_IDNT,0,&ref_G__unit_rom);
+  const gen & G__unit_rom_IDNT_e = * (gen *) & alias_G__unit_rom;
+
+  static const alias_identificateur alias_identificateur_Gal_unit_rom={0,0,"_Gal",0,0};
+  const identificateur & _IDNT_id_Gal_unit_rom=* (const identificateur *) &alias_identificateur_Gal_unit_rom;
+  const alias_ref_identificateur ref_Gal_unit_rom={-1,0,0,"_Gal",0,0};
+  const define_alias_gen(alias_Gal_unit_rom,_IDNT,0,&ref_Gal_unit_rom);
+  const gen & Gal_unit_rom_IDNT_e = * (gen *) & alias_Gal_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Gy_unit_rom={0,0,"_Gy",0,0};
+  const identificateur & _IDNT_id_Gy_unit_rom=* (const identificateur *) &alias_identificateur_Gy_unit_rom;
+  const alias_ref_identificateur ref_Gy_unit_rom={-1,0,0,"_Gy",0,0};
+  const define_alias_gen(alias_Gy_unit_rom,_IDNT,0,&ref_Gy_unit_rom);
+  const gen & Gy_unit_rom_IDNT_e = * (gen *) & alias_Gy_unit_rom;
+
+  static const alias_identificateur alias_identificateur_H_unit_rom={0,0,"_H",0,0};
+  const identificateur & _IDNT_id_H_unit_rom=* (const identificateur *) &alias_identificateur_H_unit_rom;
+  const alias_ref_identificateur ref_H_unit_rom={-1,0,0,"_H",0,0};
+  const define_alias_gen(alias_H_unit_rom,_IDNT,0,&ref_H_unit_rom);
+  const gen & H_unit_rom_IDNT_e = * (gen *) & alias_H_unit_rom;
+
+  static const alias_identificateur alias_identificateur_HFCC_unit_rom={0,0,"_HFCC",0,0};
+  const identificateur & _IDNT_id_HFCC_unit_rom=* (const identificateur *) &alias_identificateur_HFCC_unit_rom;
+  const alias_ref_identificateur ref_HFCC_unit_rom={-1,0,0,"_HFCC",0,0};
+  const define_alias_gen(alias_HFCC_unit_rom,_IDNT,0,&ref_HFCC_unit_rom);
+  const gen & HFCC_unit_rom_IDNT_e = * (gen *) & alias_HFCC_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Hz_unit_rom={0,0,"_Hz",0,0};
+  const identificateur & _IDNT_id_Hz_unit_rom=* (const identificateur *) &alias_identificateur_Hz_unit_rom;
+  const alias_ref_identificateur ref_Hz_unit_rom={-1,0,0,"_Hz",0,0};
+  const define_alias_gen(alias_Hz_unit_rom,_IDNT,0,&ref_Hz_unit_rom);
+  const gen & Hz_unit_rom_IDNT_e = * (gen *) & alias_Hz_unit_rom;
+
+  static const alias_identificateur alias_identificateur_IO__unit_rom={0,0,"_IO_",0,0};
+  const identificateur & _IDNT_id_IO__unit_rom=* (const identificateur *) &alias_identificateur_IO__unit_rom;
+  const alias_ref_identificateur ref_IO__unit_rom={-1,0,0,"_IO_",0,0};
+  const define_alias_gen(alias_IO__unit_rom,_IDNT,0,&ref_IO__unit_rom);
+  const gen & IO__unit_rom_IDNT_e = * (gen *) & alias_IO__unit_rom;
+
+  static const alias_identificateur alias_identificateur_J_unit_rom={0,0,"_J",0,0};
+  const identificateur & _IDNT_id_J_unit_rom=* (const identificateur *) &alias_identificateur_J_unit_rom;
+  const alias_ref_identificateur ref_J_unit_rom={-1,0,0,"_J",0,0};
+  const define_alias_gen(alias_J_unit_rom,_IDNT,0,&ref_J_unit_rom);
+  const gen & J_unit_rom_IDNT_e = * (gen *) & alias_J_unit_rom;
+
+  static const alias_identificateur alias_identificateur_K_unit_rom={0,0,"_K",0,0};
+  const identificateur & _IDNT_id_K_unit_rom=* (const identificateur *) &alias_identificateur_K_unit_rom;
+  const alias_ref_identificateur ref_K_unit_rom={-1,0,0,"_K",0,0};
+  const define_alias_gen(alias_K_unit_rom,_IDNT,0,&ref_K_unit_rom);
+  const gen & K_unit_rom_IDNT_e = * (gen *) & alias_K_unit_rom;
+
+  static const alias_identificateur alias_identificateur_L_unit_rom={0,0,"_L",0,0};
+  const identificateur & _IDNT_id_L_unit_rom=* (const identificateur *) &alias_identificateur_L_unit_rom;
+  const alias_ref_identificateur ref_L_unit_rom={-1,0,0,"_L",0,0};
+  const define_alias_gen(alias_L_unit_rom,_IDNT,0,&ref_L_unit_rom);
+  const gen & L_unit_rom_IDNT_e = * (gen *) & alias_L_unit_rom;
+
+  static const alias_identificateur alias_identificateur_N_unit_rom={0,0,"_N",0,0};
+  const identificateur & _IDNT_id_N_unit_rom=* (const identificateur *) &alias_identificateur_N_unit_rom;
+  const alias_ref_identificateur ref_N_unit_rom={-1,0,0,"_N",0,0};
+  const define_alias_gen(alias_N_unit_rom,_IDNT,0,&ref_N_unit_rom);
+  const gen & N_unit_rom_IDNT_e = * (gen *) & alias_N_unit_rom;
+
+  static const alias_identificateur alias_identificateur_NA__unit_rom={0,0,"_NA_",0,0};
+  const identificateur & _IDNT_id_NA__unit_rom=* (const identificateur *) &alias_identificateur_NA__unit_rom;
+  const alias_ref_identificateur ref_NA__unit_rom={-1,0,0,"_NA_",0,0};
+  const define_alias_gen(alias_NA__unit_rom,_IDNT,0,&ref_NA__unit_rom);
+  const gen & NA__unit_rom_IDNT_e = * (gen *) & alias_NA__unit_rom;
+
+  static const alias_identificateur alias_identificateur_Ohm_unit_rom={0,0,"_Ohm",0,0};
+  const identificateur & _IDNT_id_Ohm_unit_rom=* (const identificateur *) &alias_identificateur_Ohm_unit_rom;
+  const alias_ref_identificateur ref_Ohm_unit_rom={-1,0,0,"_Ohm",0,0};
+  const define_alias_gen(alias_Ohm_unit_rom,_IDNT,0,&ref_Ohm_unit_rom);
+  const gen & Ohm_unit_rom_IDNT_e = * (gen *) & alias_Ohm_unit_rom;
+
+  static const alias_identificateur alias_identificateur_P_unit_rom={0,0,"_P",0,0};
+  const identificateur & _IDNT_id_P_unit_rom=* (const identificateur *) &alias_identificateur_P_unit_rom;
+  const alias_ref_identificateur ref_P_unit_rom={-1,0,0,"_P",0,0};
+  const define_alias_gen(alias_P_unit_rom,_IDNT,0,&ref_P_unit_rom);
+  const gen & P_unit_rom_IDNT_e = * (gen *) & alias_P_unit_rom;
+
+  static const alias_identificateur alias_identificateur_PSun__unit_rom={0,0,"_PSun_",0,0};
+  const identificateur & _IDNT_id_PSun__unit_rom=* (const identificateur *) &alias_identificateur_PSun__unit_rom;
+  const alias_ref_identificateur ref_PSun__unit_rom={-1,0,0,"_PSun_",0,0};
+  const define_alias_gen(alias_PSun__unit_rom,_IDNT,0,&ref_PSun__unit_rom);
+  const gen & PSun__unit_rom_IDNT_e = * (gen *) & alias_PSun__unit_rom;
+
+  static const alias_identificateur alias_identificateur_Pa_unit_rom={0,0,"_Pa",0,0};
+  const identificateur & _IDNT_id_Pa_unit_rom=* (const identificateur *) &alias_identificateur_Pa_unit_rom;
+  const alias_ref_identificateur ref_Pa_unit_rom={-1,0,0,"_Pa",0,0};
+  const define_alias_gen(alias_Pa_unit_rom,_IDNT,0,&ref_Pa_unit_rom);
+  const gen & Pa_unit_rom_IDNT_e = * (gen *) & alias_Pa_unit_rom;
+
+  static const alias_identificateur alias_identificateur_R_unit_rom={0,0,"_R",0,0};
+  const identificateur & _IDNT_id_R_unit_rom=* (const identificateur *) &alias_identificateur_R_unit_rom;
+  const alias_ref_identificateur ref_R_unit_rom={-1,0,0,"_R",0,0};
+  const define_alias_gen(alias_R_unit_rom,_IDNT,0,&ref_R_unit_rom);
+  const gen & R_unit_rom_IDNT_e = * (gen *) & alias_R_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Rankine_unit_rom={0,0,"_Rankine",0,0};
+  const identificateur & _IDNT_id_Rankine_unit_rom=* (const identificateur *) &alias_identificateur_Rankine_unit_rom;
+  const alias_ref_identificateur ref_Rankine_unit_rom={-1,0,0,"_Rankine",0,0};
+  const define_alias_gen(alias_Rankine_unit_rom,_IDNT,0,&ref_Rankine_unit_rom);
+  const gen & Rankine_unit_rom_IDNT_e = * (gen *) & alias_Rankine_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Rinfinity__unit_rom={0,0,"_Rinfinity_",0,0};
+  const identificateur & _IDNT_id_Rinfinity__unit_rom=* (const identificateur *) &alias_identificateur_Rinfinity__unit_rom;
+  const alias_ref_identificateur ref_Rinfinity__unit_rom={-1,0,0,"_Rinfinity_",0,0};
+  const define_alias_gen(alias_Rinfinity__unit_rom,_IDNT,0,&ref_Rinfinity__unit_rom);
+  const gen & Rinfinity__unit_rom_IDNT_e = * (gen *) & alias_Rinfinity__unit_rom;
+
+  static const alias_identificateur alias_identificateur_S_unit_rom={0,0,"_S",0,0};
+  const identificateur & _IDNT_id_S_unit_rom=* (const identificateur *) &alias_identificateur_S_unit_rom;
+  const alias_ref_identificateur ref_S_unit_rom={-1,0,0,"_S",0,0};
+  const define_alias_gen(alias_S_unit_rom,_IDNT,0,&ref_S_unit_rom);
+  const gen & S_unit_rom_IDNT_e = * (gen *) & alias_S_unit_rom;
+
+  static const alias_identificateur alias_identificateur_St_unit_rom={0,0,"_St",0,0};
+  const identificateur & _IDNT_id_St_unit_rom=* (const identificateur *) &alias_identificateur_St_unit_rom;
+  const alias_ref_identificateur ref_St_unit_rom={-1,0,0,"_St",0,0};
+  const define_alias_gen(alias_St_unit_rom,_IDNT,0,&ref_St_unit_rom);
+  const gen & St_unit_rom_IDNT_e = * (gen *) & alias_St_unit_rom;
+
+  static const alias_identificateur alias_identificateur_StdP__unit_rom={0,0,"_StdP_",0,0};
+  const identificateur & _IDNT_id_StdP__unit_rom=* (const identificateur *) &alias_identificateur_StdP__unit_rom;
+  const alias_ref_identificateur ref_StdP__unit_rom={-1,0,0,"_StdP_",0,0};
+  const define_alias_gen(alias_StdP__unit_rom,_IDNT,0,&ref_StdP__unit_rom);
+  const gen & StdP__unit_rom_IDNT_e = * (gen *) & alias_StdP__unit_rom;
+
+  static const alias_identificateur alias_identificateur_StdT__unit_rom={0,0,"_StdT_",0,0};
+  const identificateur & _IDNT_id_StdT__unit_rom=* (const identificateur *) &alias_identificateur_StdT__unit_rom;
+  const alias_ref_identificateur ref_StdT__unit_rom={-1,0,0,"_StdT_",0,0};
+  const define_alias_gen(alias_StdT__unit_rom,_IDNT,0,&ref_StdT__unit_rom);
+  const gen & StdT__unit_rom_IDNT_e = * (gen *) & alias_StdT__unit_rom;
+
+  static const alias_identificateur alias_identificateur_Sv_unit_rom={0,0,"_Sv",0,0};
+  const identificateur & _IDNT_id_Sv_unit_rom=* (const identificateur *) &alias_identificateur_Sv_unit_rom;
+  const alias_ref_identificateur ref_Sv_unit_rom={-1,0,0,"_Sv",0,0};
+  const define_alias_gen(alias_Sv_unit_rom,_IDNT,0,&ref_Sv_unit_rom);
+  const gen & Sv_unit_rom_IDNT_e = * (gen *) & alias_Sv_unit_rom;
+
+  static const alias_identificateur alias_identificateur_T_unit_rom={0,0,"_T",0,0};
+  const identificateur & _IDNT_id_T_unit_rom=* (const identificateur *) &alias_identificateur_T_unit_rom;
+  const alias_ref_identificateur ref_T_unit_rom={-1,0,0,"_T",0,0};
+  const define_alias_gen(alias_T_unit_rom,_IDNT,0,&ref_T_unit_rom);
+  const gen & T_unit_rom_IDNT_e = * (gen *) & alias_T_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Torr_unit_rom={0,0,"_Torr",0,0};
+  const identificateur & _IDNT_id_Torr_unit_rom=* (const identificateur *) &alias_identificateur_Torr_unit_rom;
+  const alias_ref_identificateur ref_Torr_unit_rom={-1,0,0,"_Torr",0,0};
+  const define_alias_gen(alias_Torr_unit_rom,_IDNT,0,&ref_Torr_unit_rom);
+  const gen & Torr_unit_rom_IDNT_e = * (gen *) & alias_Torr_unit_rom;
+
+  static const alias_identificateur alias_identificateur_V_unit_rom={0,0,"_V",0,0};
+  const identificateur & _IDNT_id_V_unit_rom=* (const identificateur *) &alias_identificateur_V_unit_rom;
+  const alias_ref_identificateur ref_V_unit_rom={-1,0,0,"_V",0,0};
+  const define_alias_gen(alias_V_unit_rom,_IDNT,0,&ref_V_unit_rom);
+  const gen & V_unit_rom_IDNT_e = * (gen *) & alias_V_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Vm__unit_rom={0,0,"_Vm_",0,0};
+  const identificateur & _IDNT_id_Vm__unit_rom=* (const identificateur *) &alias_identificateur_Vm__unit_rom;
+  const alias_ref_identificateur ref_Vm__unit_rom={-1,0,0,"_Vm_",0,0};
+  const define_alias_gen(alias_Vm__unit_rom,_IDNT,0,&ref_Vm__unit_rom);
+  const gen & Vm__unit_rom_IDNT_e = * (gen *) & alias_Vm__unit_rom;
+
+  static const alias_identificateur alias_identificateur_W_unit_rom={0,0,"_W",0,0};
+  const identificateur & _IDNT_id_W_unit_rom=* (const identificateur *) &alias_identificateur_W_unit_rom;
+  const alias_ref_identificateur ref_W_unit_rom={-1,0,0,"_W",0,0};
+  const define_alias_gen(alias_W_unit_rom,_IDNT,0,&ref_W_unit_rom);
+  const gen & W_unit_rom_IDNT_e = * (gen *) & alias_W_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Wb_unit_rom={0,0,"_Wb",0,0};
+  const identificateur & _IDNT_id_Wb_unit_rom=* (const identificateur *) &alias_identificateur_Wb_unit_rom;
+  const alias_ref_identificateur ref_Wb_unit_rom={-1,0,0,"_Wb",0,0};
+  const define_alias_gen(alias_Wb_unit_rom,_IDNT,0,&ref_Wb_unit_rom);
+  const gen & Wb_unit_rom_IDNT_e = * (gen *) & alias_Wb_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Wh_unit_rom={0,0,"_Wh",0,0};
+  const identificateur & _IDNT_id_Wh_unit_rom=* (const identificateur *) &alias_identificateur_Wh_unit_rom;
+  const alias_ref_identificateur ref_Wh_unit_rom={-1,0,0,"_Wh",0,0};
+  const define_alias_gen(alias_Wh_unit_rom,_IDNT,0,&ref_Wh_unit_rom);
+  const gen & Wh_unit_rom_IDNT_e = * (gen *) & alias_Wh_unit_rom;
+
+  static const alias_identificateur alias_identificateur_a_unit_rom={0,0,"_a",0,0};
+  const identificateur & _IDNT_id_a_unit_rom=* (const identificateur *) &alias_identificateur_a_unit_rom;
+  const alias_ref_identificateur ref_a_unit_rom={-1,0,0,"_a",0,0};
+  const define_alias_gen(alias_a_unit_rom,_IDNT,0,&ref_a_unit_rom);
+  const gen & a_unit_rom_IDNT_e = * (gen *) & alias_a_unit_rom;
+
+  static const alias_identificateur alias_identificateur_acre_unit_rom={0,0,"_acre",0,0};
+  const identificateur & _IDNT_id_acre_unit_rom=* (const identificateur *) &alias_identificateur_acre_unit_rom;
+  const alias_ref_identificateur ref_acre_unit_rom={-1,0,0,"_acre",0,0};
+  const define_alias_gen(alias_acre_unit_rom,_IDNT,0,&ref_acre_unit_rom);
+  const gen & acre_unit_rom_IDNT_e = * (gen *) & alias_acre_unit_rom;
+
+  static const alias_identificateur alias_identificateur_alpha__unit_rom={0,0,"_alpha_",0,0};
+  const identificateur & _IDNT_id_alpha__unit_rom=* (const identificateur *) &alias_identificateur_alpha__unit_rom;
+  const alias_ref_identificateur ref_alpha__unit_rom={-1,0,0,"_alpha_",0,0};
+  const define_alias_gen(alias_alpha__unit_rom,_IDNT,0,&ref_alpha__unit_rom);
+  const gen & alpha__unit_rom_IDNT_e = * (gen *) & alias_alpha__unit_rom;
+
+  static const alias_identificateur alias_identificateur_arcmin_unit_rom={0,0,"_arcmin",0,0};
+  const identificateur & _IDNT_id_arcmin_unit_rom=* (const identificateur *) &alias_identificateur_arcmin_unit_rom;
+  const alias_ref_identificateur ref_arcmin_unit_rom={-1,0,0,"_arcmin",0,0};
+  const define_alias_gen(alias_arcmin_unit_rom,_IDNT,0,&ref_arcmin_unit_rom);
+  const gen & arcmin_unit_rom_IDNT_e = * (gen *) & alias_arcmin_unit_rom;
+
+  static const alias_identificateur alias_identificateur_arcs_unit_rom={0,0,"_arcs",0,0};
+  const identificateur & _IDNT_id_arcs_unit_rom=* (const identificateur *) &alias_identificateur_arcs_unit_rom;
+  const alias_ref_identificateur ref_arcs_unit_rom={-1,0,0,"_arcs",0,0};
+  const define_alias_gen(alias_arcs_unit_rom,_IDNT,0,&ref_arcs_unit_rom);
+  const gen & arcs_unit_rom_IDNT_e = * (gen *) & alias_arcs_unit_rom;
+
+  static const alias_identificateur alias_identificateur_atm_unit_rom={0,0,"_atm",0,0};
+  const identificateur & _IDNT_id_atm_unit_rom=* (const identificateur *) &alias_identificateur_atm_unit_rom;
+  const alias_ref_identificateur ref_atm_unit_rom={-1,0,0,"_atm",0,0};
+  const define_alias_gen(alias_atm_unit_rom,_IDNT,0,&ref_atm_unit_rom);
+  const gen & atm_unit_rom_IDNT_e = * (gen *) & alias_atm_unit_rom;
+
+  static const alias_identificateur alias_identificateur_au_unit_rom={0,0,"_au",0,0};
+  const identificateur & _IDNT_id_au_unit_rom=* (const identificateur *) &alias_identificateur_au_unit_rom;
+  const alias_ref_identificateur ref_au_unit_rom={-1,0,0,"_au",0,0};
+  const define_alias_gen(alias_au_unit_rom,_IDNT,0,&ref_au_unit_rom);
+  const gen & au_unit_rom_IDNT_e = * (gen *) & alias_au_unit_rom;
+
+  static const alias_identificateur alias_identificateur_bar_unit_rom={0,0,"_bar",0,0};
+  const identificateur & _IDNT_id_bar_unit_rom=* (const identificateur *) &alias_identificateur_bar_unit_rom;
+  const alias_ref_identificateur ref_bar_unit_rom={-1,0,0,"_bar",0,0};
+  const define_alias_gen(alias_bar_unit_rom,_IDNT,0,&ref_bar_unit_rom);
+  const gen & bar_unit_rom_IDNT_e = * (gen *) & alias_bar_unit_rom;
+
+  static const alias_identificateur alias_identificateur_b_unit_rom={0,0,"_b",0,0};
+  const identificateur & _IDNT_id_b_unit_rom=* (const identificateur *) &alias_identificateur_b_unit_rom;
+  const alias_ref_identificateur ref_b_unit_rom={-1,0,0,"_b",0,0};
+  const define_alias_gen(alias_b_unit_rom,_IDNT,0,&ref_b_unit_rom);
+  const gen & b_unit_rom_IDNT_e = * (gen *) & alias_b_unit_rom;
+
+  static const alias_identificateur alias_identificateur_bbl_unit_rom={0,0,"_bbl",0,0};
+  const identificateur & _IDNT_id_bbl_unit_rom=* (const identificateur *) &alias_identificateur_bbl_unit_rom;
+  const alias_ref_identificateur ref_bbl_unit_rom={-1,0,0,"_bbl",0,0};
+  const define_alias_gen(alias_bbl_unit_rom,_IDNT,0,&ref_bbl_unit_rom);
+  const gen & bbl_unit_rom_IDNT_e = * (gen *) & alias_bbl_unit_rom;
+
+  static const alias_identificateur alias_identificateur_bblep_unit_rom={0,0,"_bblep",0,0};
+  const identificateur & _IDNT_id_bblep_unit_rom=* (const identificateur *) &alias_identificateur_bblep_unit_rom;
+  const alias_ref_identificateur ref_bblep_unit_rom={-1,0,0,"_bblep",0,0};
+  const define_alias_gen(alias_bblep_unit_rom,_IDNT,0,&ref_bblep_unit_rom);
+  const gen & bblep_unit_rom_IDNT_e = * (gen *) & alias_bblep_unit_rom;
+
+  static const alias_identificateur alias_identificateur_boe_unit_rom={0,0,"_boe",0,0};
+  const identificateur & _IDNT_id_boe_unit_rom=* (const identificateur *) &alias_identificateur_boe_unit_rom;
+  const alias_ref_identificateur ref_boe_unit_rom={-1,0,0,"_boe",0,0};
+  const define_alias_gen(alias_boe_unit_rom,_IDNT,0,&ref_boe_unit_rom);
+  const gen & boe_unit_rom_IDNT_e = * (gen *) & alias_boe_unit_rom;
+
+  static const alias_identificateur alias_identificateur_bu_unit_rom={0,0,"_bu",0,0};
+  const identificateur & _IDNT_id_bu_unit_rom=* (const identificateur *) &alias_identificateur_bu_unit_rom;
+  const alias_ref_identificateur ref_bu_unit_rom={-1,0,0,"_bu",0,0};
+  const define_alias_gen(alias_bu_unit_rom,_IDNT,0,&ref_bu_unit_rom);
+  const gen & bu_unit_rom_IDNT_e = * (gen *) & alias_bu_unit_rom;
+
+  static const alias_identificateur alias_identificateur_buUS_unit_rom={0,0,"_buUS",0,0};
+  const identificateur & _IDNT_id_buUS_unit_rom=* (const identificateur *) &alias_identificateur_buUS_unit_rom;
+  const alias_ref_identificateur ref_buUS_unit_rom={-1,0,0,"_buUS",0,0};
+  const define_alias_gen(alias_buUS_unit_rom,_IDNT,0,&ref_buUS_unit_rom);
+  const gen & buUS_unit_rom_IDNT_e = * (gen *) & alias_buUS_unit_rom;
+
+  static const alias_identificateur alias_identificateur_c3__unit_rom={0,0,"_c3_",0,0};
+  const identificateur & _IDNT_id_c3__unit_rom=* (const identificateur *) &alias_identificateur_c3__unit_rom;
+  const alias_ref_identificateur ref_c3__unit_rom={-1,0,0,"_c3_",0,0};
+  const define_alias_gen(alias_c3__unit_rom,_IDNT,0,&ref_c3__unit_rom);
+  const gen & c3__unit_rom_IDNT_e = * (gen *) & alias_c3__unit_rom;
+
+  static const alias_identificateur alias_identificateur_c__unit_rom={0,0,"_c_",0,0};
+  const identificateur & _IDNT_id_c__unit_rom=* (const identificateur *) &alias_identificateur_c__unit_rom;
+  const alias_ref_identificateur ref_c__unit_rom={-1,0,0,"_c_",0,0};
+  const define_alias_gen(alias_c__unit_rom,_IDNT,0,&ref_c__unit_rom);
+  const gen & c__unit_rom_IDNT_e = * (gen *) & alias_c__unit_rom;
+
+  static const alias_identificateur alias_identificateur_cal_unit_rom={0,0,"_cal",0,0};
+  const identificateur & _IDNT_id_cal_unit_rom=* (const identificateur *) &alias_identificateur_cal_unit_rom;
+  const alias_ref_identificateur ref_cal_unit_rom={-1,0,0,"_cal",0,0};
+  const define_alias_gen(alias_cal_unit_rom,_IDNT,0,&ref_cal_unit_rom);
+  const gen & cal_unit_rom_IDNT_e = * (gen *) & alias_cal_unit_rom;
+
+  static const alias_identificateur alias_identificateur_cd_unit_rom={0,0,"_cd",0,0};
+  const identificateur & _IDNT_id_cd_unit_rom=* (const identificateur *) &alias_identificateur_cd_unit_rom;
+  const alias_ref_identificateur ref_cd_unit_rom={-1,0,0,"_cd",0,0};
+  const define_alias_gen(alias_cd_unit_rom,_IDNT,0,&ref_cd_unit_rom);
+  const gen & cd_unit_rom_IDNT_e = * (gen *) & alias_cd_unit_rom;
+
+  static const alias_identificateur alias_identificateur_cf_unit_rom={0,0,"_cf",0,0};
+  const identificateur & _IDNT_id_cf_unit_rom=* (const identificateur *) &alias_identificateur_cf_unit_rom;
+  const alias_ref_identificateur ref_cf_unit_rom={-1,0,0,"_cf",0,0};
+  const define_alias_gen(alias_cf_unit_rom,_IDNT,0,&ref_cf_unit_rom);
+  const gen & cf_unit_rom_IDNT_e = * (gen *) & alias_cf_unit_rom;
+
+  static const alias_identificateur alias_identificateur_chain_unit_rom={0,0,"_chain",0,0};
+  const identificateur & _IDNT_id_chain_unit_rom=* (const identificateur *) &alias_identificateur_chain_unit_rom;
+  const alias_ref_identificateur ref_chain_unit_rom={-1,0,0,"_chain",0,0};
+  const define_alias_gen(alias_chain_unit_rom,_IDNT,0,&ref_chain_unit_rom);
+  const gen & chain_unit_rom_IDNT_e = * (gen *) & alias_chain_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ct_unit_rom={0,0,"_ct",0,0};
+  const identificateur & _IDNT_id_ct_unit_rom=* (const identificateur *) &alias_identificateur_ct_unit_rom;
+  const alias_ref_identificateur ref_ct_unit_rom={-1,0,0,"_ct",0,0};
+  const define_alias_gen(alias_ct_unit_rom,_IDNT,0,&ref_ct_unit_rom);
+  const gen & ct_unit_rom_IDNT_e = * (gen *) & alias_ct_unit_rom;
+
+  static const alias_identificateur alias_identificateur_cu_unit_rom={0,0,"_cu",0,0};
+  const identificateur & _IDNT_id_cu_unit_rom=* (const identificateur *) &alias_identificateur_cu_unit_rom;
+  const alias_ref_identificateur ref_cu_unit_rom={-1,0,0,"_cu",0,0};
+  const define_alias_gen(alias_cu_unit_rom,_IDNT,0,&ref_cu_unit_rom);
+  const gen & cu_unit_rom_IDNT_e = * (gen *) & alias_cu_unit_rom;
+
+  static const alias_identificateur alias_identificateur_d_unit_rom={0,0,"_d",0,0};
+  const identificateur & _IDNT_id_d_unit_rom=* (const identificateur *) &alias_identificateur_d_unit_rom;
+  const alias_ref_identificateur ref_d_unit_rom={-1,0,0,"_d",0,0};
+  const define_alias_gen(alias_d_unit_rom,_IDNT,0,&ref_d_unit_rom);
+  const gen & d_unit_rom_IDNT_e = * (gen *) & alias_d_unit_rom;
+
+  static const alias_identificateur alias_identificateur_dB_unit_rom={0,0,"_dB",0,0};
+  const identificateur & _IDNT_id_dB_unit_rom=* (const identificateur *) &alias_identificateur_dB_unit_rom;
+  const alias_ref_identificateur ref_dB_unit_rom={-1,0,0,"_dB",0,0};
+  const define_alias_gen(alias_dB_unit_rom,_IDNT,0,&ref_dB_unit_rom);
+  const gen & dB_unit_rom_IDNT_e = * (gen *) & alias_dB_unit_rom;
+
+  static const alias_identificateur alias_identificateur_deg_unit_rom={0,0,"_deg",0,0};
+  const identificateur & _IDNT_id_deg_unit_rom=* (const identificateur *) &alias_identificateur_deg_unit_rom;
+  const alias_ref_identificateur ref_deg_unit_rom={-1,0,0,"_deg",0,0};
+  const define_alias_gen(alias_deg_unit_rom,_IDNT,0,&ref_deg_unit_rom);
+  const gen & deg_unit_rom_IDNT_e = * (gen *) & alias_deg_unit_rom;
+
+  static const alias_identificateur alias_identificateur_dyn_unit_rom={0,0,"_dyn",0,0};
+  const identificateur & _IDNT_id_dyn_unit_rom=* (const identificateur *) &alias_identificateur_dyn_unit_rom;
+  const alias_ref_identificateur ref_dyn_unit_rom={-1,0,0,"_dyn",0,0};
+  const define_alias_gen(alias_dyn_unit_rom,_IDNT,0,&ref_dyn_unit_rom);
+  const gen & dyn_unit_rom_IDNT_e = * (gen *) & alias_dyn_unit_rom;
+
+  static const alias_identificateur alias_identificateur_eV_unit_rom={0,0,"_eV",0,0};
+  const identificateur & _IDNT_id_eV_unit_rom=* (const identificateur *) &alias_identificateur_eV_unit_rom;
+  const alias_ref_identificateur ref_eV_unit_rom={-1,0,0,"_eV",0,0};
+  const define_alias_gen(alias_eV_unit_rom,_IDNT,0,&ref_eV_unit_rom);
+  const gen & eV_unit_rom_IDNT_e = * (gen *) & alias_eV_unit_rom;
+
+  static const alias_identificateur alias_identificateur_epsilon0q__unit_rom={0,0,"_epsilon0q_",0,0};
+  const identificateur & _IDNT_id_epsilon0q__unit_rom=* (const identificateur *) &alias_identificateur_epsilon0q__unit_rom;
+  const alias_ref_identificateur ref_epsilon0q__unit_rom={-1,0,0,"_epsilon0q_",0,0};
+  const define_alias_gen(alias_epsilon0q__unit_rom,_IDNT,0,&ref_epsilon0q__unit_rom);
+  const gen & epsilon0q__unit_rom_IDNT_e = * (gen *) & alias_epsilon0q__unit_rom;
+
+  static const alias_identificateur alias_identificateur_epsilonox__unit_rom={0,0,"_epsilonox",0,0};
+  const identificateur & _IDNT_id_epsilonox__unit_rom=* (const identificateur *) &alias_identificateur_epsilonox__unit_rom;
+  const alias_ref_identificateur ref_epsilonox__unit_rom={-1,0,0,"_epsilonox",0,0};
+  const define_alias_gen(alias_epsilonox__unit_rom,_IDNT,0,&ref_epsilonox__unit_rom);
+  const gen & epsilonox__unit_rom_IDNT_e = * (gen *) & alias_epsilonox__unit_rom;
+
+  static const alias_identificateur alias_identificateur_epsilonsi__unit_rom={0,0,"_epsilonsi_",0,0};
+  const identificateur & _IDNT_id_epsilonsi__unit_rom=* (const identificateur *) &alias_identificateur_epsilonsi__unit_rom;
+  const alias_ref_identificateur ref_epsilonsi__unit_rom={-1,0,0,"_epsilonsi_",0,0};
+  const define_alias_gen(alias_epsilonsi__unit_rom,_IDNT,0,&ref_epsilonsi__unit_rom);
+  const gen & epsilonsi__unit_rom_IDNT_e = * (gen *) & alias_epsilonsi__unit_rom;
+
+  static const alias_identificateur alias_identificateur_erg_unit_rom={0,0,"_erg",0,0};
+  const identificateur & _IDNT_id_erg_unit_rom=* (const identificateur *) &alias_identificateur_erg_unit_rom;
+  const alias_ref_identificateur ref_erg_unit_rom={-1,0,0,"_erg",0,0};
+  const define_alias_gen(alias_erg_unit_rom,_IDNT,0,&ref_erg_unit_rom);
+  const gen & erg_unit_rom_IDNT_e = * (gen *) & alias_erg_unit_rom;
+
+  static const alias_identificateur alias_identificateur_f0__unit_rom={0,0,"_f0_",0,0};
+  const identificateur & _IDNT_id_f0__unit_rom=* (const identificateur *) &alias_identificateur_f0__unit_rom;
+  const alias_ref_identificateur ref_f0__unit_rom={-1,0,0,"_f0_",0,0};
+  const define_alias_gen(alias_f0__unit_rom,_IDNT,0,&ref_f0__unit_rom);
+  const gen & f0__unit_rom_IDNT_e = * (gen *) & alias_f0__unit_rom;
+
+  static const alias_identificateur alias_identificateur_fath_unit_rom={0,0,"_fath",0,0};
+  const identificateur & _IDNT_id_fath_unit_rom=* (const identificateur *) &alias_identificateur_fath_unit_rom;
+  const alias_ref_identificateur ref_fath_unit_rom={-1,0,0,"_fath",0,0};
+  const define_alias_gen(alias_fath_unit_rom,_IDNT,0,&ref_fath_unit_rom);
+  const gen & fath_unit_rom_IDNT_e = * (gen *) & alias_fath_unit_rom;
+
+  static const alias_identificateur alias_identificateur_fbm_unit_rom={0,0,"_fbm",0,0};
+  const identificateur & _IDNT_id_fbm_unit_rom=* (const identificateur *) &alias_identificateur_fbm_unit_rom;
+  const alias_ref_identificateur ref_fbm_unit_rom={-1,0,0,"_fbm",0,0};
+  const define_alias_gen(alias_fbm_unit_rom,_IDNT,0,&ref_fbm_unit_rom);
+  const gen & fbm_unit_rom_IDNT_e = * (gen *) & alias_fbm_unit_rom;
+
+  static const alias_identificateur alias_identificateur_fc_unit_rom={0,0,"_fc",0,0};
+  const identificateur & _IDNT_id_fc_unit_rom=* (const identificateur *) &alias_identificateur_fc_unit_rom;
+  const alias_ref_identificateur ref_fc_unit_rom={-1,0,0,"_fc",0,0};
+  const define_alias_gen(alias_fc_unit_rom,_IDNT,0,&ref_fc_unit_rom);
+  const gen & fc_unit_rom_IDNT_e = * (gen *) & alias_fc_unit_rom;
+
+  static const alias_identificateur alias_identificateur_fermi_unit_rom={0,0,"_fermi",0,0};
+  const identificateur & _IDNT_id_fermi_unit_rom=* (const identificateur *) &alias_identificateur_fermi_unit_rom;
+  const alias_ref_identificateur ref_fermi_unit_rom={-1,0,0,"_fermi",0,0};
+  const define_alias_gen(alias_fermi_unit_rom,_IDNT,0,&ref_fermi_unit_rom);
+  const gen & fermi_unit_rom_IDNT_e = * (gen *) & alias_fermi_unit_rom;
+
+  static const alias_identificateur alias_identificateur_flam_unit_rom={0,0,"_flam",0,0};
+  const identificateur & _IDNT_id_flam_unit_rom=* (const identificateur *) &alias_identificateur_flam_unit_rom;
+  const alias_ref_identificateur ref_flam_unit_rom={-1,0,0,"_flam",0,0};
+  const define_alias_gen(alias_flam_unit_rom,_IDNT,0,&ref_flam_unit_rom);
+  const gen & flam_unit_rom_IDNT_e = * (gen *) & alias_flam_unit_rom;
+
+  static const alias_identificateur alias_identificateur_fm_unit_rom={0,0,"_fm",0,0};
+  const identificateur & _IDNT_id_fm_unit_rom=* (const identificateur *) &alias_identificateur_fm_unit_rom;
+  const alias_ref_identificateur ref_fm_unit_rom={-1,0,0,"_fm",0,0};
+  const define_alias_gen(alias_fm_unit_rom,_IDNT,0,&ref_fm_unit_rom);
+  const gen & fm_unit_rom_IDNT_e = * (gen *) & alias_fm_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ft_unit_rom={0,0,"_ft",0,0};
+  const identificateur & _IDNT_id_ft_unit_rom=* (const identificateur *) &alias_identificateur_ft_unit_rom;
+  const alias_ref_identificateur ref_ft_unit_rom={-1,0,0,"_ft",0,0};
+  const define_alias_gen(alias_ft_unit_rom,_IDNT,0,&ref_ft_unit_rom);
+  const gen & ft_unit_rom_IDNT_e = * (gen *) & alias_ft_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ftUS_unit_rom={0,0,"_ftUS",0,0};
+  const identificateur & _IDNT_id_ftUS_unit_rom=* (const identificateur *) &alias_identificateur_ftUS_unit_rom;
+  const alias_ref_identificateur ref_ftUS_unit_rom={-1,0,0,"_ftUS",0,0};
+  const define_alias_gen(alias_ftUS_unit_rom,_IDNT,0,&ref_ftUS_unit_rom);
+  const gen & ftUS_unit_rom_IDNT_e = * (gen *) & alias_ftUS_unit_rom;
+
+  static const alias_identificateur alias_identificateur_g_unit_rom={0,0,"_g",0,0};
+  const identificateur & _IDNT_id_g_unit_rom=* (const identificateur *) &alias_identificateur_g_unit_rom;
+  const alias_ref_identificateur ref_g_unit_rom={-1,0,0,"_g",0,0};
+  const define_alias_gen(alias_g_unit_rom,_IDNT,0,&ref_g_unit_rom);
+  const gen & g_unit_rom_IDNT_e = * (gen *) & alias_g_unit_rom;
+
+  static const alias_identificateur alias_identificateur_g__unit_rom={0,0,"_g_",0,0};
+  const identificateur & _IDNT_id_g__unit_rom=* (const identificateur *) &alias_identificateur_g__unit_rom;
+  const alias_ref_identificateur ref_g__unit_rom={-1,0,0,"_g_",0,0};
+  const define_alias_gen(alias_g__unit_rom,_IDNT,0,&ref_g__unit_rom);
+  const gen & g__unit_rom_IDNT_e = * (gen *) & alias_g__unit_rom;
+
+  static const alias_identificateur alias_identificateur_galC_unit_rom={0,0,"_galC",0,0};
+  const identificateur & _IDNT_id_galC_unit_rom=* (const identificateur *) &alias_identificateur_galC_unit_rom;
+  const alias_ref_identificateur ref_galC_unit_rom={-1,0,0,"_galC",0,0};
+  const define_alias_gen(alias_galC_unit_rom,_IDNT,0,&ref_galC_unit_rom);
+  const gen & galC_unit_rom_IDNT_e = * (gen *) & alias_galC_unit_rom;
+
+  static const alias_identificateur alias_identificateur_galUK_unit_rom={0,0,"_galUK",0,0};
+  const identificateur & _IDNT_id_galUK_unit_rom=* (const identificateur *) &alias_identificateur_galUK_unit_rom;
+  const alias_ref_identificateur ref_galUK_unit_rom={-1,0,0,"_galUK",0,0};
+  const define_alias_gen(alias_galUK_unit_rom,_IDNT,0,&ref_galUK_unit_rom);
+  const gen & galUK_unit_rom_IDNT_e = * (gen *) & alias_galUK_unit_rom;
+
+  static const alias_identificateur alias_identificateur_galUS_unit_rom={0,0,"_galUS",0,0};
+  const identificateur & _IDNT_id_galUS_unit_rom=* (const identificateur *) &alias_identificateur_galUS_unit_rom;
+  const alias_ref_identificateur ref_galUS_unit_rom={-1,0,0,"_galUS",0,0};
+  const define_alias_gen(alias_galUS_unit_rom,_IDNT,0,&ref_galUS_unit_rom);
+  const gen & galUS_unit_rom_IDNT_e = * (gen *) & alias_galUS_unit_rom;
+
+  static const alias_identificateur alias_identificateur_gf_unit_rom={0,0,"_gf",0,0};
+  const identificateur & _IDNT_id_gf_unit_rom=* (const identificateur *) &alias_identificateur_gf_unit_rom;
+  const alias_ref_identificateur ref_gf_unit_rom={-1,0,0,"_gf",0,0};
+  const define_alias_gen(alias_gf_unit_rom,_IDNT,0,&ref_gf_unit_rom);
+  const gen & gf_unit_rom_IDNT_e = * (gen *) & alias_gf_unit_rom;
+
+  static const alias_identificateur alias_identificateur_gmol_unit_rom={0,0,"_gmol",0,0};
+  const identificateur & _IDNT_id_gmol_unit_rom=* (const identificateur *) &alias_identificateur_gmol_unit_rom;
+  const alias_ref_identificateur ref_gmol_unit_rom={-1,0,0,"_gmol",0,0};
+  const define_alias_gen(alias_gmol_unit_rom,_IDNT,0,&ref_gmol_unit_rom);
+  const gen & gmol_unit_rom_IDNT_e = * (gen *) & alias_gmol_unit_rom;
+
+  static const alias_identificateur alias_identificateur_gon_unit_rom={0,0,"_gon",0,0};
+  const identificateur & _IDNT_id_gon_unit_rom=* (const identificateur *) &alias_identificateur_gon_unit_rom;
+  const alias_ref_identificateur ref_gon_unit_rom={-1,0,0,"_gon",0,0};
+  const define_alias_gen(alias_gon_unit_rom,_IDNT,0,&ref_gon_unit_rom);
+  const gen & gon_unit_rom_IDNT_e = * (gen *) & alias_gon_unit_rom;
+
+  static const alias_identificateur alias_identificateur_grad_unit_rom={0,0,"_grad",0,0};
+  const identificateur & _IDNT_id_grad_unit_rom=* (const identificateur *) &alias_identificateur_grad_unit_rom;
+  const alias_ref_identificateur ref_grad_unit_rom={-1,0,0,"_grad",0,0};
+  const define_alias_gen(alias_grad_unit_rom,_IDNT,0,&ref_grad_unit_rom);
+  const gen & grad_unit_rom_IDNT_e = * (gen *) & alias_grad_unit_rom;
+
+  static const alias_identificateur alias_identificateur_grain_unit_rom={0,0,"_grain",0,0};
+  const identificateur & _IDNT_id_grain_unit_rom=* (const identificateur *) &alias_identificateur_grain_unit_rom;
+  const alias_ref_identificateur ref_grain_unit_rom={-1,0,0,"_grain",0,0};
+  const define_alias_gen(alias_grain_unit_rom,_IDNT,0,&ref_grain_unit_rom);
+  const gen & grain_unit_rom_IDNT_e = * (gen *) & alias_grain_unit_rom;
+
+  static const alias_identificateur alias_identificateur_h_unit_rom={0,0,"_h",0,0};
+  const identificateur & _IDNT_id_h_unit_rom=* (const identificateur *) &alias_identificateur_h_unit_rom;
+  const alias_ref_identificateur ref_h_unit_rom={-1,0,0,"_h",0,0};
+  const define_alias_gen(alias_h_unit_rom,_IDNT,0,&ref_h_unit_rom);
+  const gen & h_unit_rom_IDNT_e = * (gen *) & alias_h_unit_rom;
+
+  static const alias_identificateur alias_identificateur_h__unit_rom={0,0,"_h_",0,0};
+  const identificateur & _IDNT_id_h__unit_rom=* (const identificateur *) &alias_identificateur_h__unit_rom;
+  const alias_ref_identificateur ref_h__unit_rom={-1,0,0,"_h_",0,0};
+  const define_alias_gen(alias_h__unit_rom,_IDNT,0,&ref_h__unit_rom);
+  const gen & h__unit_rom_IDNT_e = * (gen *) & alias_h__unit_rom;
+
+  static const alias_identificateur alias_identificateur_ha_unit_rom={0,0,"_ha",0,0};
+  const identificateur & _IDNT_id_ha_unit_rom=* (const identificateur *) &alias_identificateur_ha_unit_rom;
+  const alias_ref_identificateur ref_ha_unit_rom={-1,0,0,"_ha",0,0};
+  const define_alias_gen(alias_ha_unit_rom,_IDNT,0,&ref_ha_unit_rom);
+  const gen & ha_unit_rom_IDNT_e = * (gen *) & alias_ha_unit_rom;
+
+  static const alias_identificateur alias_identificateur_hbar__unit_rom={0,0,"_hbar_",0,0};
+  const identificateur & _IDNT_id_hbar__unit_rom=* (const identificateur *) &alias_identificateur_hbar__unit_rom;
+  const alias_ref_identificateur ref_hbar__unit_rom={-1,0,0,"_hbar_",0,0};
+  const define_alias_gen(alias_hbar__unit_rom,_IDNT,0,&ref_hbar__unit_rom);
+  const gen & hbar__unit_rom_IDNT_e = * (gen *) & alias_hbar__unit_rom;
+
+  static const alias_identificateur alias_identificateur_hp_unit_rom={0,0,"_hp",0,0};
+  const identificateur & _IDNT_id_hp_unit_rom=* (const identificateur *) &alias_identificateur_hp_unit_rom;
+  const alias_ref_identificateur ref_hp_unit_rom={-1,0,0,"_hp",0,0};
+  const define_alias_gen(alias_hp_unit_rom,_IDNT,0,&ref_hp_unit_rom);
+  const gen & hp_unit_rom_IDNT_e = * (gen *) & alias_hp_unit_rom;
+
+  static const alias_identificateur alias_identificateur_inH2O_unit_rom={0,0,"_inH2O",0,0};
+  const identificateur & _IDNT_id_inH2O_unit_rom=* (const identificateur *) &alias_identificateur_inH2O_unit_rom;
+  const alias_ref_identificateur ref_inH2O_unit_rom={-1,0,0,"_inH2O",0,0};
+  const define_alias_gen(alias_inH2O_unit_rom,_IDNT,0,&ref_inH2O_unit_rom);
+  const gen & inH2O_unit_rom_IDNT_e = * (gen *) & alias_inH2O_unit_rom;
+
+  static const alias_identificateur alias_identificateur_inHg_unit_rom={0,0,"_inHg",0,0};
+  const identificateur & _IDNT_id_inHg_unit_rom=* (const identificateur *) &alias_identificateur_inHg_unit_rom;
+  const alias_ref_identificateur ref_inHg_unit_rom={-1,0,0,"_inHg",0,0};
+  const define_alias_gen(alias_inHg_unit_rom,_IDNT,0,&ref_inHg_unit_rom);
+  const gen & inHg_unit_rom_IDNT_e = * (gen *) & alias_inHg_unit_rom;
+
+  static const alias_identificateur alias_identificateur_inch_unit_rom={0,0,"_inch",0,0};
+  const identificateur & _IDNT_id_inch_unit_rom=* (const identificateur *) &alias_identificateur_inch_unit_rom;
+  const alias_ref_identificateur ref_inch_unit_rom={-1,0,0,"_inch",0,0};
+  const define_alias_gen(alias_inch_unit_rom,_IDNT,0,&ref_inch_unit_rom);
+  const gen & inch_unit_rom_IDNT_e = * (gen *) & alias_inch_unit_rom;
+
+  static const alias_identificateur alias_identificateur_j_unit_rom={0,0,"_j",0,0};
+  const identificateur & _IDNT_id_j_unit_rom=* (const identificateur *) &alias_identificateur_j_unit_rom;
+  const alias_ref_identificateur ref_j_unit_rom={-1,0,0,"_j",0,0};
+  const define_alias_gen(alias_j_unit_rom,_IDNT,0,&ref_j_unit_rom);
+  const gen & j_unit_rom_IDNT_e = * (gen *) & alias_j_unit_rom;
+
+  static const alias_identificateur alias_identificateur_k__unit_rom={0,0,"_k_",0,0};
+  const identificateur & _IDNT_id_k__unit_rom=* (const identificateur *) &alias_identificateur_k__unit_rom;
+  const alias_ref_identificateur ref_k__unit_rom={-1,0,0,"_k_",0,0};
+  const define_alias_gen(alias_k__unit_rom,_IDNT,0,&ref_k__unit_rom);
+  const gen & k__unit_rom_IDNT_e = * (gen *) & alias_k__unit_rom;
+
+  static const alias_identificateur alias_identificateur_kip_unit_rom={0,0,"_kip",0,0};
+  const identificateur & _IDNT_id_kip_unit_rom=* (const identificateur *) &alias_identificateur_kip_unit_rom;
+  const alias_ref_identificateur ref_kip_unit_rom={-1,0,0,"_kip",0,0};
+  const define_alias_gen(alias_kip_unit_rom,_IDNT,0,&ref_kip_unit_rom);
+  const gen & kip_unit_rom_IDNT_e = * (gen *) & alias_kip_unit_rom;
+
+  static const alias_identificateur alias_identificateur_knot_unit_rom={0,0,"_knot",0,0};
+  const identificateur & _IDNT_id_knot_unit_rom=* (const identificateur *) &alias_identificateur_knot_unit_rom;
+  const alias_ref_identificateur ref_knot_unit_rom={-1,0,0,"_knot",0,0};
+  const define_alias_gen(alias_knot_unit_rom,_IDNT,0,&ref_knot_unit_rom);
+  const gen & knot_unit_rom_IDNT_e = * (gen *) & alias_knot_unit_rom;
+
+  static const alias_identificateur alias_identificateur_kph_unit_rom={0,0,"_kph",0,0};
+  const identificateur & _IDNT_id_kph_unit_rom=* (const identificateur *) &alias_identificateur_kph_unit_rom;
+  const alias_ref_identificateur ref_kph_unit_rom={-1,0,0,"_kph",0,0};
+  const define_alias_gen(alias_kph_unit_rom,_IDNT,0,&ref_kph_unit_rom);
+  const gen & kph_unit_rom_IDNT_e = * (gen *) & alias_kph_unit_rom;
+
+  static const alias_identificateur alias_identificateur_kq__unit_rom={0,0,"_kq",0,0};
+  const identificateur & _IDNT_id_kq__unit_rom=* (const identificateur *) &alias_identificateur_kq__unit_rom;
+  const alias_ref_identificateur ref_kq__unit_rom={-1,0,0,"_kq_",0,0};
+  const define_alias_gen(alias_kq__unit_rom,_IDNT,0,&ref_kq__unit_rom);
+  const gen & kq__unit_rom_IDNT_e = * (gen *) & alias_kq__unit_rom;
+
+  static const alias_identificateur alias_identificateur_l_unit_rom={0,0,"_l",0,0};
+  const identificateur & _IDNT_id_l_unit_rom=* (const identificateur *) &alias_identificateur_l_unit_rom;
+  const alias_ref_identificateur ref_l_unit_rom={-1,0,0,"_l",0,0};
+  const define_alias_gen(alias_l_unit_rom,_IDNT,0,&ref_l_unit_rom);
+  const gen & l_unit_rom_IDNT_e = * (gen *) & alias_l_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lam_unit_rom={0,0,"_lam",0,0};
+  const identificateur & _IDNT_id_lam_unit_rom=* (const identificateur *) &alias_identificateur_lam_unit_rom;
+  const alias_ref_identificateur ref_lam_unit_rom={-1,0,0,"_lam",0,0};
+  const define_alias_gen(alias_lam_unit_rom,_IDNT,0,&ref_lam_unit_rom);
+  const gen & lam_unit_rom_IDNT_e = * (gen *) & alias_lam_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lambda0_unit_rom={0,0,"_lambda0",0,0};
+  const identificateur & _IDNT_id_lambda0_unit_rom=* (const identificateur *) &alias_identificateur_lambda0_unit_rom;
+  const alias_ref_identificateur ref_lambda0_unit_rom={-1,0,0,"_lambda0",0,0};
+  const define_alias_gen(alias_lambda0_unit_rom,_IDNT,0,&ref_lambda0_unit_rom);
+  const gen & lambda0_unit_rom_IDNT_e = * (gen *) & alias_lambda0_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lambdac__unit_rom={0,0,"_lambdac_",0,0};
+  const identificateur & _IDNT_id_lambdac__unit_rom=* (const identificateur *) &alias_identificateur_lambdac__unit_rom;
+  const alias_ref_identificateur ref_lambdac__unit_rom={-1,0,0,"_lambdac_",0,0};
+  const define_alias_gen(alias_lambdac__unit_rom,_IDNT,0,&ref_lambdac__unit_rom);
+  const gen & lambdac__unit_rom_IDNT_e = * (gen *) & alias_lambdac__unit_rom;
+
+  static const alias_identificateur alias_identificateur_lb_unit_rom={0,0,"_lb",0,0};
+  const identificateur & _IDNT_id_lb_unit_rom=* (const identificateur *) &alias_identificateur_lb_unit_rom;
+  const alias_ref_identificateur ref_lb_unit_rom={-1,0,0,"_lb",0,0};
+  const define_alias_gen(alias_lb_unit_rom,_IDNT,0,&ref_lb_unit_rom);
+  const gen & lb_unit_rom_IDNT_e = * (gen *) & alias_lb_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lbf_unit_rom={0,0,"_lbf",0,0};
+  const identificateur & _IDNT_id_lbf_unit_rom=* (const identificateur *) &alias_identificateur_lbf_unit_rom;
+  const alias_ref_identificateur ref_lbf_unit_rom={-1,0,0,"_lbf",0,0};
+  const define_alias_gen(alias_lbf_unit_rom,_IDNT,0,&ref_lbf_unit_rom);
+  const gen & lbf_unit_rom_IDNT_e = * (gen *) & alias_lbf_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lbmol_unit_rom={0,0,"_lbmol",0,0};
+  const identificateur & _IDNT_id_lbmol_unit_rom=* (const identificateur *) &alias_identificateur_lbmol_unit_rom;
+  const alias_ref_identificateur ref_lbmol_unit_rom={-1,0,0,"_lbmol",0,0};
+  const define_alias_gen(alias_lbmol_unit_rom,_IDNT,0,&ref_lbmol_unit_rom);
+  const gen & lbmol_unit_rom_IDNT_e = * (gen *) & alias_lbmol_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lbt_unit_rom={0,0,"_lbt",0,0};
+  const identificateur & _IDNT_id_lbt_unit_rom=* (const identificateur *) &alias_identificateur_lbt_unit_rom;
+  const alias_ref_identificateur ref_lbt_unit_rom={-1,0,0,"_lbt",0,0};
+  const define_alias_gen(alias_lbt_unit_rom,_IDNT,0,&ref_lbt_unit_rom);
+  const gen & lbt_unit_rom_IDNT_e = * (gen *) & alias_lbt_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lep_unit_rom={0,0,"_lep",0,0};
+  const identificateur & _IDNT_id_lep_unit_rom=* (const identificateur *) &alias_identificateur_lep_unit_rom;
+  const alias_ref_identificateur ref_lep_unit_rom={-1,0,0,"_lep",0,0};
+  const define_alias_gen(alias_lep_unit_rom,_IDNT,0,&ref_lep_unit_rom);
+  const gen & lep_unit_rom_IDNT_e = * (gen *) & alias_lep_unit_rom;
+
+  static const alias_identificateur alias_identificateur_liqpt_unit_rom={0,0,"_liqpt",0,0};
+  const identificateur & _IDNT_id_liqpt_unit_rom=* (const identificateur *) &alias_identificateur_liqpt_unit_rom;
+  const alias_ref_identificateur ref_liqpt_unit_rom={-1,0,0,"_liqpt",0,0};
+  const define_alias_gen(alias_liqpt_unit_rom,_IDNT,0,&ref_liqpt_unit_rom);
+  const gen & liqpt_unit_rom_IDNT_e = * (gen *) & alias_liqpt_unit_rom;
+
+  static const alias_identificateur alias_identificateur_lyr_unit_rom={0,0,"_lyr",0,0};
+  const identificateur & _IDNT_id_lyr_unit_rom=* (const identificateur *) &alias_identificateur_lyr_unit_rom;
+  const alias_ref_identificateur ref_lyr_unit_rom={-1,0,0,"_lyr",0,0};
+  const define_alias_gen(alias_lyr_unit_rom,_IDNT,0,&ref_lyr_unit_rom);
+  const gen & lyr_unit_rom_IDNT_e = * (gen *) & alias_lyr_unit_rom;
+
+  static const alias_identificateur alias_identificateur_m_unit_rom={0,0,"_m",0,0};
+  const identificateur & _IDNT_id_m_unit_rom=* (const identificateur *) &alias_identificateur_m_unit_rom;
+  const alias_ref_identificateur ref_m_unit_rom={-1,0,0,"_m",0,0};
+  const define_alias_gen(alias_m_unit_rom,_IDNT,0,&ref_m_unit_rom);
+  const gen & m_unit_rom_IDNT_e = * (gen *) & alias_m_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mEarth__unit_rom={0,0,"_mEarth_",0,0};
+  const identificateur & _IDNT_id_mEarth__unit_rom=* (const identificateur *) &alias_identificateur_mEarth__unit_rom;
+  const alias_ref_identificateur ref_mEarth__unit_rom={-1,0,0,"_mEarth_",0,0};
+  const define_alias_gen(alias_mEarth__unit_rom,_IDNT,0,&ref_mEarth__unit_rom);
+  const gen & mEarth__unit_rom_IDNT_e = * (gen *) & alias_mEarth__unit_rom;
+
+  static const alias_identificateur alias_identificateur_mSun__unit_rom={0,0,"_mSun_",0,0};
+  const identificateur & _IDNT_id_mSun__unit_rom=* (const identificateur *) &alias_identificateur_mSun__unit_rom;
+  const alias_ref_identificateur ref_mSun__unit_rom={-1,0,0,"_mSun_",0,0};
+  const define_alias_gen(alias_mSun__unit_rom,_IDNT,0,&ref_mSun__unit_rom);
+  const gen & mSun__unit_rom_IDNT_e = * (gen *) & alias_mSun__unit_rom;
+
+  static const alias_identificateur alias_identificateur_me__unit_rom={0,0,"_me_",0,0};
+  const identificateur & _IDNT_id_me__unit_rom=* (const identificateur *) &alias_identificateur_me__unit_rom;
+  const alias_ref_identificateur ref_me__unit_rom={-1,0,0,"_me_",0,0};
+  const define_alias_gen(alias_me__unit_rom,_IDNT,0,&ref_me__unit_rom);
+  const gen & me__unit_rom_IDNT_e = * (gen *) & alias_me__unit_rom;
+
+  static const alias_identificateur alias_identificateur_mho_unit_rom={0,0,"_mho",0,0};
+  const identificateur & _IDNT_id_mho_unit_rom=* (const identificateur *) &alias_identificateur_mho_unit_rom;
+  const alias_ref_identificateur ref_mho_unit_rom={-1,0,0,"_mho",0,0};
+  const define_alias_gen(alias_mho_unit_rom,_IDNT,0,&ref_mho_unit_rom);
+  const gen & mho_unit_rom_IDNT_e = * (gen *) & alias_mho_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mi_unit_rom={0,0,"_mi",0,0};
+  const identificateur & _IDNT_id_mi_unit_rom=* (const identificateur *) &alias_identificateur_mi_unit_rom;
+  const alias_ref_identificateur ref_mi_unit_rom={-1,0,0,"_mi",0,0};
+  const define_alias_gen(alias_mi_unit_rom,_IDNT,0,&ref_mi_unit_rom);
+  const gen & mi_unit_rom_IDNT_e = * (gen *) & alias_mi_unit_rom;
+
+  static const alias_identificateur alias_identificateur_miUS_unit_rom={0,0,"_miUS",0,0};
+  const identificateur & _IDNT_id_miUS_unit_rom=* (const identificateur *) &alias_identificateur_miUS_unit_rom;
+  const alias_ref_identificateur ref_miUS_unit_rom={-1,0,0,"_miUS",0,0};
+  const define_alias_gen(alias_miUS_unit_rom,_IDNT,0,&ref_miUS_unit_rom);
+  const gen & miUS_unit_rom_IDNT_e = * (gen *) & alias_miUS_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mil_unit_rom={0,0,"_mil",0,0};
+  const identificateur & _IDNT_id_mil_unit_rom=* (const identificateur *) &alias_identificateur_mil_unit_rom;
+  const alias_ref_identificateur ref_mil_unit_rom={-1,0,0,"_mil",0,0};
+  const define_alias_gen(alias_mil_unit_rom,_IDNT,0,&ref_mil_unit_rom);
+  const gen & mil_unit_rom_IDNT_e = * (gen *) & alias_mil_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mile_unit_rom={0,0,"_mile",0,0};
+  const identificateur & _IDNT_id_mile_unit_rom=* (const identificateur *) &alias_identificateur_mile_unit_rom;
+  const alias_ref_identificateur ref_mile_unit_rom={-1,0,0,"_mile",0,0};
+  const define_alias_gen(alias_mile_unit_rom,_IDNT,0,&ref_mile_unit_rom);
+  const gen & mile_unit_rom_IDNT_e = * (gen *) & alias_mile_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mille_unit_rom={0,0,"_mille",0,0};
+  const identificateur & _IDNT_id_mille_unit_rom=* (const identificateur *) &alias_identificateur_mille_unit_rom;
+  const alias_ref_identificateur ref_mille_unit_rom={-1,0,0,"_mille",0,0};
+  const define_alias_gen(alias_mille_unit_rom,_IDNT,0,&ref_mille_unit_rom);
+  const gen & mille_unit_rom_IDNT_e = * (gen *) & alias_mille_unit_rom;
+
+  static const alias_identificateur alias_identificateur_min_unit_rom={0,0,"_min",0,0};
+  const identificateur & _IDNT_id_min_unit_rom=* (const identificateur *) &alias_identificateur_min_unit_rom;
+  const alias_ref_identificateur ref_min_unit_rom={-1,0,0,"_min",0,0};
+  const define_alias_gen(alias_min_unit_rom,_IDNT,0,&ref_min_unit_rom);
+  const gen & min_unit_rom_IDNT_e = * (gen *) & alias_min_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mmHg_unit_rom={0,0,"_mmHg",0,0};
+  const identificateur & _IDNT_id_mmHg_unit_rom=* (const identificateur *) &alias_identificateur_mmHg_unit_rom;
+  const alias_ref_identificateur ref_mmHg_unit_rom={-1,0,0,"_mmHg",0,0};
+  const define_alias_gen(alias_mmHg_unit_rom,_IDNT,0,&ref_mmHg_unit_rom);
+  const gen & mmHg_unit_rom_IDNT_e = * (gen *) & alias_mmHg_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mn_unit_rom={0,0,"_mn",0,0};
+  const identificateur & _IDNT_id_mn_unit_rom=* (const identificateur *) &alias_identificateur_mn_unit_rom;
+  const alias_ref_identificateur ref_mn_unit_rom={-1,0,0,"_mn",0,0};
+  const define_alias_gen(alias_mn_unit_rom,_IDNT,0,&ref_mn_unit_rom);
+  const gen & mn_unit_rom_IDNT_e = * (gen *) & alias_mn_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mol_unit_rom={0,0,"_mol",0,0};
+  const identificateur & _IDNT_id_mol_unit_rom=* (const identificateur *) &alias_identificateur_mol_unit_rom;
+  const alias_ref_identificateur ref_mol_unit_rom={-1,0,0,"_mol",0,0};
+  const define_alias_gen(alias_mol_unit_rom,_IDNT,0,&ref_mol_unit_rom);
+  const gen & mol_unit_rom_IDNT_e = * (gen *) & alias_mol_unit_rom;
+
+  static const alias_identificateur alias_identificateur_molK_unit_rom={0,0,"_molK",0,0};
+  const identificateur & _IDNT_id_molK_unit_rom=* (const identificateur *) &alias_identificateur_molK_unit_rom;
+  const alias_ref_identificateur ref_molK_unit_rom={-1,0,0,"_molK",0,0};
+  const define_alias_gen(alias_molK_unit_rom,_IDNT,0,&ref_molK_unit_rom);
+  const gen & molK_unit_rom_IDNT_e = * (gen *) & alias_molK_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mp__unit_rom={0,0,"_mp_",0,0};
+  const identificateur & _IDNT_id_mp__unit_rom=* (const identificateur *) &alias_identificateur_mp__unit_rom;
+  const alias_ref_identificateur ref_mp__unit_rom={-1,0,0,"_mp_",0,0};
+  const define_alias_gen(alias_mp__unit_rom,_IDNT,0,&ref_mp__unit_rom);
+  const gen & mp__unit_rom_IDNT_e = * (gen *) & alias_mp__unit_rom;
+
+  static const alias_identificateur alias_identificateur_mph_unit_rom={0,0,"_mph",0,0};
+  const identificateur & _IDNT_id_mph_unit_rom=* (const identificateur *) &alias_identificateur_mph_unit_rom;
+  const alias_ref_identificateur ref_mph_unit_rom={-1,0,0,"_mph",0,0};
+  const define_alias_gen(alias_mph_unit_rom,_IDNT,0,&ref_mph_unit_rom);
+  const gen & mph_unit_rom_IDNT_e = * (gen *) & alias_mph_unit_rom;
+
+  static const alias_identificateur alias_identificateur_mpme__unit_rom={0,0,"_mpme_",0,0};
+  const identificateur & _IDNT_id_mpme__unit_rom=* (const identificateur *) &alias_identificateur_mpme__unit_rom;
+  const alias_ref_identificateur ref_mpme__unit_rom={-1,0,0,"_mpme",0,0};
+  const define_alias_gen(alias_mpme__unit_rom,_IDNT,0,&ref_mpme__unit_rom);
+  const gen & mpme__unit_rom_IDNT_e = * (gen *) & alias_mpme__unit_rom;
+
+  static const alias_identificateur alias_identificateur_mu0__unit_rom={0,0,"_mu0_",0,0};
+  const identificateur & _IDNT_id_mu0__unit_rom=* (const identificateur *) &alias_identificateur_mu0__unit_rom;
+  const alias_ref_identificateur ref_mu0__unit_rom={-1,0,0,"_mu0_",0,0};
+  const define_alias_gen(alias_mu0__unit_rom,_IDNT,0,&ref_mu0__unit_rom);
+  const gen & mu0__unit_rom_IDNT_e = * (gen *) & alias_mu0__unit_rom;
+
+  static const alias_identificateur alias_identificateur_muB__unit_rom={0,0,"_muB_",0,0};
+  const identificateur & _IDNT_id_muB__unit_rom=* (const identificateur *) &alias_identificateur_muB__unit_rom;
+  const alias_ref_identificateur ref_muB__unit_rom={-1,0,0,"_muB_",0,0};
+  const define_alias_gen(alias_muB__unit_rom,_IDNT,0,&ref_muB__unit_rom);
+  const gen & muB__unit_rom_IDNT_e = * (gen *) & alias_muB__unit_rom;
+
+  static const alias_identificateur alias_identificateur_muN__unit_rom={0,0,"_muN_",0,0};
+  const identificateur & _IDNT_id_muN__unit_rom=* (const identificateur *) &alias_identificateur_muN__unit_rom;
+  const alias_ref_identificateur ref_muN__unit_rom={-1,0,0,"_muN_",0,0};
+  const define_alias_gen(alias_muN__unit_rom,_IDNT,0,&ref_muN__unit_rom);
+  const gen & muN__unit_rom_IDNT_e = * (gen *) & alias_muN__unit_rom;
+
+  static const alias_identificateur alias_identificateur_nmi_unit_rom={0,0,"_nmi",0,0};
+  const identificateur & _IDNT_id_nmi_unit_rom=* (const identificateur *) &alias_identificateur_nmi_unit_rom;
+  const alias_ref_identificateur ref_nmi_unit_rom={-1,0,0,"_nmi",0,0};
+  const define_alias_gen(alias_nmi_unit_rom,_IDNT,0,&ref_nmi_unit_rom);
+  const gen & nmi_unit_rom_IDNT_e = * (gen *) & alias_nmi_unit_rom;
+
+  static const alias_identificateur alias_identificateur_oz_unit_rom={0,0,"_oz",0,0};
+  const identificateur & _IDNT_id_oz_unit_rom=* (const identificateur *) &alias_identificateur_oz_unit_rom;
+  const alias_ref_identificateur ref_oz_unit_rom={-1,0,0,"_oz",0,0};
+  const define_alias_gen(alias_oz_unit_rom,_IDNT,0,&ref_oz_unit_rom);
+  const gen & oz_unit_rom_IDNT_e = * (gen *) & alias_oz_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ozUK_unit_rom={0,0,"_ozUK",0,0};
+  const identificateur & _IDNT_id_ozUK_unit_rom=* (const identificateur *) &alias_identificateur_ozUK_unit_rom;
+  const alias_ref_identificateur ref_ozUK_unit_rom={-1,0,0,"_ozUK",0,0};
+  const define_alias_gen(alias_ozUK_unit_rom,_IDNT,0,&ref_ozUK_unit_rom);
+  const gen & ozUK_unit_rom_IDNT_e = * (gen *) & alias_ozUK_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ozfl_unit_rom={0,0,"_ozfl",0,0};
+  const identificateur & _IDNT_id_ozfl_unit_rom=* (const identificateur *) &alias_identificateur_ozfl_unit_rom;
+  const alias_ref_identificateur ref_ozfl_unit_rom={-1,0,0,"_ozfl",0,0};
+  const define_alias_gen(alias_ozfl_unit_rom,_IDNT,0,&ref_ozfl_unit_rom);
+  const gen & ozfl_unit_rom_IDNT_e = * (gen *) & alias_ozfl_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ozt_unit_rom={0,0,"_ozt",0,0};
+  const identificateur & _IDNT_id_ozt_unit_rom=* (const identificateur *) &alias_identificateur_ozt_unit_rom;
+  const alias_ref_identificateur ref_ozt_unit_rom={-1,0,0,"_ozt",0,0};
+  const define_alias_gen(alias_ozt_unit_rom,_IDNT,0,&ref_ozt_unit_rom);
+  const gen & ozt_unit_rom_IDNT_e = * (gen *) & alias_ozt_unit_rom;
+
+  static const alias_identificateur alias_identificateur_pc_unit_rom={0,0,"_pc",0,0};
+  const identificateur & _IDNT_id_pc_unit_rom=* (const identificateur *) &alias_identificateur_pc_unit_rom;
+  const alias_ref_identificateur ref_pc_unit_rom={-1,0,0,"_pc",0,0};
+  const define_alias_gen(alias_pc_unit_rom,_IDNT,0,&ref_pc_unit_rom);
+  const gen & pc_unit_rom_IDNT_e = * (gen *) & alias_pc_unit_rom;
+
+  static const alias_identificateur alias_identificateur_pdl_unit_rom={0,0,"_pdl",0,0};
+  const identificateur & _IDNT_id_pdl_unit_rom=* (const identificateur *) &alias_identificateur_pdl_unit_rom;
+  const alias_ref_identificateur ref_pdl_unit_rom={-1,0,0,"_pdl",0,0};
+  const define_alias_gen(alias_pdl_unit_rom,_IDNT,0,&ref_pdl_unit_rom);
+  const gen & pdl_unit_rom_IDNT_e = * (gen *) & alias_pdl_unit_rom;
+
+  static const alias_identificateur alias_identificateur_phi__unit_rom={0,0,"_phi_",0,0};
+  const identificateur & _IDNT_id_phi__unit_rom=* (const identificateur *) &alias_identificateur_phi__unit_rom;
+  const alias_ref_identificateur ref_phi__unit_rom={-1,0,0,"_phi_",0,0};
+  const define_alias_gen(alias_phi__unit_rom,_IDNT,0,&ref_phi__unit_rom);
+  const gen & phi__unit_rom_IDNT_e = * (gen *) & alias_phi__unit_rom;
+
+  static const alias_identificateur alias_identificateur_pk_unit_rom={0,0,"_pk",0,0};
+  const identificateur & _IDNT_id_pk_unit_rom=* (const identificateur *) &alias_identificateur_pk_unit_rom;
+  const alias_ref_identificateur ref_pk_unit_rom={-1,0,0,"_pk",0,0};
+  const define_alias_gen(alias_pk_unit_rom,_IDNT,0,&ref_pk_unit_rom);
+  const gen & pk_unit_rom_IDNT_e = * (gen *) & alias_pk_unit_rom;
+
+  static const alias_identificateur alias_identificateur_psi_unit_rom={0,0,"_psi",0,0};
+  const identificateur & _IDNT_id_psi_unit_rom=* (const identificateur *) &alias_identificateur_psi_unit_rom;
+  const alias_ref_identificateur ref_psi_unit_rom={-1,0,0,"_psi",0,0};
+  const define_alias_gen(alias_psi_unit_rom,_IDNT,0,&ref_psi_unit_rom);
+  const gen & psi_unit_rom_IDNT_e = * (gen *) & alias_psi_unit_rom;
+
+  static const alias_identificateur alias_identificateur_pt_unit_rom={0,0,"_pt",0,0};
+  const identificateur & _IDNT_id_pt_unit_rom=* (const identificateur *) &alias_identificateur_pt_unit_rom;
+  const alias_ref_identificateur ref_pt_unit_rom={-1,0,0,"_pt",0,0};
+  const define_alias_gen(alias_pt_unit_rom,_IDNT,0,&ref_pt_unit_rom);
+  const gen & pt_unit_rom_IDNT_e = * (gen *) & alias_pt_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ptUK_unit_rom={0,0,"_ptUK",0,0};
+  const identificateur & _IDNT_id_ptUK_unit_rom=* (const identificateur *) &alias_identificateur_ptUK_unit_rom;
+  const alias_ref_identificateur ref_ptUK_unit_rom={-1,0,0,"_ptUK",0,0};
+  const define_alias_gen(alias_ptUK_unit_rom,_IDNT,0,&ref_ptUK_unit_rom);
+  const gen & ptUK_unit_rom_IDNT_e = * (gen *) & alias_ptUK_unit_rom;
+
+  static const alias_identificateur alias_identificateur_qe_unit_rom={0,0,"_qe",0,0};
+  const identificateur & _IDNT_id_qe_unit_rom=* (const identificateur *) &alias_identificateur_qe_unit_rom;
+  const alias_ref_identificateur ref_qe_unit_rom={-1,0,0,"_qe",0,0};
+  const define_alias_gen(alias_qe_unit_rom,_IDNT,0,&ref_qe_unit_rom);
+  const gen & qe_unit_rom_IDNT_e = * (gen *) & alias_qe_unit_rom;
+
+  static const alias_identificateur alias_identificateur_qepsilon0__unit_rom={0,0,"_qepsilon0_",0,0};
+  const identificateur & _IDNT_id_qepsilon0__unit_rom=* (const identificateur *) &alias_identificateur_qepsilon0__unit_rom;
+  const alias_ref_identificateur ref_qepsilon0__unit_rom={-1,0,0,"_qepsilon0_",0,0};
+  const define_alias_gen(alias_qepsilon0__unit_rom,_IDNT,0,&ref_qepsilon0__unit_rom);
+  const gen & qepsilon0__unit_rom_IDNT_e = * (gen *) & alias_qepsilon0__unit_rom;
+
+  static const alias_identificateur alias_identificateur_qme__unit_rom={0,0,"_qme_",0,0};
+  const identificateur & _IDNT_id_qme__unit_rom=* (const identificateur *) &alias_identificateur_qme__unit_rom;
+  const alias_ref_identificateur ref_qme__unit_rom={-1,0,0,"_qme_",0,0};
+  const define_alias_gen(alias_qme__unit_rom,_IDNT,0,&ref_qme__unit_rom);
+  const gen & qme__unit_rom_IDNT_e = * (gen *) & alias_qme__unit_rom;
+
+  static const alias_identificateur alias_identificateur_qt_unit_rom={0,0,"_qt",0,0};
+  const identificateur & _IDNT_id_qt_unit_rom=* (const identificateur *) &alias_identificateur_qt_unit_rom;
+  const alias_ref_identificateur ref_qt_unit_rom={-1,0,0,"_qt",0,0};
+  const define_alias_gen(alias_qt_unit_rom,_IDNT,0,&ref_qt_unit_rom);
+  const gen & qt_unit_rom_IDNT_e = * (gen *) & alias_qt_unit_rom;
+
+  static const alias_identificateur alias_identificateur_rad_unit_rom={0,0,"_rad",0,0};
+  const identificateur & _IDNT_id_rad_unit_rom=* (const identificateur *) &alias_identificateur_rad_unit_rom;
+  const alias_ref_identificateur ref_rad_unit_rom={-1,0,0,"_rad",0,0};
+  const define_alias_gen(alias_rad_unit_rom,_IDNT,0,&ref_rad_unit_rom);
+  const gen & rad_unit_rom_IDNT_e = * (gen *) & alias_rad_unit_rom;
+
+  static const alias_identificateur alias_identificateur_rd_unit_rom={0,0,"_rd",0,0};
+  const identificateur & _IDNT_id_rd_unit_rom=* (const identificateur *) &alias_identificateur_rd_unit_rom;
+  const alias_ref_identificateur ref_rd_unit_rom={-1,0,0,"_rd",0,0};
+  const define_alias_gen(alias_rd_unit_rom,_IDNT,0,&ref_rd_unit_rom);
+  const gen & rd_unit_rom_IDNT_e = * (gen *) & alias_rd_unit_rom;
+
+  static const alias_identificateur alias_identificateur_rem_unit_rom={0,0,"_rem",0,0};
+  const identificateur & _IDNT_id_rem_unit_rom=* (const identificateur *) &alias_identificateur_rem_unit_rom;
+  const alias_ref_identificateur ref_rem_unit_rom={-1,0,0,"_rem",0,0};
+  const define_alias_gen(alias_rem_unit_rom,_IDNT,0,&ref_rem_unit_rom);
+  const gen & rem_unit_rom_IDNT_e = * (gen *) & alias_rem_unit_rom;
+
+  static const alias_identificateur alias_identificateur_rev_unit_rom={0,0,"_rev",0,0};
+  const identificateur & _IDNT_id_rev_unit_rom=* (const identificateur *) &alias_identificateur_rev_unit_rom;
+  const alias_ref_identificateur ref_rev_unit_rom={-1,0,0,"_rev",0,0};
+  const define_alias_gen(alias_rev_unit_rom,_IDNT,0,&ref_rev_unit_rom);
+  const gen & rev_unit_rom_IDNT_e = * (gen *) & alias_rev_unit_rom;
+
+  static const alias_identificateur alias_identificateur_rod_unit_rom={0,0,"_rod",0,0};
+  const identificateur & _IDNT_id_rod_unit_rom=* (const identificateur *) &alias_identificateur_rod_unit_rom;
+  const alias_ref_identificateur ref_rod_unit_rom={-1,0,0,"_rod",0,0};
+  const define_alias_gen(alias_rod_unit_rom,_IDNT,0,&ref_rod_unit_rom);
+  const gen & rod_unit_rom_IDNT_e = * (gen *) & alias_rod_unit_rom;
+
+  static const alias_identificateur alias_identificateur_rpm_unit_rom={0,0,"_rpm",0,0};
+  const identificateur & _IDNT_id_rpm_unit_rom=* (const identificateur *) &alias_identificateur_rpm_unit_rom;
+  const alias_ref_identificateur ref_rpm_unit_rom={-1,0,0,"_rpm",0,0};
+  const define_alias_gen(alias_rpm_unit_rom,_IDNT,0,&ref_rpm_unit_rom);
+  const gen & rpm_unit_rom_IDNT_e = * (gen *) & alias_rpm_unit_rom;
+
+  static const alias_identificateur alias_identificateur_s_unit_rom={0,0,"_s",0,0};
+  const identificateur & _IDNT_id_s_unit_rom=* (const identificateur *) &alias_identificateur_s_unit_rom;
+  const alias_ref_identificateur ref_s_unit_rom={-1,0,0,"_s",0,0};
+  const define_alias_gen(alias_s_unit_rom,_IDNT,0,&ref_s_unit_rom);
+  const gen & s_unit_rom_IDNT_e = * (gen *) & alias_s_unit_rom;
+
+  static const alias_identificateur alias_identificateur_sb_unit_rom={0,0,"_sb",0,0};
+  const identificateur & _IDNT_id_sb_unit_rom=* (const identificateur *) &alias_identificateur_sb_unit_rom;
+  const alias_ref_identificateur ref_sb_unit_rom={-1,0,0,"_sb",0,0};
+  const define_alias_gen(alias_sb_unit_rom,_IDNT,0,&ref_sb_unit_rom);
+  const gen & sb_unit_rom_IDNT_e = * (gen *) & alias_sb_unit_rom;
+
+  static const alias_identificateur alias_identificateur_sd_unit_rom={0,0,"_sd",0,0};
+  const identificateur & _IDNT_id_sd_unit_rom=* (const identificateur *) &alias_identificateur_sd_unit_rom;
+  const alias_ref_identificateur ref_sd_unit_rom={-1,0,0,"_sd",0,0};
+  const define_alias_gen(alias_sd_unit_rom,_IDNT,0,&ref_sd_unit_rom);
+  const gen & sd_unit_rom_IDNT_e = * (gen *) & alias_sd_unit_rom;
+
+  static const alias_identificateur alias_identificateur_sigma_unit_rom={0,0,"_sigma",0,0};
+  const identificateur & _IDNT_id_sigma_unit_rom=* (const identificateur *) &alias_identificateur_sigma_unit_rom;
+  const alias_ref_identificateur ref_sigma_unit_rom={-1,0,0,"_sigma",0,0};
+  const define_alias_gen(alias_sigma_unit_rom,_IDNT,0,&ref_sigma_unit_rom);
+  const gen & sigma_unit_rom_IDNT_e = * (gen *) & alias_sigma_unit_rom;
+
+  static const alias_identificateur alias_identificateur_slug_unit_rom={0,0,"_slug",0,0};
+  const identificateur & _IDNT_id_slug_unit_rom=* (const identificateur *) &alias_identificateur_slug_unit_rom;
+  const alias_ref_identificateur ref_slug_unit_rom={-1,0,0,"_slug",0,0};
+  const define_alias_gen(alias_slug_unit_rom,_IDNT,0,&ref_slug_unit_rom);
+  const gen & slug_unit_rom_IDNT_e = * (gen *) & alias_slug_unit_rom;
+
+  static const alias_identificateur alias_identificateur_st_unit_rom={0,0,"_st",0,0};
+  const identificateur & _IDNT_id_st_unit_rom=* (const identificateur *) &alias_identificateur_st_unit_rom;
+  const alias_ref_identificateur ref_st_unit_rom={-1,0,0,"_st",0,0};
+  const define_alias_gen(alias_st_unit_rom,_IDNT,0,&ref_st_unit_rom);
+  const gen & st_unit_rom_IDNT_e = * (gen *) & alias_st_unit_rom;
+
+  static const alias_identificateur alias_identificateur_syr__unit_rom={0,0,"_syr_",0,0};
+  const identificateur & _IDNT_id_syr__unit_rom=* (const identificateur *) &alias_identificateur_syr__unit_rom;
+  const alias_ref_identificateur ref_syr__unit_rom={-1,0,0,"_syr_",0,0};
+  const define_alias_gen(alias_syr__unit_rom,_IDNT,0,&ref_syr__unit_rom);
+  const gen & syr__unit_rom_IDNT_e = * (gen *) & alias_syr__unit_rom;
+
+  static const alias_identificateur alias_identificateur_t_unit_rom={0,0,"_t",0,0};
+  const identificateur & _IDNT_id_t_unit_rom=* (const identificateur *) &alias_identificateur_t_unit_rom;
+  const alias_ref_identificateur ref_t_unit_rom={-1,0,0,"_t",0,0};
+  const define_alias_gen(alias_t_unit_rom,_IDNT,0,&ref_t_unit_rom);
+  const gen & t_unit_rom_IDNT_e = * (gen *) & alias_t_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tbsp_unit_rom={0,0,"_tbsp",0,0};
+  const identificateur & _IDNT_id_tbsp_unit_rom=* (const identificateur *) &alias_identificateur_tbsp_unit_rom;
+  const alias_ref_identificateur ref_tbsp_unit_rom={-1,0,0,"_tbsp",0,0};
+  const define_alias_gen(alias_tbsp_unit_rom,_IDNT,0,&ref_tbsp_unit_rom);
+  const gen & tbsp_unit_rom_IDNT_e = * (gen *) & alias_tbsp_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tec_unit_rom={0,0,"_tec",0,0};
+  const identificateur & _IDNT_id_tec_unit_rom=* (const identificateur *) &alias_identificateur_tec_unit_rom;
+  const alias_ref_identificateur ref_tec_unit_rom={-1,0,0,"_tec",0,0};
+  const define_alias_gen(alias_tec_unit_rom,_IDNT,0,&ref_tec_unit_rom);
+  const gen & tec_unit_rom_IDNT_e = * (gen *) & alias_tec_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tep_unit_rom={0,0,"_tep",0,0};
+  const identificateur & _IDNT_id_tep_unit_rom=* (const identificateur *) &alias_identificateur_tep_unit_rom;
+  const alias_ref_identificateur ref_tep_unit_rom={-1,0,0,"_tep",0,0};
+  const define_alias_gen(alias_tep_unit_rom,_IDNT,0,&ref_tep_unit_rom);
+  const gen & tep_unit_rom_IDNT_e = * (gen *) & alias_tep_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tepC_unit_rom={0,0,"_tepC",0,0};
+  const identificateur & _IDNT_id_tepC_unit_rom=* (const identificateur *) &alias_identificateur_tepC_unit_rom;
+  const alias_ref_identificateur ref_tepC_unit_rom={-1,0,0,"_tepC",0,0};
+  const define_alias_gen(alias_tepC_unit_rom,_IDNT,0,&ref_tepC_unit_rom);
+  const gen & tepC_unit_rom_IDNT_e = * (gen *) & alias_tepC_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tepcC_unit_rom={0,0,"_tepcC",0,0};
+  const identificateur & _IDNT_id_tepcC_unit_rom=* (const identificateur *) &alias_identificateur_tepcC_unit_rom;
+  const alias_ref_identificateur ref_tepcC_unit_rom={-1,0,0,"_tepcC",0,0};
+  const define_alias_gen(alias_tepcC_unit_rom,_IDNT,0,&ref_tepcC_unit_rom);
+  const gen & tepcC_unit_rom_IDNT_e = * (gen *) & alias_tepcC_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tepgC_unit_rom={0,0,"_tepgC",0,0};
+  const identificateur & _IDNT_id_tepgC_unit_rom=* (const identificateur *) &alias_identificateur_tepgC_unit_rom;
+  const alias_ref_identificateur ref_tepgC_unit_rom={-1,0,0,"_tepgC",0,0};
+  const define_alias_gen(alias_tepgC_unit_rom,_IDNT,0,&ref_tepgC_unit_rom);
+  const gen & tepgC_unit_rom_IDNT_e = * (gen *) & alias_tepgC_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tex_unit_rom={0,0,"_tex",0,0};
+  const identificateur & _IDNT_id_tex_unit_rom=* (const identificateur *) &alias_identificateur_tex_unit_rom;
+  const alias_ref_identificateur ref_tex_unit_rom={-1,0,0,"_tex",0,0};
+  const define_alias_gen(alias_tex_unit_rom,_IDNT,0,&ref_tex_unit_rom);
+  const gen & tex_unit_rom_IDNT_e = * (gen *) & alias_tex_unit_rom;
+
+  static const alias_identificateur alias_identificateur_therm_unit_rom={0,0,"_therm",0,0};
+  const identificateur & _IDNT_id_therm_unit_rom=* (const identificateur *) &alias_identificateur_therm_unit_rom;
+  const alias_ref_identificateur ref_therm_unit_rom={-1,0,0,"_therm",0,0};
+  const define_alias_gen(alias_therm_unit_rom,_IDNT,0,&ref_therm_unit_rom);
+  const gen & therm_unit_rom_IDNT_e = * (gen *) & alias_therm_unit_rom;
+
+  static const alias_identificateur alias_identificateur_toe_unit_rom={0,0,"_toe",0,0};
+  const identificateur & _IDNT_id_toe_unit_rom=* (const identificateur *) &alias_identificateur_toe_unit_rom;
+  const alias_ref_identificateur ref_toe_unit_rom={-1,0,0,"_toe",0,0};
+  const define_alias_gen(alias_toe_unit_rom,_IDNT,0,&ref_toe_unit_rom);
+  const gen & toe_unit_rom_IDNT_e = * (gen *) & alias_toe_unit_rom;
+
+  static const alias_identificateur alias_identificateur_ton_unit_rom={0,0,"_ton",0,0};
+  const identificateur & _IDNT_id_ton_unit_rom=* (const identificateur *) &alias_identificateur_ton_unit_rom;
+  const alias_ref_identificateur ref_ton_unit_rom={-1,0,0,"_ton",0,0};
+  const define_alias_gen(alias_ton_unit_rom,_IDNT,0,&ref_ton_unit_rom);
+  const gen & ton_unit_rom_IDNT_e = * (gen *) & alias_ton_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tonUK_unit_rom={0,0,"_tonUK",0,0};
+  const identificateur & _IDNT_id_tonUK_unit_rom=* (const identificateur *) &alias_identificateur_tonUK_unit_rom;
+  const alias_ref_identificateur ref_tonUK_unit_rom={-1,0,0,"_tonUK",0,0};
+  const define_alias_gen(alias_tonUK_unit_rom,_IDNT,0,&ref_tonUK_unit_rom);
+  const gen & tonUK_unit_rom_IDNT_e = * (gen *) & alias_tonUK_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tr_unit_rom={0,0,"_tr",0,0};
+  const identificateur & _IDNT_id_tr_unit_rom=* (const identificateur *) &alias_identificateur_tr_unit_rom;
+  const alias_ref_identificateur ref_tr_unit_rom={-1,0,0,"_tr",0,0};
+  const define_alias_gen(alias_tr_unit_rom,_IDNT,0,&ref_tr_unit_rom);
+  const gen & tr_unit_rom_IDNT_e = * (gen *) & alias_tr_unit_rom;
+
+  static const alias_identificateur alias_identificateur_tsp_unit_rom={0,0,"_tsp",0,0};
+  const identificateur & _IDNT_id_tsp_unit_rom=* (const identificateur *) &alias_identificateur_tsp_unit_rom;
+  const alias_ref_identificateur ref_tsp_unit_rom={-1,0,0,"_tsp",0,0};
+  const define_alias_gen(alias_tsp_unit_rom,_IDNT,0,&ref_tsp_unit_rom);
+  const gen & tsp_unit_rom_IDNT_e = * (gen *) & alias_tsp_unit_rom;
+
+  static const alias_identificateur alias_identificateur_u_unit_rom={0,0,"_u",0,0};
+  const identificateur & _IDNT_id_u_unit_rom=* (const identificateur *) &alias_identificateur_u_unit_rom;
+  const alias_ref_identificateur ref_u_unit_rom={-1,0,0,"_u",0,0};
+  const define_alias_gen(alias_u_unit_rom,_IDNT,0,&ref_u_unit_rom);
+  const gen & u_unit_rom_IDNT_e = * (gen *) & alias_u_unit_rom;
+
+  static const alias_identificateur alias_identificateur_E_unit_rom={0,0,"_E",0,0};
+  const identificateur & _IDNT_id_E_unit_rom=* (const identificateur *) &alias_identificateur_E_unit_rom;
+  const alias_ref_identificateur ref_E_unit_rom={-1,0,0,"_E",0,0};
+  const define_alias_gen(alias_E_unit_rom,_IDNT,0,&ref_E_unit_rom);
+  const gen & E_unit_rom_IDNT_e = * (gen *) & alias_E_unit_rom;
+
+  static const alias_identificateur alias_identificateur_Curie_unit_rom={0,0,"_Curie",0,0};
+  const identificateur & _IDNT_id_Curie_unit_rom=* (const identificateur *) &alias_identificateur_Curie_unit_rom;
+  const alias_ref_identificateur ref_Curie_unit_rom={-1,0,0,"_Curie",0,0};
+  const define_alias_gen(alias_Curie_unit_rom,_IDNT,0,&ref_Curie_unit_rom);
+  const gen & Curie_unit_rom_IDNT_e = * (gen *) & alias_Curie_unit_rom;
+
+  static const alias_identificateur alias_identificateur_C_unit_rom={0,0,"_C",0,0};
+  const identificateur & _IDNT_id_C_unit_rom=* (const identificateur *) &alias_identificateur_C_unit_rom;
+  const alias_ref_identificateur ref_C_unit_rom={-1,0,0,"_C",0,0};
+  const define_alias_gen(alias_C_unit_rom,_IDNT,0,&ref_C_unit_rom);
+  const gen & C_unit_rom_IDNT_e = * (gen *) & alias_C_unit_rom;
+
+  static const alias_identificateur alias_identificateur_kg_unit_rom={0,0,"_kg",0,0};
+  const identificateur & _IDNT_id_kg_unit_rom=* (const identificateur *) &alias_identificateur_kg_unit_rom;
+  const alias_ref_identificateur ref_kg_unit_rom={-1,0,0,"_kg",0,0};
+  const define_alias_gen(alias_kg_unit_rom,_IDNT,0,&ref_kg_unit_rom);
+  const gen & kg_unit_rom_IDNT_e = * (gen *) & alias_kg_unit_rom;
+  // const gen & _kg_unit = * (gen *) & alias_kg_unit_rom;
+
+
+#else
+  identificateur m_unit_rom_IDNT("_m");
+  gen m_unit_rom_IDNT_e(m_unit_rom_IDNT);
+  identificateur A_unit_rom_IDNT("_A");
+  gen A_unit_rom_IDNT_e(A_unit_rom_IDNT);
+  identificateur Bq_unit_rom_IDNT("_Bq");
+  gen Bq_unit_rom_IDNT_e(Bq_unit_rom_IDNT);
+  identificateur yd_unit_rom_IDNT("_yd");
+  gen yd_unit_rom_IDNT_e(yd_unit_rom_IDNT);
+  identificateur yr_unit_rom_IDNT("_yr");
+  gen yr_unit_rom_IDNT_e(yr_unit_rom_IDNT);
+  identificateur Btu_unit_rom_IDNT("_Btu");
+  gen Btu_unit_rom_IDNT_e(Btu_unit_rom_IDNT);
+  identificateur R__unit_rom_IDNT("_R_");
+  gen R__unit_rom_IDNT_e(R__unit_rom_IDNT);
+  identificateur epsilon0__unit_rom_IDNT("_epsilon0_");
+  gen epsilon0__unit_rom_IDNT_e(epsilon0__unit_rom_IDNT);
+  identificateur a0__unit_rom_IDNT("_a0_");
+  gen a0__unit_rom_IDNT_e(a0__unit_rom_IDNT);
+  identificateur RSun__unit_rom_IDNT("_RSun_");
+  gen RSun__unit_rom_IDNT_e(RSun__unit_rom_IDNT);
+  identificateur REarth__unit_rom_IDNT("_REarth_");
+  gen REarth__unit_rom_IDNT_e(REarth__unit_rom_IDNT);
+  identificateur Fdy_unit_rom_IDNT("_Fdy");
+  gen Fdy_unit_rom_IDNT_e(Fdy_unit_rom_IDNT);
+  identificateur F_unit_rom_IDNT("_F");
+  gen F_unit_rom_IDNT_e(F_unit_rom_IDNT);
+  identificateur FF_unit_rom_IDNT("_FF");
+  gen FF_unit_rom_IDNT_e(FF_unit_rom_IDNT);
+  identificateur Faraday__unit_rom_IDNT("_Faraday_");
+  gen Faraday__unit_rom_IDNT_e(Faraday__unit_rom_IDNT);
+  identificateur G__unit_rom_IDNT("_G_");
+  gen G__unit_rom_IDNT_e(G__unit_rom_IDNT);
+  identificateur Gal_unit_rom_IDNT("_Gal");
+  gen Gal_unit_rom_IDNT_e(Gal_unit_rom_IDNT);
+  identificateur Gy_unit_rom_IDNT("_Gy");
+  gen Gy_unit_rom_IDNT_e(Gy_unit_rom_IDNT);
+  identificateur H_unit_rom_IDNT("_H");
+  gen H_unit_rom_IDNT_e(H_unit_rom_IDNT);
+  identificateur HFCC_unit_rom_IDNT("_HFCC");
+  gen HFCC_unit_rom_IDNT_e(HFCC_unit_rom_IDNT);
+  identificateur Hz_unit_rom_IDNT("_Hz");
+  gen Hz_unit_rom_IDNT_e(Hz_unit_rom_IDNT);
+  identificateur IO__unit_rom_IDNT("_IO_");
+  gen IO__unit_rom_IDNT_e(IO__unit_rom_IDNT);
+  identificateur J_unit_rom_IDNT("_J");
+  gen J_unit_rom_IDNT_e(J_unit_rom_IDNT);
+  identificateur K_unit_rom_IDNT("_K");
+  gen K_unit_rom_IDNT_e(K_unit_rom_IDNT);
+  identificateur L_unit_rom_IDNT("_L");
+  gen L_unit_rom_IDNT_e(L_unit_rom_IDNT);
+  identificateur N_unit_rom_IDNT("_N");
+  gen N_unit_rom_IDNT_e(N_unit_rom_IDNT);
+  identificateur NA__unit_rom_IDNT("_NA_");
+  gen NA__unit_rom_IDNT_e(NA__unit_rom_IDNT);
+  identificateur Ohm_unit_rom_IDNT("_Ohm");
+  gen Ohm_unit_rom_IDNT_e(Ohm_unit_rom_IDNT);
+  identificateur P_unit_rom_IDNT("_P");
+  gen P_unit_rom_IDNT_e(P_unit_rom_IDNT);
+  identificateur PSun__unit_rom_IDNT("_PSun_");
+  gen PSun__unit_rom_IDNT_e(PSun__unit_rom_IDNT);
+  identificateur Pa_unit_rom_IDNT("_Pa");
+  gen Pa_unit_rom_IDNT_e(Pa_unit_rom_IDNT);
+  identificateur R_unit_rom_IDNT("_R");
+  gen R_unit_rom_IDNT_e(R_unit_rom_IDNT);
+  identificateur Rankine_unit_rom_IDNT("_Rankine");
+  gen Rankine_unit_rom_IDNT_e(Rankine_unit_rom_IDNT);
+  identificateur Rinfinity__unit_rom_IDNT("_Rinfinity_");
+  gen Rinfinity__unit_rom_IDNT_e(Rinfinity__unit_rom_IDNT);
+  identificateur S_unit_rom_IDNT("_S");
+  gen S_unit_rom_IDNT_e(S_unit_rom_IDNT);
+  identificateur St_unit_rom_IDNT("_St");
+  gen St_unit_rom_IDNT_e(St_unit_rom_IDNT);
+  identificateur StdP__unit_rom_IDNT("_StdP_");
+  gen StdP__unit_rom_IDNT_e(StdP__unit_rom_IDNT);
+  identificateur StdT__unit_rom_IDNT("_StdT_");
+  gen StdT__unit_rom_IDNT_e(StdT__unit_rom_IDNT);
+  identificateur Sv_unit_rom_IDNT("_Sv");
+  gen Sv_unit_rom_IDNT_e(Sv_unit_rom_IDNT);
+  identificateur T_unit_rom_IDNT("_T");
+  gen T_unit_rom_IDNT_e(T_unit_rom_IDNT);
+  identificateur Torr_unit_rom_IDNT("_Torr");
+  gen Torr_unit_rom_IDNT_e(Torr_unit_rom_IDNT);
+  identificateur V_unit_rom_IDNT("_V");
+  gen V_unit_rom_IDNT_e(V_unit_rom_IDNT);
+  identificateur Vm__unit_rom_IDNT("_Vm_");
+  gen Vm__unit_rom_IDNT_e(Vm__unit_rom_IDNT);
+  identificateur W_unit_rom_IDNT("_W");
+  gen W_unit_rom_IDNT_e(W_unit_rom_IDNT);
+  identificateur Wb_unit_rom_IDNT("_Wb");
+  gen Wb_unit_rom_IDNT_e(Wb_unit_rom_IDNT);
+  identificateur Wh_unit_rom_IDNT("_Wh");
+  gen Wh_unit_rom_IDNT_e(Wh_unit_rom_IDNT);
+  identificateur a_unit_rom_IDNT("_a");
+  gen a_unit_rom_IDNT_e(a_unit_rom_IDNT);
+  identificateur acre_unit_rom_IDNT("_acre");
+  gen acre_unit_rom_IDNT_e(acre_unit_rom_IDNT);
+  identificateur alpha__unit_rom_IDNT("_alpha_");
+  gen alpha__unit_rom_IDNT_e(alpha__unit_rom_IDNT);
+  identificateur arcmin_unit_rom_IDNT("_arcmin");
+  gen arcmin_unit_rom_IDNT_e(arcmin_unit_rom_IDNT);
+  identificateur arcs_unit_rom_IDNT("_arcs");
+  gen arcs_unit_rom_IDNT_e(arcs_unit_rom_IDNT);
+  identificateur atm_unit_rom_IDNT("_atm");
+  gen atm_unit_rom_IDNT_e(atm_unit_rom_IDNT);
+  identificateur au_unit_rom_IDNT("_au");
+  gen au_unit_rom_IDNT_e(au_unit_rom_IDNT);
+  identificateur bar_unit_rom_IDNT("_bar");
+  gen bar_unit_rom_IDNT_e(bar_unit_rom_IDNT);
+  identificateur b_unit_rom_IDNT("_b");
+  gen b_unit_rom_IDNT_e(b_unit_rom_IDNT);
+  identificateur bbl_unit_rom_IDNT("_bbl");
+  gen bbl_unit_rom_IDNT_e(bbl_unit_rom_IDNT);
+  identificateur bblep_unit_rom_IDNT("_bblep");
+  gen bblep_unit_rom_IDNT_e(bblep_unit_rom_IDNT);
+  identificateur boe_unit_rom_IDNT("_boe");
+  gen boe_unit_rom_IDNT_e(boe_unit_rom_IDNT);
+  identificateur bu_unit_rom_IDNT("_bu");
+  gen bu_unit_rom_IDNT_e(bu_unit_rom_IDNT);
+  identificateur buUS_unit_rom_IDNT("_buUS");
+  gen buUS_unit_rom_IDNT_e(buUS_unit_rom_IDNT);
+  identificateur c3__unit_rom_IDNT("_c3_");
+  gen c3__unit_rom_IDNT_e(c3__unit_rom_IDNT);
+  identificateur c__unit_rom_IDNT("_c_");
+  gen c__unit_rom_IDNT_e(c__unit_rom_IDNT);
+  identificateur cal_unit_rom_IDNT("_cal");
+  gen cal_unit_rom_IDNT_e(cal_unit_rom_IDNT);
+  identificateur cd_unit_rom_IDNT("_cd");
+  gen cd_unit_rom_IDNT_e(cd_unit_rom_IDNT);
+  identificateur cf_unit_rom_IDNT("_cf");
+  gen cf_unit_rom_IDNT_e(cf_unit_rom_IDNT);
+  identificateur chain_unit_rom_IDNT("_chain");
+  gen chain_unit_rom_IDNT_e(chain_unit_rom_IDNT);
+  identificateur ct_unit_rom_IDNT("_ct");
+  gen ct_unit_rom_IDNT_e(ct_unit_rom_IDNT);
+  identificateur cu_unit_rom_IDNT("_cu");
+  gen cu_unit_rom_IDNT_e(cu_unit_rom_IDNT);
+  identificateur d_unit_rom_IDNT("_d");
+  gen d_unit_rom_IDNT_e(d_unit_rom_IDNT);
+  identificateur dB_unit_rom_IDNT("_dB");
+  gen dB_unit_rom_IDNT_e(dB_unit_rom_IDNT);
+  identificateur deg_unit_rom_IDNT("_deg");
+  gen deg_unit_rom_IDNT_e(deg_unit_rom_IDNT);
+  identificateur dyn_unit_rom_IDNT("_dyn");
+  gen dyn_unit_rom_IDNT_e(dyn_unit_rom_IDNT);
+  identificateur eV_unit_rom_IDNT("_eV");
+  gen eV_unit_rom_IDNT_e(eV_unit_rom_IDNT);
+  identificateur epsilon0q__unit_rom_IDNT("_epsilon0q_");
+  gen epsilon0q__unit_rom_IDNT_e(epsilon0q__unit_rom_IDNT);
+  identificateur epsilonox__unit_rom_IDNT("_epsilonox_");
+  gen epsilonox__unit_rom_IDNT_e(epsilonox__unit_rom_IDNT);
+  identificateur epsilonsi__unit_rom_IDNT("_epsilonsi_");
+  gen epsilonsi__unit_rom_IDNT_e(epsilonsi__unit_rom_IDNT);
+  identificateur erg_unit_rom_IDNT("_erg");
+  gen erg_unit_rom_IDNT_e(erg_unit_rom_IDNT);
+  identificateur f0__unit_rom_IDNT("_f0_");
+  gen f0__unit_rom_IDNT_e(f0__unit_rom_IDNT);
+  identificateur fath_unit_rom_IDNT("_fath");
+  gen fath_unit_rom_IDNT_e(fath_unit_rom_IDNT);
+  identificateur fbm_unit_rom_IDNT("_fbm");
+  gen fbm_unit_rom_IDNT_e(fbm_unit_rom_IDNT);
+  identificateur fc_unit_rom_IDNT("_fc");
+  gen fc_unit_rom_IDNT_e(fc_unit_rom_IDNT);
+  identificateur fermi_unit_rom_IDNT("_fermi");
+  gen fermi_unit_rom_IDNT_e(fermi_unit_rom_IDNT);
+  identificateur flam_unit_rom_IDNT("_flam");
+  gen flam_unit_rom_IDNT_e(flam_unit_rom_IDNT);
+  identificateur fm_unit_rom_IDNT("_fm");
+  gen fm_unit_rom_IDNT_e(fm_unit_rom_IDNT);
+  identificateur ft_unit_rom_IDNT("_ft");
+  gen ft_unit_rom_IDNT_e(ft_unit_rom_IDNT);
+  identificateur ftUS_unit_rom_IDNT("_ftUS");
+  gen ftUS_unit_rom_IDNT_e(ftUS_unit_rom_IDNT);
+  identificateur g_unit_rom_IDNT("_g");
+  gen g_unit_rom_IDNT_e(g_unit_rom_IDNT);
+  identificateur g__unit_rom_IDNT("_g_");
+  gen g__unit_rom_IDNT_e(g__unit_rom_IDNT);
+  identificateur galC_unit_rom_IDNT("_galC");
+  gen galC_unit_rom_IDNT_e(galC_unit_rom_IDNT);
+  identificateur galUK_unit_rom_IDNT("_galUK");
+  gen galUK_unit_rom_IDNT_e(galUK_unit_rom_IDNT);
+  identificateur galUS_unit_rom_IDNT("_galUS");
+  gen galUS_unit_rom_IDNT_e(galUS_unit_rom_IDNT);
+  identificateur gf_unit_rom_IDNT("_gf");
+  gen gf_unit_rom_IDNT_e(gf_unit_rom_IDNT);
+  identificateur gmol_unit_rom_IDNT("_gmol");
+  gen gmol_unit_rom_IDNT_e(gmol_unit_rom_IDNT);
+  identificateur gon_unit_rom_IDNT("_gon");
+  gen gon_unit_rom_IDNT_e(gon_unit_rom_IDNT);
+  identificateur grad_unit_rom_IDNT("_grad");
+  gen grad_unit_rom_IDNT_e(grad_unit_rom_IDNT);
+  identificateur grain_unit_rom_IDNT("_grain");
+  gen grain_unit_rom_IDNT_e(grain_unit_rom_IDNT);
+  identificateur h_unit_rom_IDNT("_h");
+  gen h_unit_rom_IDNT_e(h_unit_rom_IDNT);
+  identificateur h__unit_rom_IDNT("_h_");
+  gen h__unit_rom_IDNT_e(h__unit_rom_IDNT);
+  identificateur ha_unit_rom_IDNT("_ha");
+  gen ha_unit_rom_IDNT_e(ha_unit_rom_IDNT);
+  identificateur hbar__unit_rom_IDNT("_hbar_");
+  gen hbar__unit_rom_IDNT_e(hbar__unit_rom_IDNT);
+  identificateur hp_unit_rom_IDNT("_hp");
+  gen hp_unit_rom_IDNT_e(hp_unit_rom_IDNT);
+  identificateur inH2O_unit_rom_IDNT("_inH2O");
+  gen inH2O_unit_rom_IDNT_e(inH2O_unit_rom_IDNT);
+  identificateur inHg_unit_rom_IDNT("_inHg");
+  gen inHg_unit_rom_IDNT_e(inHg_unit_rom_IDNT);
+  identificateur inch_unit_rom_IDNT("_inch");
+  gen inch_unit_rom_IDNT_e(inch_unit_rom_IDNT);
+  identificateur j_unit_rom_IDNT("_j");
+  gen j_unit_rom_IDNT_e(j_unit_rom_IDNT);
+  identificateur k__unit_rom_IDNT("_k_");
+  gen k__unit_rom_IDNT_e(k__unit_rom_IDNT);
+  identificateur kip_unit_rom_IDNT("_kip");
+  gen kip_unit_rom_IDNT_e(kip_unit_rom_IDNT);
+  identificateur knot_unit_rom_IDNT("_knot");
+  gen knot_unit_rom_IDNT_e(knot_unit_rom_IDNT);
+  identificateur kph_unit_rom_IDNT("_kph");
+  gen kph_unit_rom_IDNT_e(kph_unit_rom_IDNT);
+  identificateur kq__unit_rom_IDNT("_kq_");
+  gen kq__unit_rom_IDNT_e(kq__unit_rom_IDNT);
+  identificateur l_unit_rom_IDNT("_l");
+  gen l_unit_rom_IDNT_e(l_unit_rom_IDNT);
+  identificateur lam_unit_rom_IDNT("_lam");
+  gen lam_unit_rom_IDNT_e(lam_unit_rom_IDNT);
+  identificateur lambda0_unit_rom_IDNT("_lambda0");
+  gen lambda0_unit_rom_IDNT_e(lambda0_unit_rom_IDNT);
+  identificateur lambdac__unit_rom_IDNT("_lambdac_");
+  gen lambdac__unit_rom_IDNT_e(lambdac__unit_rom_IDNT);
+  identificateur lb_unit_rom_IDNT("_lb");
+  gen lb_unit_rom_IDNT_e(lb_unit_rom_IDNT);
+  identificateur lbf_unit_rom_IDNT("_lbf");
+  gen lbf_unit_rom_IDNT_e(lbf_unit_rom_IDNT);
+  identificateur lbmol_unit_rom_IDNT("_lbmol");
+  gen lbmol_unit_rom_IDNT_e(lbmol_unit_rom_IDNT);
+  identificateur lbt_unit_rom_IDNT("_lbt");
+  gen lbt_unit_rom_IDNT_e(lbt_unit_rom_IDNT);
+  identificateur lep_unit_rom_IDNT("_lep");
+  gen lep_unit_rom_IDNT_e(lep_unit_rom_IDNT);
+  identificateur liqpt_unit_rom_IDNT("_liqpt");
+  gen liqpt_unit_rom_IDNT_e(liqpt_unit_rom_IDNT);
+  identificateur lyr_unit_rom_IDNT("_lyr");
+  gen lyr_unit_rom_IDNT_e(lyr_unit_rom_IDNT);
+  identificateur mEarth__unit_rom_IDNT("_mEarth_");
+  gen mEarth__unit_rom_IDNT_e(mEarth__unit_rom_IDNT);
+  identificateur mSun__unit_rom_IDNT("_mSun_");
+  gen mSun__unit_rom_IDNT_e(mSun__unit_rom_IDNT);
+  identificateur me__unit_rom_IDNT("_me_");
+  gen me__unit_rom_IDNT_e(me__unit_rom_IDNT);
+  identificateur mho_unit_rom_IDNT("_mho");
+  gen mho_unit_rom_IDNT_e(mho_unit_rom_IDNT);
+  identificateur mi_unit_rom_IDNT("_mi");
+  gen mi_unit_rom_IDNT_e(mi_unit_rom_IDNT);
+  identificateur miUS_unit_rom_IDNT("_miUS");
+  gen miUS_unit_rom_IDNT_e(miUS_unit_rom_IDNT);
+  identificateur mil_unit_rom_IDNT("_mil");
+  gen mil_unit_rom_IDNT_e(mil_unit_rom_IDNT);
+  identificateur mile_unit_rom_IDNT("_mile");
+  gen mile_unit_rom_IDNT_e(mile_unit_rom_IDNT);
+  identificateur mille_unit_rom_IDNT("_mille");
+  gen mille_unit_rom_IDNT_e(mille_unit_rom_IDNT);
+  identificateur min_unit_rom_IDNT("_min");
+  gen min_unit_rom_IDNT_e(min_unit_rom_IDNT);
+  identificateur mmHg_unit_rom_IDNT("_mmHg");
+  gen mmHg_unit_rom_IDNT_e(mmHg_unit_rom_IDNT);
+  identificateur mn_unit_rom_IDNT("_mn");
+  gen mn_unit_rom_IDNT_e(mn_unit_rom_IDNT);
+  identificateur mol_unit_rom_IDNT("_mol");
+  gen mol_unit_rom_IDNT_e(mol_unit_rom_IDNT);
+  identificateur molK_unit_rom_IDNT("_molK");
+  gen molK_unit_rom_IDNT_e(molK_unit_rom_IDNT);
+  identificateur mp__unit_rom_IDNT("_mp_");
+  gen mp__unit_rom_IDNT_e(mp__unit_rom_IDNT);
+  identificateur mph_unit_rom_IDNT("_mph");
+  gen mph_unit_rom_IDNT_e(mph_unit_rom_IDNT);
+  identificateur mpme__unit_rom_IDNT("_mpme_");
+  gen mpme__unit_rom_IDNT_e(mpme__unit_rom_IDNT);
+  identificateur mu0__unit_rom_IDNT("_mu0_");
+  gen mu0__unit_rom_IDNT_e(mu0__unit_rom_IDNT);
+  identificateur muB__unit_rom_IDNT("_muB_");
+  gen muB__unit_rom_IDNT_e(muB__unit_rom_IDNT);
+  identificateur muN__unit_rom_IDNT("_muN_");
+  gen muN__unit_rom_IDNT_e(muN__unit_rom_IDNT);
+  identificateur nmi_unit_rom_IDNT("_nmi");
+  gen nmi_unit_rom_IDNT_e(nmi_unit_rom_IDNT);
+  identificateur oz_unit_rom_IDNT("_oz");
+  gen oz_unit_rom_IDNT_e(oz_unit_rom_IDNT);
+  identificateur ozUK_unit_rom_IDNT("_ozUK");
+  gen ozUK_unit_rom_IDNT_e(ozUK_unit_rom_IDNT);
+  identificateur ozfl_unit_rom_IDNT("_ozfl");
+  gen ozfl_unit_rom_IDNT_e(ozfl_unit_rom_IDNT);
+  identificateur ozt_unit_rom_IDNT("_ozt");
+  gen ozt_unit_rom_IDNT_e(ozt_unit_rom_IDNT);
+  identificateur pc_unit_rom_IDNT("_pc");
+  gen pc_unit_rom_IDNT_e(pc_unit_rom_IDNT);
+  identificateur pdl_unit_rom_IDNT("_pdl");
+  gen pdl_unit_rom_IDNT_e(pdl_unit_rom_IDNT);
+  identificateur phi__unit_rom_IDNT("_phi_");
+  gen phi__unit_rom_IDNT_e(phi__unit_rom_IDNT);
+  identificateur pk_unit_rom_IDNT("_pk");
+  gen pk_unit_rom_IDNT_e(pk_unit_rom_IDNT);
+  identificateur psi_unit_rom_IDNT("_psi");
+  gen psi_unit_rom_IDNT_e(psi_unit_rom_IDNT);
+  identificateur pt_unit_rom_IDNT("_pt");
+  gen pt_unit_rom_IDNT_e(pt_unit_rom_IDNT);
+  identificateur ptUK_unit_rom_IDNT("_ptUK");
+  gen ptUK_unit_rom_IDNT_e(ptUK_unit_rom_IDNT);
+  identificateur qe_unit_rom_IDNT("_qe");
+  gen qe_unit_rom_IDNT_e(qe_unit_rom_IDNT);
+  identificateur qepsilon0__unit_rom_IDNT("_qepsilon0_");
+  gen qepsilon0__unit_rom_IDNT_e(qepsilon0__unit_rom_IDNT);
+  identificateur qme__unit_rom_IDNT("_qme_");
+  gen qme__unit_rom_IDNT_e(qme__unit_rom_IDNT);
+  identificateur qt_unit_rom_IDNT("_qt");
+  gen qt_unit_rom_IDNT_e(qt_unit_rom_IDNT);
+  identificateur rad_unit_rom_IDNT("_rad");
+  gen rad_unit_rom_IDNT_e(rad_unit_rom_IDNT);
+  identificateur rd_unit_rom_IDNT("_rd");
+  gen rd_unit_rom_IDNT_e(rd_unit_rom_IDNT);
+  identificateur rem_unit_rom_IDNT("_rem");
+  gen rem_unit_rom_IDNT_e(rem_unit_rom_IDNT);
+  identificateur rev_unit_rom_IDNT("_rev");
+  gen rev_unit_rom_IDNT_e(rev_unit_rom_IDNT);
+  identificateur rod_unit_rom_IDNT("_rod");
+  gen rod_unit_rom_IDNT_e(rod_unit_rom_IDNT);
+  identificateur rpm_unit_rom_IDNT("_rpm");
+  gen rpm_unit_rom_IDNT_e(rpm_unit_rom_IDNT);
+  identificateur s_unit_rom_IDNT("_s");
+  gen s_unit_rom_IDNT_e(s_unit_rom_IDNT);
+  identificateur sb_unit_rom_IDNT("_sb");
+  gen sb_unit_rom_IDNT_e(sb_unit_rom_IDNT);
+  identificateur sd_unit_rom_IDNT("_sd");
+  gen sd_unit_rom_IDNT_e(sd_unit_rom_IDNT);
+  identificateur sigma_unit_rom_IDNT("_sigma");
+  gen sigma_unit_rom_IDNT_e(sigma_unit_rom_IDNT);
+  identificateur slug_unit_rom_IDNT("_slug");
+  gen slug_unit_rom_IDNT_e(slug_unit_rom_IDNT);
+  identificateur st_unit_rom_IDNT("_st");
+  gen st_unit_rom_IDNT_e(st_unit_rom_IDNT);
+  identificateur syr__unit_rom_IDNT("_syr_");
+  gen syr__unit_rom_IDNT_e(syr__unit_rom_IDNT);
+  identificateur t_unit_rom_IDNT("_t");
+  gen t_unit_rom_IDNT_e(t_unit_rom_IDNT);
+  identificateur tbsp_unit_rom_IDNT("_tbsp");
+  gen tbsp_unit_rom_IDNT_e(tbsp_unit_rom_IDNT);
+  identificateur tec_unit_rom_IDNT("_tec");
+  gen tec_unit_rom_IDNT_e(tec_unit_rom_IDNT);
+  identificateur tep_unit_rom_IDNT("_tep");
+  gen tep_unit_rom_IDNT_e(tep_unit_rom_IDNT);
+  identificateur tepC_unit_rom_IDNT("_tepC");
+  gen tepC_unit_rom_IDNT_e(tepC_unit_rom_IDNT);
+  identificateur tepcC_unit_rom_IDNT("_tepcC");
+  gen tepcC_unit_rom_IDNT_e(tepcC_unit_rom_IDNT);
+  identificateur tepgC_unit_rom_IDNT("_tepgC");
+  gen tepgC_unit_rom_IDNT_e(tepgC_unit_rom_IDNT);
+  identificateur tex_unit_rom_IDNT("_tex");
+  gen tex_unit_rom_IDNT_e(tex_unit_rom_IDNT);
+  identificateur therm_unit_rom_IDNT("_therm");
+  gen therm_unit_rom_IDNT_e(therm_unit_rom_IDNT);
+  identificateur toe_unit_rom_IDNT("_toe");
+  gen toe_unit_rom_IDNT_e(toe_unit_rom_IDNT);
+  identificateur ton_unit_rom_IDNT("_ton");
+  gen ton_unit_rom_IDNT_e(ton_unit_rom_IDNT);
+  identificateur tonUK_unit_rom_IDNT("_tonUK");
+  gen tonUK_unit_rom_IDNT_e(tonUK_unit_rom_IDNT);
+  identificateur tr_unit_rom_IDNT("_tr");
+  gen tr_unit_rom_IDNT_e(tr_unit_rom_IDNT);
+  identificateur tsp_unit_rom_IDNT("_tsp");
+  gen tsp_unit_rom_IDNT_e(tsp_unit_rom_IDNT);
+  identificateur u_unit_rom_IDNT("_u");
+  gen u_unit_rom_IDNT_e(u_unit_rom_IDNT);
+  identificateur E_unit_rom_IDNT("_E");
+  gen E_unit_rom_IDNT_e(E_unit_rom_IDNT);
+  identificateur Curie_unit_rom_IDNT("_Curie");
+  gen Curie_unit_rom_IDNT_e(Curie_unit_rom_IDNT);
+  identificateur C_unit_rom_IDNT("_C");
+  gen C_unit_rom_IDNT_e(C_unit_rom_IDNT);
+  identificateur kg_unit_rom_IDNT("_kg");
+  gen kg_unit_rom_IDNT_e(kg_unit_rom_IDNT);
+  // gen _kg_unit(kg_unit_rom_IDNT);
+  identificateur Angstrom_unit_rom_IDNT("_Angstrom");
+  gen Angstrom_unit_rom_IDNT_e(Angstrom_unit_rom_IDNT);
+#endif
+  const gen * const tab_unit_rom[]={
+    &A_unit_rom_IDNT_e,
+    &Angstrom_unit_rom_IDNT_e,
+    &Bq_unit_rom_IDNT_e,
+    &Btu_unit_rom_IDNT_e,
+    &C_unit_rom_IDNT_e,
+    &Curie_unit_rom_IDNT_e,
+    &E_unit_rom_IDNT_e,
+    &F_unit_rom_IDNT_e,
+    &FF_unit_rom_IDNT_e,
+    &Faraday__unit_rom_IDNT_e,
+    &Fdy_unit_rom_IDNT_e,
+    &G__unit_rom_IDNT_e,
+    &Gal_unit_rom_IDNT_e,
+    &Gy_unit_rom_IDNT_e,
+    &H_unit_rom_IDNT_e,
+    &HFCC_unit_rom_IDNT_e,
+    &Hz_unit_rom_IDNT_e,
+    &IO__unit_rom_IDNT_e,
+    &J_unit_rom_IDNT_e,
+    &K_unit_rom_IDNT_e,
+    &L_unit_rom_IDNT_e,
+    &N_unit_rom_IDNT_e,
+    &NA__unit_rom_IDNT_e,
+    &Ohm_unit_rom_IDNT_e,
+    &P_unit_rom_IDNT_e,
+    &PSun__unit_rom_IDNT_e,
+    &Pa_unit_rom_IDNT_e,
+    &R_unit_rom_IDNT_e,
+    &REarth__unit_rom_IDNT_e,
+    &RSun__unit_rom_IDNT_e,
+    &R__unit_rom_IDNT_e,
+    &Rankine_unit_rom_IDNT_e,
+    &Rinfinity__unit_rom_IDNT_e,
+    &S_unit_rom_IDNT_e,
+    &St_unit_rom_IDNT_e,
+    &StdP__unit_rom_IDNT_e,
+    &StdT__unit_rom_IDNT_e,
+    &Sv_unit_rom_IDNT_e,
+    &T_unit_rom_IDNT_e,
+    &Torr_unit_rom_IDNT_e,
+    &V_unit_rom_IDNT_e,
+    &Vm__unit_rom_IDNT_e,
+    &W_unit_rom_IDNT_e,
+    &Wb_unit_rom_IDNT_e,
+    &Wh_unit_rom_IDNT_e,
+    &a_unit_rom_IDNT_e,
+    &a0__unit_rom_IDNT_e,
+    &acre_unit_rom_IDNT_e,
+    &alpha__unit_rom_IDNT_e,
+    &arcmin_unit_rom_IDNT_e,
+    &arcs_unit_rom_IDNT_e,
+    &atm_unit_rom_IDNT_e,
+    &au_unit_rom_IDNT_e,
+    &b_unit_rom_IDNT_e,
+    &bar_unit_rom_IDNT_e,
+    &bbl_unit_rom_IDNT_e,
+    &bblep_unit_rom_IDNT_e,
+    &boe_unit_rom_IDNT_e,
+    &bu_unit_rom_IDNT_e,
+    &buUS_unit_rom_IDNT_e,
+    &c3__unit_rom_IDNT_e,
+    &c__unit_rom_IDNT_e,
+    &cal_unit_rom_IDNT_e,
+    &cd_unit_rom_IDNT_e,
+    &cf_unit_rom_IDNT_e,
+    &chain_unit_rom_IDNT_e,
+    &ct_unit_rom_IDNT_e,
+    &cu_unit_rom_IDNT_e,
+    &d_unit_rom_IDNT_e,
+    &dB_unit_rom_IDNT_e,
+    &deg_unit_rom_IDNT_e,
+    &dyn_unit_rom_IDNT_e,
+    &eV_unit_rom_IDNT_e,
+    &epsilon0__unit_rom_IDNT_e,
+    &epsilon0q__unit_rom_IDNT_e,
+    &epsilonox__unit_rom_IDNT_e,
+    &epsilonsi__unit_rom_IDNT_e,
+    &erg_unit_rom_IDNT_e,
+    &f0__unit_rom_IDNT_e,
+    &fath_unit_rom_IDNT_e,
+    &fbm_unit_rom_IDNT_e,
+    &fc_unit_rom_IDNT_e,
+    &fermi_unit_rom_IDNT_e,
+    &flam_unit_rom_IDNT_e,
+    &fm_unit_rom_IDNT_e,
+    &ft_unit_rom_IDNT_e,
+    &ftUS_unit_rom_IDNT_e,
+    &g_unit_rom_IDNT_e,
+    &g__unit_rom_IDNT_e,
+    &galC_unit_rom_IDNT_e,
+    &galUK_unit_rom_IDNT_e,
+    &galUS_unit_rom_IDNT_e,
+    &gf_unit_rom_IDNT_e,
+    &gmol_unit_rom_IDNT_e,
+    &gon_unit_rom_IDNT_e,
+    &grad_unit_rom_IDNT_e,
+    &grain_unit_rom_IDNT_e,
+    &h_unit_rom_IDNT_e,
+    &h__unit_rom_IDNT_e,
+    &ha_unit_rom_IDNT_e,
+    &hbar__unit_rom_IDNT_e,
+    &hp_unit_rom_IDNT_e,
+    &inH2O_unit_rom_IDNT_e,
+    &inHg_unit_rom_IDNT_e,
+    &inch_unit_rom_IDNT_e,
+    &j_unit_rom_IDNT_e,
+    &k__unit_rom_IDNT_e,
+    &kg_unit_rom_IDNT_e,
+    &kip_unit_rom_IDNT_e,
+    &knot_unit_rom_IDNT_e,
+    &kph_unit_rom_IDNT_e,
+    &kq__unit_rom_IDNT_e,
+    &l_unit_rom_IDNT_e,
+    &lam_unit_rom_IDNT_e,
+    &lambda0_unit_rom_IDNT_e,
+    &lambdac__unit_rom_IDNT_e,
+    &lb_unit_rom_IDNT_e,
+    &lbf_unit_rom_IDNT_e,
+    &lbmol_unit_rom_IDNT_e,
+    &lbt_unit_rom_IDNT_e,
+    &lep_unit_rom_IDNT_e,
+    &liqpt_unit_rom_IDNT_e,
+    &lyr_unit_rom_IDNT_e,
+    &m_unit_rom_IDNT_e,
+    &mEarth__unit_rom_IDNT_e,
+    &mSun__unit_rom_IDNT_e,
+    &me__unit_rom_IDNT_e,
+    &mho_unit_rom_IDNT_e,
+    &mi_unit_rom_IDNT_e,
+    &miUS_unit_rom_IDNT_e,
+    &mil_unit_rom_IDNT_e,
+    &mile_unit_rom_IDNT_e,
+    &mille_unit_rom_IDNT_e,
+    &min_unit_rom_IDNT_e,
+    &mmHg_unit_rom_IDNT_e,
+    &mn_unit_rom_IDNT_e,
+    &mol_unit_rom_IDNT_e,
+    &molK_unit_rom_IDNT_e,
+    &mp__unit_rom_IDNT_e,
+    &mph_unit_rom_IDNT_e,
+    &mpme__unit_rom_IDNT_e,
+    &mu0__unit_rom_IDNT_e,
+    &muB__unit_rom_IDNT_e,
+    &muN__unit_rom_IDNT_e,
+    &nmi_unit_rom_IDNT_e,
+    &oz_unit_rom_IDNT_e,
+    &ozUK_unit_rom_IDNT_e,
+    &ozfl_unit_rom_IDNT_e,
+    &ozt_unit_rom_IDNT_e,
+    &pc_unit_rom_IDNT_e,
+    &pdl_unit_rom_IDNT_e,
+    &phi__unit_rom_IDNT_e,
+    &pk_unit_rom_IDNT_e,
+    &psi_unit_rom_IDNT_e,
+    &pt_unit_rom_IDNT_e,
+    &ptUK_unit_rom_IDNT_e,
+    &qe_unit_rom_IDNT_e,
+    &qepsilon0__unit_rom_IDNT_e,
+    &qme__unit_rom_IDNT_e,
+    &qt_unit_rom_IDNT_e,
+    &rad_unit_rom_IDNT_e,
+    &rd_unit_rom_IDNT_e,
+    &rem_unit_rom_IDNT_e,
+    &rev_unit_rom_IDNT_e,
+    &rod_unit_rom_IDNT_e,
+    &rpm_unit_rom_IDNT_e,
+    &s_unit_rom_IDNT_e,
+    &sb_unit_rom_IDNT_e,
+    &sd_unit_rom_IDNT_e,
+    &sigma_unit_rom_IDNT_e,
+    &slug_unit_rom_IDNT_e,
+    &st_unit_rom_IDNT_e,
+    &syr__unit_rom_IDNT_e,
+    &t_unit_rom_IDNT_e,
+    &tbsp_unit_rom_IDNT_e,
+    &tec_unit_rom_IDNT_e,
+    &tep_unit_rom_IDNT_e,
+    &tepC_unit_rom_IDNT_e,
+    &tepcC_unit_rom_IDNT_e,
+    &tepgC_unit_rom_IDNT_e,
+    &tex_unit_rom_IDNT_e,
+    &therm_unit_rom_IDNT_e,
+    &toe_unit_rom_IDNT_e,
+    &ton_unit_rom_IDNT_e,
+    &tonUK_unit_rom_IDNT_e,
+    &tr_unit_rom_IDNT_e,
+    &tsp_unit_rom_IDNT_e,
+    &u_unit_rom_IDNT_e,
+    &yd_unit_rom_IDNT_e,
+    &yr_unit_rom_IDNT_e,
+  };
+  bool is_unit_rom(const char * s,gen & res){
+    for (int i=0;i<sizeof(tab_unit_rom)/sizeof(gen *);++i){
+      if (!strcmp(s,tab_unit_rom[i]->_IDNTptr->id_name)){
+	res=*tab_unit_rom[i];
+	return true;
+      }
+    }
+    return false;
+  }
+
+
+  gen mksa_register(const char * s,const mksa_unit * equiv){
+#ifdef USTL
+    ustl::map<const char *, const mksa_unit *,ltstr>::const_iterator it=unit_conversion_map().find(s+1),itend=unit_conversion_map().end();
+#else
+    std::map<const char *, const mksa_unit *,ltstr>::const_iterator it=unit_conversion_map().find(s+1),itend=unit_conversion_map().end();
+#endif
+    gen res;
+    lock_syms_mutex();  
+    if (it!=itend)
+      res=syms()[s];
+    else {
+      unit_conversion_map()[s+1]=equiv;
+      if (is_unit_rom(s,res))
+	syms()[s]=res;
+      else
+	res = (syms()[s] = new ref_identificateur(s));
+    }
+    unlock_syms_mutex();  
+    return res;
+  }
+  gen mksa_register_unit(const char * s,const mksa_unit * equiv){
+    return symbolic(at_unit,makevecteur(1,mksa_register(s,equiv)));
+  }
+  const gen * tab_usual_units[]={&C_unit_rom_IDNT_e,&F_unit_rom_IDNT_e,&Gy_unit_rom_IDNT_e,&H_unit_rom_IDNT_e,&Hz_unit_rom_IDNT_e,&J_unit_rom_IDNT_e,&mho_unit_rom_IDNT_e,&N_unit_rom_IDNT_e,&Ohm_unit_rom_IDNT_e,&Pa_unit_rom_IDNT_e,&rad_unit_rom_IDNT_e,&S_unit_rom_IDNT_e,&Sv_unit_rom_IDNT_e,&T_unit_rom_IDNT_e,&V_unit_rom_IDNT_e,&W_unit_rom_IDNT_e,&Wb_unit_rom_IDNT_e};
   const mksa_unit __Angstrom_unit={1e-10,1,0,0,0,0,0,0,0};
   const mksa_unit __Btu_unit={1055.05585262,2,1,-2,0,0,0,0,0};
   const mksa_unit __Curie_unit={3.7e10,0,0,-1,0,0,0,0,0};
@@ -9508,7 +12109,7 @@ namespace giac {
   const mksa_unit __me_unit={9.1093897e-31,0,1,0,0,0,0,0}; 
   const mksa_unit __qe_unit={1.60217733e-19,0,0,1,1,0,0,0};
   const mksa_unit __h__unit={6.6260755e-34,2,1,-1,0,0,0,0}; 
-  const mksa_unit __G_unit={6.67259e-11,3,-1,-2,0,0,0,0}; 
+  const mksa_unit __G_unit={6.67408e-11,3,-1,-2,0,0,0,0}; 
   const mksa_unit __mu0_unit={1.25663706144e-6,1,1,-2,-2,0,0,0}; 
   const mksa_unit __epsilon0_unit={8.85418781761e-12,-3,-1,4,2,0,0,0}; 
   const mksa_unit __sigma_unit={ 5.67051e-8,0,1,-3,0,-4,0,0}; 
@@ -9924,15 +12525,16 @@ namespace giac {
 
   const char * const * const unitname_tab_end=unitname_tab+unitptr_tab_length;
 #ifndef NO_PHYSICAL_CONSTANTS
-  gen _m_unit(mksa_register("_m",&__m_unit));
   gen _kg_unit(mksa_register("_kg",&__kg_unit));
+  gen _m_unit(mksa_register("_m",&__m_unit));
   gen _s_unit(mksa_register("_s",&__s_unit));
   gen _A_unit(mksa_register("_A",&__A_unit));
   gen _K_unit(mksa_register("_K",&__K_unit)); // Kelvin
   gen _mol_unit(mksa_register("_mol",&__mol_unit)); // mol
   gen _cd_unit(mksa_register("_cd",&__cd_unit)); // candela
   gen _E_unit(mksa_register("_E",&__E_unit)); // euro
-  gen _Bq_unit(mksa_register("_Bq",&__Bq_unit));
+
+#ifndef STATIC_BUILTIN_LEXER_FUNCTIONS
   gen _C_unit(mksa_register("_C",&__C_unit));
   gen _F_unit(mksa_register("_F",&__F_unit));
   gen _Gy_unit(mksa_register("_Gy",&__Gy_unit));
@@ -9952,6 +12554,8 @@ namespace giac {
   gen _Wb_unit(mksa_register("_Wb",&__Wb_unit));
   gen _l_unit(mksa_register("_l",&__l_unit));
   gen _molK_unit(mksa_register("_molK",&__molK_unit));
+
+  gen _Bq_unit(mksa_register("_Bq",&__Bq_unit));
   gen _L_unit(mksa_register("_L",&__L_unit));
   // other metric units in m,kg,s,A
   gen _st_unit(mksa_register("_st",&__st_unit));
@@ -10079,6 +12683,7 @@ namespace giac {
   gen _tepcC_unit(mksa_register("_tepcC",&__tepcC_unit));
   // mean PRG for HFC in kg C unit
   gen _HFCC_unit(mksa_register("_HFCC",&__HFCC_unit));
+#endif // ndef STATIC_BUILTIN_LEXER_FUNCTIONS
 #endif
 
   static vecteur mksa_unit2vecteur(const mksa_unit * tmp){
@@ -10109,6 +12714,14 @@ namespace giac {
       v.push_back(tmp->E);
     }
     return v;
+  }
+
+  static vecteur mksa_unit2vecteur(const string & s){
+    for (int i=0;i<sizeof(tab_unit_rom)/sizeof(gen *);++i){
+      if (!strcmp(s.c_str(),tab_unit_rom[i]->_IDNTptr->id_name))
+	return mksa_unit2vecteur(unitptr_tab[i]);
+    }
+    return mksa_unit2vecteur(unit_conversion_map()[s.substr(1,s.size()-1).c_str()]);
   }
 
   struct mksa_tri3 {
@@ -10349,14 +12962,14 @@ namespace giac {
     if (is_undef(v)) return v;
     gen res1=v[0];
     int s=int(v.size());
+    for (int i=s;i<5;++i)
+      v.push_back(zero);
     for (;s>0;--s){
       if (!is_zero(v[s-1]))
 	break;
     }
     if (s>5)
       return g;
-    for (int i=s;i<5;++i)
-      v.push_back(zero);
     // look first if it's a mksa
     int pos=0;
     for (int i=1;i<5;++i){
@@ -10371,25 +12984,30 @@ namespace giac {
     if (pos)
       return mksa_reduce(g,contextptr);
     v[0]=plus_one;
-    const_iterateur it=usual_units().begin(),itend=usual_units().end();
+    const gen ** it=tab_usual_units,**itend=it+sizeof(tab_usual_units)/sizeof(const gen *);
+    // const_iterateur it=usual_units().begin(),itend=usual_units().end();
     for (;it!=itend;++it){
-      string s=it->print(contextptr);
-      gen tmp=mksa_unit2vecteur(unit_conversion_map()[s.substr(1,s.size()-1).c_str()]);
+      string s=(*it)->print(contextptr);
+      vecteur tmp=mksa_unit2vecteur(s);
+      for (int i=tmp.size();i<5;++i)
+	tmp.push_back(zero);
       if (tmp==v)
-	return _ufactor(gen(makevecteur(g,symbolic(at_unit,makevecteur(1,*it))),_SEQ__VECT),contextptr);
+	return _ufactor(gen(makevecteur(g,symbolic(at_unit,makevecteur(1,**it))),_SEQ__VECT),contextptr);
     }
     // count non-zero in v, if ==2 return mksa
     int count=0;
-    for (it=v.begin()+1,itend=v.end();it!=itend;++it){
-      if (!is_zero(*it))
+    const_iterateur jt=v.begin()+1,jtend=v.end();
+    for (;jt!=jtend;++jt){
+      if (!is_zero(*jt))
 	++count;
     }
     if (count<=2) 
       return mksa_reduce(g,contextptr);
-    it=usual_units().begin(); itend=usual_units().end();
+    // it=usual_units().begin(); itend=usual_units().end();
+    it=tab_usual_units;
     for (;it!=itend;++it){
-      string s=it->print(contextptr);
-      gen tmp=mksa_unit2vecteur(unit_conversion_map()[s.substr(1,s.size()-1).c_str()]);
+      string s=(*it)->print(contextptr);
+      gen tmp=mksa_unit2vecteur(s);
       vecteur w(*tmp._VECTptr);
       for (int j=0;j<2;j++){
 	vecteur vw;
@@ -10408,9 +13026,9 @@ namespace giac {
 	}
 	if (pos){
 	  if (j)
-	    return _ufactor(gen(makevecteur(g,symbolic(at_unit,makevecteur(1,unitpow(*it,-1)))),_SEQ__VECT),contextptr);
+	    return _ufactor(gen(makevecteur(g,symbolic(at_unit,makevecteur(1,unitpow(**it,-1)))),_SEQ__VECT),contextptr);
 	  else
-	    return _ufactor(gen(makevecteur(g,symbolic(at_unit,makevecteur(1,*it))),_SEQ__VECT),contextptr);
+	    return _ufactor(gen(makevecteur(g,symbolic(at_unit,makevecteur(1,**it))),_SEQ__VECT),contextptr);
 	}
       }
     }
@@ -10482,7 +13100,7 @@ namespace giac {
 #endif
   
   // Physical constants -> in input_lexer.ll
-#ifndef NO_PHYSICAL_CONSTANTS
+#if 0 //ndef NO_PHYSICAL_CONSTANTS
   identificateur _cst_hbar("_hbar_",symbolic(at_unit,makevecteur(1.05457266e-34,_J_unit*_s_unit)));
   gen cst_hbar(_cst_hbar);
   identificateur _cst_clightspeed("_c_",symbolic(at_unit,makevecteur(299792458,_m_unit/_s_unit)));
@@ -10537,7 +13155,7 @@ namespace giac {
   identificateur _cst_hPlanck("_h_",symbolic(at_unit,makevecteur(6.6260755e-34,_J_unit*_s_unit)));
   gen cst_hPlanck(_cst_hPlanck); //  h 6.6260755e-34 Js
   identificateur _cst_G("_G_",symbolic(at_unit,makevecteur(6.67408e-11,unitpow(_m_unit,3)*unitpow(_s_unit,-2)*unitpow(_kg_unit,-1))));
-  gen cst_G(_cst_G); // G 6.67259e-11m^3/s^2kg
+  gen cst_G(_cst_G); // G 6.67408e-11m^3/s^2kg
   identificateur _cst_mu0("_mu0_",symbolic(at_unit,makevecteur(1.25663706144e-6,_H_unit/_m_unit)));
   gen cst_mu0(_cst_mu0); // mu0 1.25663706144e-6 H/m
   identificateur _cst_epsilon0("_epsilon0_",symbolic(at_unit,makevecteur(8.85418781761e-12,_F_unit/_m_unit)));
@@ -10562,7 +13180,11 @@ namespace giac {
     if (g.type!=_VECT || g._VECTptr->size()!=2)
       return symbolic(at_maple_root,g);
     vecteur & v=*g._VECTptr;
+#ifdef KHICAS
+    return pow(v[0],inv(v[1],contextptr),contextptr);
+#else
     return pow(v[1],inv(v[0],contextptr),contextptr);
+#endif
   }
   static const char _maple_root_s []="root";
 #if defined RTOS_THREADX || defined NSPIRE
@@ -10603,7 +13225,8 @@ namespace giac {
   // Create an operator with a given syntax
   vector<unary_function_ptr> user_operator_list;   // GLOBAL VAR
   gen user_operator(const gen & g,GIAC_CONTEXT){
-    if (g.type!=_VECT || g._VECTptr->size()<3)
+    int nargs=0;
+    if (g.type!=_VECT || (nargs=g._VECTptr->size())<2)
       return gensizeerr(contextptr);
     vecteur & v=*g._VECTptr;
     // int s=signed(v.size());
@@ -10621,12 +13244,22 @@ namespace giac {
       const unary_function_user * ptr=dynamic_cast<const unary_function_user *>(ptr0);
       if (!ptr)
 	return zero;
-      if (ptr->f==v[1]){
-	// if (v[2].type==_INT_ && v[2].subtype==_INT_MUPADOPERATOR && v[2].val==_DELETE_OPERATOR) user_operator_list.erase(it); // does not work...
-	return plus_one;
+      if ( (nargs==3 && ptr->f==v[1] && v[2].type==_INT_ && v[2].subtype==_INT_MUPADOPERATOR && v[2].val==_DELETE_OPERATOR) ||
+	   (nargs==2 && v[1].type==_INT_ && v[1].subtype==_INT_MUPADOPERATOR && v[1].val==_DELETE_OPERATOR) ){
+	map_charptr_gen::const_iterator i,iend;
+	bool ok=true;
+	i = lexer_functions().find(v[0]._STRNGptr->c_str());
+	iend=lexer_functions().end();
+	if (i==iend)
+	  ok=false;
+	else
+	  lexer_functions().erase(v[0]._STRNGptr->c_str());
+	user_operator_list.erase(it); 
       }
-      return zero;
+      return plus_one;
     }
+    if (nargs<3)
+      return 1;
     if (v[2].type==_INT_){ 
       int token_value=v[2].val;
       unary_function_user * uf;
@@ -10652,9 +13285,17 @@ namespace giac {
 	// non mupad syntax, v[2] is input_parser.yy token value
 	uf = new unary_function_user(0,v[1],ss);
       unary_function_ptr u(uf);
-      // cout << symbolic(u,makevecteur(1,2)) << endl;
+      // cout << symbolic(u,makevecteur(1,2)) << '\n';
       user_operator_list.push_back(u);
-      bool res=lexer_functions_register(u,ss.c_str(),token_value);
+      static vector<string> * user_operator_string=0;
+      if (!user_operator_string) 
+	user_operator_string=new vector<string>;
+      int pos=equalposcomp(*user_operator_string,ss);
+      if (!pos){
+	user_operator_string->push_back(ss);
+	pos=user_operator_string->size();
+      }
+      bool res=lexer_functions_register(u,(*user_operator_string)[pos-1].c_str(),token_value);
       if (res){
 #ifdef HAVE_SIGNAL_H_OLD
 	if (!child_id)
@@ -10837,6 +13478,12 @@ namespace giac {
     int s=int(v.size());
     if (s==1)
       return gensizeerr(contextptr);
+    if (s>=2 && v[0].type==_INT_){
+      if (v[0].val)
+	return v[1];
+      else
+	return s==2?bounded_function(contextptr):piecewisetowhen(vecteur(v.begin()+2,v.end()),contextptr);
+    }
     if (s==2){
       v.push_back(0); // undef does not work
       return symbolic(at_when,gen(v,_SEQ__VECT));
@@ -10862,12 +13509,34 @@ namespace giac {
     if (g.type!=_VECT || g._VECTptr->size()!=3)
       return gensizeerr(contextptr);
     vecteur v = *g._VECTptr;
+    if (v[0].is_symb_of_sommet(at_not))
+      return when2sign(makevecteur(v[0]._SYMBptr->feuille,v[2],v[1]),contextptr);
+    if (v[0].is_symb_of_sommet(at_and) && v[0]._SYMBptr->feuille.type==_VECT){
+      vecteur vand=*v[0]._SYMBptr->feuille._VECTptr;
+      if (vand.size()==2)
+	return whentosign(makevecteur(vand[0],whentosign(makevecteur(vand[1],v[1],v[2]),contextptr),v[2]),contextptr);
+      if (vand.size()>2){
+	gen vandlast=vand.back();
+	vand.pop_back();
+	return whentosign(makevecteur(vandlast,whentosign(makevecteur(symbolic(at_and,vand),v[1],v[2]),contextptr),v[2]),contextptr);
+      }
+    }
+    if (v[0].is_symb_of_sommet(at_ou) && v[0]._SYMBptr->feuille.type==_VECT){
+      vecteur vor=*v[0]._SYMBptr->feuille._VECTptr;
+      if (vor.size()==2)
+	return whentosign(makevecteur(vor[0],v[1],whentosign(makevecteur(vor[1],v[1],v[2]),contextptr)),contextptr);
+      if (vor.size()>2){
+	gen vorlast=vor.back();
+	vor.pop_back();
+	return whentosign(makevecteur(vorlast,v[1],whentosign(makevecteur(symbolic(at_and,vor),v[1],v[2]),contextptr)),contextptr);
+      }
+    }
     if (is_equal(v[0]) || v[0].is_symb_of_sommet(at_same)){
-      *logptr(contextptr) << gettext("Assuming false condition ") << v[0].print(contextptr) << endl;
+      *logptr(contextptr) << gettext("Assuming false condition ") << v[0].print(contextptr) << '\n';
       return v[2];
     }
     if (v[0].is_symb_of_sommet(at_different)){
-      *logptr(contextptr) << gettext("Assuming true condition ") << v[0].print(contextptr) << endl;
+      *logptr(contextptr) << gettext("Assuming true condition ") << v[0].print(contextptr) << '\n';
       return v[1];
     }
     bool ok=false;
@@ -10885,6 +13554,8 @@ namespace giac {
   }
   const gen_op_context when2sign_tab[]={whentosign,0};
   gen when2sign(const gen & g,GIAC_CONTEXT){
+    if (equalposcomp(lidnt(g),unsigned_inf))
+      *logptr(contextptr) << gettext("when2sign does not work properly with infinities. Replace inf by Inf and run limit after.") << '\n';
     return subst(g,when_tab,when2sign_tab,false,contextptr);
     /*
     vector< gen_op_context > when2sign_v(1,whentosign);
@@ -10992,9 +13663,11 @@ namespace giac {
       if (tmp.type==_IDNT && (strcmp(tmp._IDNTptr->id_name,"numpy")==0 || strcmp(tmp._IDNTptr->id_name,"pylab")==0 || strcmp(tmp._IDNTptr->id_name,"matplotlib")==0)){
 	if (b.type==_SYMB){
 	  gen w1=eval(w[1],1,contextptr);
-	  if (w1==at_float || w1==at_real)
+	  // at_equal test added for e.g. matplotlib.xlim(-5,5)
+	  if (w1==at_float || w1==at_real || w1.is_symb_of_sommet(at_equal))
 	    return w1;
-	  tmp=eval(b._SYMBptr->feuille,eval_level(contextptr),contextptr);
+	  tmp=b._SYMBptr->feuille;
+	  tmp=eval(tmp,eval_level(contextptr),contextptr);
 	  tmp=evalf_double(tmp,1,contextptr);
 	  if (b.is_symb_of_sommet(at_dot))
 	    return _prod(tmp,contextptr);
@@ -11131,13 +13804,17 @@ namespace giac {
     return 1;
   }
   static const char _giac_assert_s []="assert";
-  static define_unary_function_eval (__giac_assert,&_giac_assert,_giac_assert_s);
+  static define_unary_function_eval_quoted (__giac_assert,&_giac_assert,_giac_assert_s);
   define_unary_function_ptr5( at_giac_assert ,alias_at_giac_assert,&__giac_assert,_QUOTE_ARGUMENTS,T_RETURN);
 
   gen _index(const gen & args,GIAC_CONTEXT){
     if (args.type!=_VECT || args._VECTptr->size()!=2)
       return gensizeerr(contextptr);
-    gen l=_find(makesequence(args._VECTptr->back(),args._VECTptr->front()),contextptr);
+    gen l;
+    if (args._VECTptr->front().type==_STRNG)
+      l=_find(args,contextptr);
+    else
+      l=_find(makesequence(args._VECTptr->back(),args._VECTptr->front()),contextptr);
     if (l.type!=_VECT)
       return l;
     if (l._VECTptr->empty())

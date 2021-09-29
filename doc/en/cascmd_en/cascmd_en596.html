@@ -4,114 +4,181 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Producing uniformly distributed random numbers: rand random alea hasard</title>
+<title>Animation of a sequence of graphic objects: animation
+</title>
 </head>
 <body >
 <a href="cascmd_en595.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en597.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec736" class="subsection">7.3.1  Producing uniformly distributed random numbers: <span style="font-family:monospace">rand</span><a id="hevea_default953"></a> <span style="font-family:monospace">random</span><a id="hevea_default954"></a> <span style="font-family:monospace">alea</span><a id="hevea_default955"></a> <span style="font-family:monospace">hasard</span><a id="hevea_default956"></a></h3>
-<p>The <span style="font-family:monospace">rand</span> (or <span style="font-family:monospace">random</span>) command will produce a number in
-[0,1) randomly and with equal probability. If you enter
+<h3 id="sec783" class="subsection">8.21.3  Animation of a sequence of graphic objects: <span style="font-family:monospace">animation</span>
+<a id="hevea_default1118"></a></h3>
+<p>The <span style="font-family:monospace">animation</span> command creates animations using sequences of
+graphic objects, which can be graphs 
+(see Section <a href="index.html#sec%3Aplotfunc">8.4</a>) or not (see chapters <a href="index.html#chap%3A2dgraphics">13</a>
+and <a href="index.html#chap%3A3dgraphics">14</a>).
+The sequence of objects depends most of the time on a parameter and is
+defined using the <span style="font-family:monospace">seq</span> command but it is not mandatory. 
+To define a sequence of graphic objects with <span style="font-family:monospace">seq</span>, enter the definition
+of the graphic object (depending on the parameter), the parameter
+name, its minimum value, its maximum value maximum and optionally a
+step value.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">animation</span> takes:
+<ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">objs</span>, a sequence of graphic objects.
+</li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">animation(</span><span style="font-style:italic">objs</span><span style="font-family:monospace">)</span> 
+draws an animation consisting of the sequence of objects.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Examples.</span>
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotfunc(cos(a*x),x),a,0,10))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en088.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotfunc(cos(a*x),x),a,0,10,0.5))</span>
+</div>
+<span style="font-style:italic">or:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotfunc(cos(a*x),x),a=0..10,0.5))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en089.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotfunc([cos(a*x),sin(a*x)],x=0..2*pi/a), a,1,10))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en090.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotparam([cos(a*t),sin(a*t)], t=0..2*pi),a,1,10))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+FIXME <img src="cascmd_en091.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotparam([sin(t),sin(a*t)], t,0,2*pi,tstep=0.01),a,1,10))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en092.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotpolar(1-a*0.01*t^2, t,0,5*pi,tstep=0.01),a,1,10))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en093.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">plotfield(sin(x*y),[x,y]); animation(seq(plotode(sin(x*y),[x,y],[0,a]),a,-4,4,0.5))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en094.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(display(square(0,1+i*a),filled),a,-5,5))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en095.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(line([0,0,0],[1,1,a]),a,-5,5))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en096.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotfunc(x^2-y^a,[x,y]),a=1..3))</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en097.png">
+</div>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">animation(seq(plotfunc((x+i*y)^a,[x,y], display=filled),a=1..10)</span>
+</div>
+<span style="font-style:italic">Output:</span><br>
+The output is an animation beginning with:
+<div class="center">
+<img src="cascmd_en098.png">
+</div>
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Remark:</span> You can also define the sequence with a program.
+For example if you want to draw the segments of length 1,√<span style="text-decoration:overline">2</span>…√<span style="text-decoration:overline">2</span>0 constructed with a right triangle of side 1 and the
+previous segment (note that there is a <span style="font-family:monospace">c:=evalf(..)</span> statement
+to force approximate evaluation otherwise the computing time would be too
+long):<br>
+<span style="font-style:italic">Input:</span>
 </p><div class="center">
-<span style="font-family:monospace">rand()
-</span></div><p>
-you might get, for example,
+<table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:left;white-space:nowrap" ><code>seg(n):={</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> local a,b,c,j,aa,bb,L;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> a:=1;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> b:=1;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> L:=[point(1)];</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> for(j:=1;j&lt;=n;j++){</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>  L:=append(L,point(a+i*b));</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>  c:=evalf(sqrt(a^2+b^2));</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>  aa:=a;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>  bb:=b;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>  a:=aa-bb/c;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>  b:=bb+aa/c;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> }</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code> L;</code></td></tr>
+<tr><td style="text-align:left;white-space:nowrap" ><code>}:;</code></td></tr>
+</table>
+</div><p>
+<span style="font-style:italic">then:</span>
 </p><div class="center">
-<span style="font-family:monospace">0.93233498279
-</span></div><p>If you want a random number in a different interval, you can give
-<span style="font-family:monospace">rand</span> two real arguments; <span style="font-family:monospace">rand(</span><span style="font-style:italic">a</span><span style="font-family:monospace">,</span><span style="font-style:italic">b</span><span style="font-family:monospace">)</span> will return a
-random number from the interval [<span style="font-style:italic">a</span>,<span style="font-style:italic">b</span>). If you enter
+<span style="font-family:monospace">L:=seg(20); s:=segment(0,L[k])$(k=0..20)</span>
+</div><p>
+<span style="font-style:italic">Output:</span><br>
 </p><div class="center">
-<span style="font-family:monospace">rand(1,1.5)
-</span></div><p>
-for example, you might get
+<img src="cascmd_en099.png">
+</div><p>
+<span style="font-style:italic">then:</span>
 </p><div class="center">
-<span style="font-family:monospace">1.27419309644
-</span></div><p>
-If you give <span style="font-family:monospace">rand</span> an interval, then you will get function
-which will generate a random number in the interval. If you enter
+<span style="font-family:monospace">animation(s)</span>
+</div><p>
+The output is an animation displaying the segments one at a time,
+beginning with:
 </p><div class="center">
-<span style="font-family:monospace">r:=rand(1.0..2.5)
-</span></div><p>
-you will get
-</p><div class="center">
-<span style="font-family:monospace">// Success
-(NULL)-&gt;rand(1.0,2.5)
-</span></div><p>
-and you can get a random number in the interval by calling the function;
-</p><div class="center">
-<span style="font-family:monospace">r()
-</span></div><p>
-might return
-</p><div class="center">
-<span style="font-family:monospace">1.76314622024
-</span></div><p>If you want to generate a random integer, then <span style="font-family:monospace">rand(</span><span style="font-style:italic">n</span><span style="font-family:monospace">)</span> (for
-integer <span style="font-style:italic">n</span>) will return a random integer in [0,<span style="font-style:italic">n</span>) (or (<span style="font-style:italic">n</span>,0] if
-<span style="font-style:italic">n</span> is negative). If you enter
-</p><div class="center">
-<span style="font-family:monospace">rand(5)
-</span></div><p>
-for example, you might get
-</p><div class="center">
-<span style="font-family:monospace">2
-</span></div><p>You can then use <span style="font-family:monospace">rand</span> to find a random integer in a specified interval; if
-you want an random integer between 6 and 10, inclusive, for example,
-you can enter
-</p><div class="center">
-<span style="font-family:monospace">6 + rand(11-6)
-</span></div><p>
-You might get
-</p><div class="center">
-<span style="font-family:monospace">7
-</span></div><p>
-Alternatively, the <span style="font-family:monospace">randint</span> will give you a random integer in
-a given interval; <span style="font-family:monospace">randint(</span><span style="font-style:italic">n</span><sub>1</sub><span style="font-family:monospace">,</span><span style="font-style:italic">n</span><sub>2</sub><span style="font-family:monospace">)</span> will return a random
-integer between <span style="font-style:italic">n</span><sub>1</sub> and <span style="font-style:italic">n</span><sub>2</sub>, inclusive; to get a random integer
-from 6 to 10, you could enter
-</p><div class="center">
-<span style="font-family:monospace">randint(6,10)
-</span></div><p>The <span style="font-family:monospace">rand</span> command can also choose elements without
-replacement. If you give <span style="font-family:monospace">rand</span> three integer arguments, 
-<span style="font-family:monospace">rand(</span><span style="font-style:italic">p</span><span style="font-family:monospace">,</span><span style="font-style:italic">n</span><sub>1</sub><span style="font-family:monospace">,</span><span style="font-style:italic">n</span><sub>2</sub><span style="font-family:monospace">)</span> then it will return <span style="font-style:italic">p</span> distinct random
-integers from <span style="font-style:italic">n</span><sub>1</sub> to <span style="font-style:italic">n</span><sub>2</sub>. If you enter
-</p><div class="center">
-<span style="font-family:monospace">rand(2,1,10)
-</span></div><p>
-for example, you will get 2 distinct random numbers from 1 to 10;
-perhaps
-</p><div class="center">
-<span style="font-family:monospace">[2,9]
-</span></div><p>You can also choose (without replacement) random elements of a given
-list. For this, you give <span style="font-family:monospace">rand</span>, a postive integer <span style="font-style:italic">n</span>
-and a list <span style="font-style:italic">L</span>; <span style="font-family:monospace">rand(</span><span style="font-style:italic">n</span><span style="font-family:monospace">,</span><span style="font-style:italic">L</span><span style="font-family:monospace">)</span> will then return <span style="font-style:italic">n</span> random
-elements from the list. If you enter
-</p><div class="center">
-<span style="font-family:monospace">rand(3,["a","b","c","d","e","f","g","h"])
-</span></div><p>
-you might get
-</p><div class="center">
-<span style="font-family:monospace">["c","b","e"]
-</span></div><p>
-The list can have repeated elements; if you enter
-</p><div class="center">
-<span style="font-family:monospace">rand(4,["r","r","r","r","v","v","v"])
-</span></div><p>
-you might get
-</p><div class="center">
-<span style="font-family:monospace">["v","v","r","v"]
-</span></div><p>
-The <span style="font-family:monospace">sample</span> command will also randomly select items from a
-list without replacement. With the <span style="font-family:monospace">sample</span> command, the list
-comes first and then the integer. If you enter
-</p><div class="center">
-<span style="font-family:monospace">sample(["r","r","r","r","v","v","v"],4)
-</span></div><p>
-you might get
-</p><div class="center">
-<span style="font-family:monospace">["v","r","r","r"]
-</span></div>
+<img src="cascmd_en100.png">
+</div>
 <hr>
 <a href="cascmd_en595.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>

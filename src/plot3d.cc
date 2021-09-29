@@ -34,14 +34,13 @@ diff plot.c plot.c~
 #include "giacPCH.h"
 
 using namespace std;
-#if !defined NSPIRE && !defined FXCG
+#if !defined NSPIRE && !defined FXCG && !defined KHICAS
 #if defined VISUALC13 && !defined BESTA_OS
 #undef clock
 #undef clock_t
 #endif
 #include <iomanip>
 #endif
-#include <fstream>
 #include "vector.h"
 #include <algorithm>
 #include <cmath>
@@ -823,7 +822,7 @@ namespace giac {
     gen s[12];
     gen centre=v[0],s1=v[1],s2=v[2];
     gen v1g(s1-centre),v2g(s2-centre);
-    // Icosaedre=s1+symetric of s1 with respect to center
+    // Icosaedre=s1+symmetric of s1 with respect to center
     // + 2* 5 points as a pentagon on 2 plans perpendicular to centre->s1
     // If the distance of the 2 // plans is 1 to the center
     // Then the 5 vertices are at distance 2 to the intersection axe/plan
@@ -1600,7 +1599,7 @@ namespace giac {
       // conique
       gen x0,y0,z0,equation_reduite;
       vecteur V0,V1,V2,param_curves,propre,centre;
-      quadrique_reduite(f,M,vxyz,x0,y0,z0,V0,V1,V2,propre,equation_reduite,param_curves,centre,numeric,contextptr);
+      if (!quadrique_reduite(f,M,vxyz,x0,y0,z0,V0,V1,V2,propre,equation_reduite,param_curves,centre,numeric,contextptr)) return false;
       vecteur res;
       int n=int(param_curves.size());
       for (int i=0;i<n;++i){
@@ -1633,7 +1632,7 @@ namespace giac {
     return false;
   }
 
-#if !defined(RTOS_THREADX) && !defined(EMCC)
+#if !defined(RTOS_THREADX) && !defined(EMCC) //&& !defined(EMCC2)
   // 3-d implicit surface using the marching cube algorithm
     /* Adapted from http://astronomy.swin.edu.au/~pbourke/modelling/ 
        by Paul Bourke

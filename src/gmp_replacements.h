@@ -1,10 +1,12 @@
-#include <tommath.h>
+#include "tommath.h"
 #include <limits>
 #ifdef NSPIRE
 extern "C" {
 #include <nspireio/nspireio.h>
 }
 #endif
+
+extern "C" int ctrl_c_interrupted(int exception);
 
 typedef mp_int mpz_t;
 
@@ -56,7 +58,7 @@ inline int mpz_tdiv_r(mpz_t & c,const mpz_t & a,const mpz_t & b){ return mp_mod(
 inline void mpz_fdiv_r_ui(mpz_t & c,const mpz_t & a,unsigned b){ mp_digit C; mp_mod_d((mp_int *)&a,b,&C); mp_set_int(&c,C); }
 inline void mpz_fdiv_q_ui(mpz_t & c,const mpz_t & a,unsigned b){ mp_digit C; mp_div_d((mp_int *)&a,b,&c,&C);}
 inline void mpz_divexact_ui(mpz_t & c,const mpz_t & a,unsigned b){ mp_digit C; mp_div_d((mp_int *)&a,b,&c,&C);}
-inline void mpz_fdiv_qr_ui(mpz_t & c,mpz_t& d,const mpz_t & a,unsigned b){ mp_digit D; mp_div_d((mp_int *)&a,b,&c,&D); mp_set_int(&d,D); }
+inline void mpz_fdiv_qr_ui(mpz_t & c,mpz_tmpz_t& d,const mpz_t & a,unsigned b){ mp_digit D; mp_div_d((mp_int *)&a,b,&c,&D); mp_set_int(&d,D); }
 inline void mpz_fdiv_q(mpz_t & c,const mpz_t & a,const mpz_t & b){ mp_int d; mp_init(&d); mp_div((mp_int *)&a,(mp_int *)&b,&c,&d); mp_clear(&d); }
 inline void mpz_tdiv_q(mpz_t & c,const mpz_t & a,const mpz_t & b){ mp_int d; mp_init(&d); mp_div((mp_int *)&a,(mp_int *)&b,&c,&d); mp_clear(&d); }
 inline int mpz_fdiv_qr(mpz_t & c,mpz_t & d,const mpz_t & a,const mpz_t & b){ return mp_div((mp_int *)&a,(mp_int *)&b,&c,&d); }
@@ -123,7 +125,7 @@ inline int mpz_gcd_ui(mpz_t * c,const mpz_t & a,unsigned B){
   mp_clear(&b);
   return gcdint(B,res);
 }
-inline int mpz_set_str(mpz_t &  z,char * s,int base){return mp_read_radix(&z,s,base);}
+inline int mpz_set_str(mpz_t &  z,const char * s,int base){return mp_read_radix(&z,s,base);}
 inline int mpz_get_str(char * s,int base,const mpz_t &  z){return mp_toradix((mp_int *)&z,s,base);}
 inline double mpz_get_d(const mpz_t & z){ 
   if (mp_count_bits((mp_int *)&z)>1023) {
@@ -172,6 +174,7 @@ inline void mpz_set_d(mpz_t & z,double d){
 inline void mpz_fac_ui(mpz_t & z,unsigned int i){
   mpz_set_ui(z,1);
   for (unsigned long int j=2;j<=i;j++){
+    ctrl_c_interrupted(1);
     mpz_mul_ui(z,z,j);
   }
 }
@@ -220,17 +223,17 @@ inline int mpz_hamdist(const mpz_t & a,const mpz_t & b){
 typedef double mpf_t;
 #define mpf_clear(x) 
 #define mpf_init(x) 
-#define mpf_init_set(x,y) x=y
-#define mpf_init_set_d(x,y) x=y
-#define mpf_init_set_si(x,y) x=y
+#define mpf_init_set(x,y) (x=y)
+#define mpf_init_set_d(x,y) (x=y)
+#define mpf_init_set_si(x,y) (x=y)
 #define mpf_set_z(x,y) 
-#define mpf_set(x,y) x=y
+#define mpf_set(x,y) (x=y)
 inline int mpf_set_str(double & x,const char * s,int base){ if (base!=10) return 1; x=strtod(s,0); return 0; } 
-#define mpf_get_d(x) x
-#define mpf_add(x,y,z) x=y+z
-#define mpf_sub(x,y,z) x=y-z
-#define mpf_mul(x,y,z) x=y*z
-#define mpf_neg(x,y) x=-y
-#define mpf_ui_div(z,x,y) z=x/y
-#define mpf_sqrt(x,y) x=sqrt(y)
-#define mpf_sgn(x) x>0?1:-1
+#define mpf_get_d(x) (x)
+#define mpf_add(x,y,z) (x=y+z)
+#define mpf_sub(x,y,z) (x=y-z)
+#define mpf_mul(x,y,z) (x=y*z)
+#define mpf_neg(x,y) (x=-y)
+#define mpf_ui_div(z,x,y) (z=x/y)
+#define mpf_sqrt(x,y) (x=sqrt(y))
+#define mpf_sgn(x) (x>0?1:-1)

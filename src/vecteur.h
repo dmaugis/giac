@@ -159,7 +159,7 @@ namespace giac {
   // extract submatrix
   matrice matrice_extract(const matrice & m,int insert_row,int insert_col,int nrows,int ncols);
   void makespreadsheetmatrice(matrice & m,GIAC_CONTEXT);
-  matrice extractmatricefromsheet(const matrice & m);
+  matrice extractmatricefromsheet(const matrice & m,bool value=true);
   // eval spreadsheet, compute list of dependances in lc
   void spread_eval(matrice & m,GIAC_CONTEXT);
 
@@ -209,7 +209,7 @@ namespace giac {
   bool iszero(const std::vector<int> & p);
   
   // matrice related functions
-  bool ckmatrix(const matrice & a,bool allow_embedded_vect);
+  bool ckmatrix(const matrice & a,bool allow_embedded_vect,bool ckundef=true);
   bool ckmatrix(const matrice & a);
   bool ckmatrix(const gen & a);
   bool ckmatrix(const gen & a,bool);
@@ -223,7 +223,7 @@ namespace giac {
   int mrows(const matrice & a);
   int mcols(const matrice & a);
   void mdims(const matrice &m,int & r,int & c);
-  void mtran(const matrice & a,matrice & res,int ncolres=0);
+  void mtran(const matrice & a,matrice & res,int ncolres=0,bool ckundef=true);
   matrice mtran(const matrice & a);
   gen _tran(const gen & a,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_tran ;
@@ -307,13 +307,20 @@ namespace giac {
   // finish full row reduction to echelon form if N is upper triangular
   // this is done from lmax-1 to l
   void smallmodrref_upper(std::vector< std::vector<int> > & N,int l,int lmax,int c,int cmax,int modulo);
+  // finish row reduction for matrices with much more columns than rows
+  // version adapted for threads parallelization
+  // assumes that all columns are reduced in parallel, pivots are searched
+  // starting at column 0
+  void in_thread_smallmodrref_upper(std::vector< std::vector<int> > & N,int l,int lpivot,int lmax,int c,int cmax,int modulo,int parallel);
+  void thread_smallmodrref_upper(std::vector< std::vector<int> > & N,int l,int lmax,int c,int cmax,int modulo,int parallel);
   void free_null_lines(std::vector< std::vector<int> > & N,int l,int lmax,int c,int cmax);
+  int smallmodrref_lastpivotcol(const std::vector< std::vector<int> > & K,int lmax);
 
   void smallmodrref(int nthreads,std::vector< std::vector<int> > & N,vecteur & pivots,std::vector<int> & permutation,std::vector<int> & maxrankcols,longlong & idet,int l, int lmax, int c,int cmax,int fullreduction,int dont_swap_below,int modulo,int rref_or_det_or_lu,bool reset,smallmodrref_temp_t * workptr,bool allow_block,int carac);
   void doublerref(matrix_double & N,vecteur & pivots,std::vector<int> & permutation,std::vector<int> & maxrankcols,double & idet,int l, int lmax, int c,int cmax,int fullreduction,int dont_swap_below,int rref_or_det_or_lu,double eps);
   void modlinear_combination(vecteur & v1,const gen & c2,const vecteur & v2,const gen & modulo,int cstart,int cend=0);
   void modlinear_combination(std::vector<int> & v1,int c2,const std::vector<int> & v2,int modulo,int cstart,int cend,bool pseudo);
-  vecteur fracmod(const vecteur & v,const gen & modulo);
+  vecteur fracmod(const vecteur & v,const gen & modulo,gen * den=0,int prealloc=128);
   gen modproduct(const vecteur & v, const gen & modulo);
   matrice mrref(const matrice & a,GIAC_CONTEXT);
   gen _rref(const gen & a,GIAC_CONTEXT); // first non 0 elem in row is 1
@@ -332,6 +339,7 @@ namespace giac {
   gen _idn(const gen & e,GIAC_CONTEXT);
   extern const unary_function_ptr * const  at_idn ;
 
+  gen fieldcoeff(const gen &F);
   vecteur vranm(int n,const gen & f,GIAC_CONTEXT); 
   matrice mranm(int n,int m,const gen & f,GIAC_CONTEXT); // random matrix using f
   gen _ranm(const gen & e,GIAC_CONTEXT);
@@ -431,6 +439,7 @@ namespace giac {
   matrice matpow(const matrice & m,const gen & n,GIAC_CONTEXT);
   gen _matpow(const gen & a,GIAC_CONTEXT);
 
+  bool mker(std::vector< std::vector<int> > & a,std::vector< std::vector<int> > & v,int modulo);
   bool mker(const matrice & a,vecteur & v,int algorithm,GIAC_CONTEXT);
   bool mker(const matrice & a,vecteur & v,GIAC_CONTEXT); // algorithm=0
   vecteur mker(const matrice & a,GIAC_CONTEXT);

@@ -131,7 +131,7 @@ namespace giac {
   }
 
   // coeff & argument of exponential
-  void lin(const gen & e,vecteur & v,GIAC_CONTEXT){
+  void lin(const gen & e,vecteur & v,bool convert_sqrt,GIAC_CONTEXT){
     if (e.type!=_SYMB){
       v.push_back(e);
       v.push_back(0);
@@ -142,13 +142,13 @@ namespace giac {
     if ((s==at_plus) && (e._SYMBptr->feuille.type==_VECT)){
       vecteur::const_iterator it=e._SYMBptr->feuille._VECTptr->begin(),itend=e._SYMBptr->feuille._VECTptr->end();
       for (;it!=itend;++it)
-	lin(*it,v,contextptr);
+	lin(*it,v,convert_sqrt,contextptr);
       compress(v,contextptr);
       return;
     }
     if (s==at_neg){
       vecteur tmp;
-      lin(e._SYMBptr->feuille,tmp,contextptr);
+      lin(e._SYMBptr->feuille,tmp,convert_sqrt,contextptr);
       const_iterateur it=tmp.begin(),itend=tmp.end();
       for (;it!=itend;++it){
 	v.push_back(-*it);
@@ -159,7 +159,7 @@ namespace giac {
     }
     if (s==at_inv){
       vecteur w;
-      lin(e._SYMBptr->feuille,w,contextptr);
+      lin(e._SYMBptr->feuille,w,convert_sqrt,contextptr);
       if (w.size()==2){
 	v.push_back(inv(w[0],contextptr));
 	v.push_back(-w[1]);
@@ -173,16 +173,16 @@ namespace giac {
     }
     if (s==at_prod){
       if (e._SYMBptr->feuille.type!=_VECT){
-	lin(e._SYMBptr->feuille,v,contextptr);
+	lin(e._SYMBptr->feuille,v,convert_sqrt,contextptr);
 	return;
       }
       vecteur w;
       vecteur::const_iterator it=e._SYMBptr->feuille._VECTptr->begin(),itend=e._SYMBptr->feuille._VECTptr->end();
-      lin(*it,w,contextptr);
+      lin(*it,w,convert_sqrt,contextptr);
       ++it;
       for (;it!=itend;++it){
 	vecteur v0;
-	lin(*it,v0,contextptr);
+	lin(*it,v0,convert_sqrt,contextptr);
 	vecteur res;
 	convolution(w,v0,res,contextptr);
 	w=res;
@@ -193,10 +193,10 @@ namespace giac {
     if (s==at_pow){
       vecteur::const_iterator it=e._SYMBptr->feuille._VECTptr->begin();
       vecteur w;
-      lin(*it,w,contextptr);
+      lin(*it,w,convert_sqrt,contextptr);
       ++it;
       if (w.size()==2){
-	if ( is_zero(w[1]) && (w[0].type==_INT_) ){
+	if ( is_zero(w[1]) && (w[0].type==_INT_ && convert_sqrt) ){
 	  w[1]=ln(w[0],contextptr);
 	  w[0]=plus_one;
 	}
@@ -216,28 +216,25 @@ namespace giac {
       v.push_back(0);
       return ;
     }
-    gen f=_lin(e._SYMBptr->feuille,contextptr);
+    gen f=_lin(convert_sqrt?e._SYMBptr->feuille:makesequence(e._SYMBptr->feuille,at_sqrt),contextptr);
     if (s==at_exp){
       v.push_back(1);
       v.push_back(f);
       return ; // 1*exp(arg)
     }
-    if (s==at_cosh){
-      v.push_back(rdiv(1,2,contextptr));
+    if (s==at_cosh || s==at_sinh){
+      v.push_back(plus_one_half);
       v.push_back(f);
-      v.push_back(rdiv(1,2,contextptr));
+      v.push_back(s==at_cosh?plus_one_half:minus_one_half);
       v.push_back(-f);
-      return ; // 1/2*exp(arg)+1/2*exp(-arg)
-    }
-    if (s==at_sinh){
-      v.push_back(rdiv(1,2,contextptr));
-      v.push_back(f);
-      v.push_back(rdiv(-1,2,contextptr));
-      v.push_back(-f);
-      return ; // 1/2*exp(arg)-1/2*exp(-arg)
+      return ; // 1/2*exp(arg)+-1/2*exp(-arg)
     }
     v.push_back(symbolic(s,f));
     v.push_back(0);
+  }
+
+  void lin(const gen & e,vecteur & v,GIAC_CONTEXT){
+    lin(e,v,true,contextptr);
   }
 
   symbolic symb_lin(const gen & a){
@@ -245,7 +242,13 @@ namespace giac {
   }
 
   // "unary" version
-  gen _lin(const gen & args,GIAC_CONTEXT){
+  gen _lin(const gen & args_,GIAC_CONTEXT){
+    gen args(args_);
+    bool convert_sqrt=true;
+    if (args.type==_VECT && args.subtype==_SEQ__VECT && args._VECTptr->back()==at_sqrt){
+      args=args._VECTptr->front();
+      convert_sqrt=false;
+    }
     if ( args.type==_STRNG && args.subtype==-1) return  args;
     gen var,res;
     if (is_algebraic_program(args,var,res))
@@ -254,7 +257,7 @@ namespace giac {
       return apply_to_equal(args,_lin,contextptr);
     vecteur v;
     if (args.type!=_VECT){
-      lin(args,v,contextptr);
+      lin(args,v,convert_sqrt,contextptr);
       return unlin(v,contextptr);
     }
     return apply(args,_lin,contextptr);
@@ -312,16 +315,13 @@ namespace giac {
       for (;it!=itend;++it){
 	newcoeff=coeff*(*it);
 	++it;
-	if ( (it->type==_SYMB) && (it->_SYMBptr->sommet==at_cos) ){
+	bool iscos=it->type==_SYMB && it->_SYMBptr->sommet==at_cos;
+	if ( (it->type==_SYMB) && (iscos || it->_SYMBptr->sommet==at_sin) ){
 	  newcoeff=recursive_normal(rdiv(newcoeff,plus_two,contextptr),false,contextptr);
-	  tadd(res,newcoeff,cos(normal(arg._SYMBptr->feuille-it->_SYMBptr->feuille,false,contextptr),contextptr),contextptr);
-	  tadd(res,newcoeff,cos(normal(arg._SYMBptr->feuille+it->_SYMBptr->feuille,false,contextptr),contextptr),contextptr);
-	  continue;
-	}
-	if ( (it->type==_SYMB) && (it->_SYMBptr->sommet==at_sin) ){
-	  newcoeff=recursive_normal(rdiv(newcoeff,plus_two,contextptr),false,contextptr);
-	  tadd(res,newcoeff,sin(normal(it->_SYMBptr->feuille+arg._SYMBptr->feuille,false,contextptr),contextptr),contextptr);
-	  tadd(res,newcoeff,sin(normal(it->_SYMBptr->feuille-arg._SYMBptr->feuille,false,contextptr),contextptr),contextptr);
+	  gen tmp1(normal(it->_SYMBptr->feuille+arg._SYMBptr->feuille,false,contextptr));
+	  gen tmp2(normal(it->_SYMBptr->feuille-arg._SYMBptr->feuille,false,contextptr));
+	  tadd(res,newcoeff,iscos?cos(tmp2,contextptr):sin(tmp1,contextptr),contextptr);
+	  tadd(res,newcoeff,iscos?cos(tmp1,contextptr):sin(tmp2,contextptr),contextptr);
 	  continue;
 	}
 	res.push_back(recursive_normal(newcoeff*(*it),false,contextptr));
@@ -335,16 +335,19 @@ namespace giac {
       for (;it!=itend;++it){
 	newcoeff=coeff*(*it);
 	++it;
-	if ( (it->type==_SYMB) && (it->_SYMBptr->sommet==at_cos) ){
+	bool iscos=it->type==_SYMB && it->_SYMBptr->sommet==at_cos;
+	if ( (it->type==_SYMB) && (iscos || it->_SYMBptr->sommet==at_sin) ){
 	  newcoeff=recursive_normal(rdiv(newcoeff,plus_two,contextptr),false,contextptr);
-	  tadd(res,newcoeff,sin(normal(arg._SYMBptr->feuille+it->_SYMBptr->feuille,false,contextptr),contextptr),contextptr);
-	  tadd(res,newcoeff,sin(normal(arg._SYMBptr->feuille-it->_SYMBptr->feuille,false,contextptr),contextptr),contextptr);
-	  continue;
-	}
-	if ( (it->type==_SYMB) && (it->_SYMBptr->sommet==at_sin)){
-	  newcoeff=recursive_normal(rdiv(newcoeff,plus_two,contextptr),false,contextptr);
-	  tadd(res,newcoeff,cos(normal(arg._SYMBptr->feuille-it->_SYMBptr->feuille,false,contextptr),contextptr),contextptr);
-	  tadd(res,-newcoeff,cos(normal(arg._SYMBptr->feuille+it->_SYMBptr->feuille,false,contextptr),contextptr),contextptr);
+	  gen tmp1(normal(arg._SYMBptr->feuille+it->_SYMBptr->feuille,false,contextptr));
+	  gen tmp2(normal(arg._SYMBptr->feuille-it->_SYMBptr->feuille,false,contextptr));
+	  if (iscos){
+	    tadd(res,newcoeff,sin(tmp1,contextptr),contextptr);
+	    tadd(res,newcoeff,sin(tmp2,contextptr),contextptr);
+	  }
+	  else {
+	    tadd(res,newcoeff,cos(tmp2,contextptr),contextptr);
+	    tadd(res,-newcoeff,cos(tmp1,contextptr),contextptr);
+	  }
 	  continue;
 	}
 	res.push_back(recursive_normal(newcoeff*(*it),false,contextptr));
@@ -583,6 +586,8 @@ namespace giac {
     // distribute wrt a AND b
     const_iterateur ita=a._SYMBptr->feuille._VECTptr->begin(),itaend=a._SYMBptr->feuille._VECTptr->end();
     const_iterateur itb=b._SYMBptr->feuille._VECTptr->begin(),itbend=b._SYMBptr->feuille._VECTptr->end();
+    if ((itbend-itb)*(itaend-ita)>MAX_PROD_EXPAND_SIZE)
+      return a*b;
     vecteur v;
     v.reserve((itbend-itb)*(itaend-ita));
     for (;ita!=itaend;++ita){
@@ -601,7 +606,12 @@ namespace giac {
     return _simplifier(prod_expand(prod_expand(it,it+s/2,contextptr),prod_expand(it+s/2,itend,contextptr),contextptr),contextptr);
   }
   static gen prod_expand(const gen & e_orig,GIAC_CONTEXT){
+    int te=taille(e_orig,MAX_PROD_EXPAND_SIZE);
+    if (te>MAX_PROD_EXPAND_SIZE)
+      return symbolic(at_prod,e_orig);
     gen e=aplatir_fois_plus(expand(e_orig,contextptr));
+    if (taille(e,MAX_PROD_EXPAND_SIZE)>MAX_PROD_EXPAND_SIZE)
+      return symbolic(at_prod,e_orig);
     if (e.type!=_VECT)
       return e;
     // look for sommet=at_plus inside e
@@ -682,6 +692,8 @@ namespace giac {
       int n=int(w.size());
       if (!n)
 	return gensizeerr(contextptr);
+      if (std::pow(n,k)>MAX_PROD_EXPAND_SIZE)
+	return pow(v[0],v[1],contextptr);
       vecteur res;
       gen p;
       for (int i=k;i>=0;--i){
@@ -689,6 +701,18 @@ namespace giac {
 	pow_expand_add_res(factn,1,i,factn[k]/factn[i],w,p,k,n,res,contextptr);
       }
       return symbolic(at_plus,res);
+    }
+    if (v[0].is_symb_of_sommet(at_prod) && v[0]._SYMBptr->feuille.type==_VECT){
+      const vecteur & vb=*v[0]._SYMBptr->feuille._VECTptr;
+      gen r1(1),r2(1);
+      for (int i=0;i<vb.size();++i){
+	if (fastsign(vb[i],contextptr)==1)
+	  r1=r1*pow(vb[i],exponent,contextptr);
+	else
+	  r2=r2*vb[i];
+      }
+      if (r1!=1)
+	return r1*pow(r2,exponent,contextptr);
     }
     return symb_pow(base,exponent);
   }
@@ -859,6 +883,10 @@ namespace giac {
 	first=symbolic(at_plus,v);
       gen ta=tan_expand(first,contextptr);
       gen tb=tan_expand(last,contextptr);
+      if (is_inf(ta))
+	return -inv(tb,contextptr);
+      if (is_inf(tb))
+	return -inv(ta,contextptr);
       return rdiv(ta+tb,1-ta*tb,contextptr);
     }
     if (e._SYMBptr->sommet==at_neg)
@@ -917,9 +945,237 @@ namespace giac {
   static define_unary_function_eval (__developper_transcendant,&_texpand,_developper_transcendant_s);
   define_unary_function_ptr5( at_developper_transcendant ,alias_at_developper_transcendant,&__developper_transcendant,0,true);
 
+  vecteur andor2list(const gen & g,GIAC_CONTEXT){
+    if (g.type!=_SYMB)
+      return vecteur(1,vecteur(1,g));
+    if (g._SYMBptr->sommet==at_ou){
+      vecteur args(gen2vecteur(g._SYMBptr->feuille));
+      int n=int(args.size());
+      vecteur res;
+      for (int i=0;i<n;++i){
+	vecteur v(andor2list(args[i],contextptr));
+	int l=int(v.size());
+	for (int j=0;j<l;++j)
+	  res.push_back(v[j]);
+      }
+      return res;
+    }
+    if (g._SYMBptr->sommet==at_and){
+      vecteur args(gen2vecteur(g._SYMBptr->feuille));
+      int n=int(args.size());
+      vecteur res;
+      longlong N=1;
+      for (int i=0;i<n;++i){
+	vecteur v(andor2list(args[i],contextptr));
+	N*=v.size(); // res.size() at end of iteration
+	if (N>RAND_MAX)
+	  return vecteur(1,vecteur(1,gendimerr(contextptr)));
+	if (i==0){
+	  res.swap(v); continue;
+	}
+	vecteur newres; newres.reserve(N);
+	// "multiply" element by element between res and v
+	for (size_t I=0;I<res.size();++I){
+	  for (size_t J=0;J<v.size();++J){
+	    newres.push_back(mergevecteur(*res[I]._VECTptr,*v[J]._VECTptr));
+	  }
+	}
+	res.swap(newres);
+      }
+      return res;
+    }
+    return vecteur(1,vecteur(1,g));
+  }
+
+  gen list2and(const gen & g){
+    if (g.type!=_VECT)
+      return g;
+    if (g._VECTptr->empty())
+      return 1;
+    if (g._VECTptr->size()==1)
+      return g;
+    gen G=g; G.subtype=_SEQ__VECT;
+    return symbolic(at_and,G);
+  }
+
+  gen list2orand(const vecteur & v){
+    if (v.empty())
+      return 1;
+    if (v.size()==1)
+      return list2and(v.front());
+    vecteur w(v);
+    for (int i=0;i<w.size();++i){
+      w[i]=list2and(w[i]);
+    }
+    return symbolic(at_ou,gen(w,_SEQ__VECT));
+  }
+
+  bool are_inequations(const gen & g){
+    if (g.type!=_VECT)
+      return is_inequation(g);
+    const vecteur & v=*g._VECTptr;
+    size_t N=v.size();
+    for (size_t i=0;i<N;++i){
+      if (!are_inequations(v[i]))
+	return false;
+    }
+    return true;
+  }
+
+  gen ineq2diff(const gen & g){
+    if (g.type!=_SYMB) return g;
+    if (g._SYMBptr->sommet==at_superieur_strict || g._SYMBptr->sommet==at_superieur_egal){
+      vecteur & v=*g._SYMBptr->feuille._VECTptr;
+      return v[0]-v[1];
+    }
+    if (g._SYMBptr->sommet==at_inferieur_strict || g._SYMBptr->sommet==at_inferieur_egal){
+      vecteur & v=*g._SYMBptr->feuille._VECTptr;
+      return v[1]-v[0];
+    }
+    return g;
+  }
+
+  // returns true if v is a list of linear inequations, write them in a matrix
+  // w=[...,[a,b,c],...] where a*x+b*y+c>=0 (> is replaced by >=) 
+  bool and2mat(const vecteur & v,const gen &x,const gen &y,matrice &w,GIAC_CONTEXT){
+    w.clear();
+    for (size_t i=0;i<v.size();++i){
+      gen g=v[i];
+      if (!is_inequation(g))
+	return false;
+      g=ineq2diff(g);
+      gen a,tmp,b,c;
+      if (!is_linear_wrt(g,x,a,tmp,contextptr))
+	return false;
+      if (!is_linear_wrt(tmp,y,b,c,contextptr))
+	return false;
+      if (evalf_double(a,1,contextptr).type!=_DOUBLE_ || evalf_double(b,1,contextptr).type!=_DOUBLE_ || evalf_double(c,1,contextptr).type!=_DOUBLE_)
+	return false;
+      w.push_back(makevecteur(a,b,c));
+    }
+    return true;
+  }
+
+  // compute list of intersections points [x,y]
+  // update x/ymin..max,1st call set xmin/ymin to 1e307 and xmax/ymax to -1e307 
+  vecteur lin_ineq_inter(const matrice & m,double & xmin,double &xmax,double & ymin,double & ymax,GIAC_CONTEXT){
+    size_t N=m.size();
+    vecteur res; res.reserve((N*(N+1))/2);
+    for (size_t i=0;i<N;++i){
+      vecteur v1(gen2vecteur(m[i]));
+      if (v1.size()!=3) return vecteur(1,gensizeerr(contextptr));
+      gen a(v1[0]),b(v1[1]),c1(v1[2]);
+      for (size_t j=i+1;j<N;++j){
+	vecteur v2(gen2vecteur(m[j]));
+	if (v2.size()!=3) return vecteur(1,gensizeerr(contextptr));
+	gen c(v2[0]),d(v2[1]),c2(v2[2]);
+	gen D=ratnormal(a*d-b*c,contextptr);
+	if (is_zero(D)) continue; // parallel
+	// solve([a*x+b*y+c1,c*x+d*y+c2],[x,y])
+	gen x=(b*c2-c1*d)/D,y=(c*c1-a*c2)/D;
+	// check that x,y verifies equations
+	vecteur mxy=multmatvecteur(m,makevecteur(x,y,1));
+	size_t pos=0;
+	for (;pos<mxy.size();++pos){
+	  if (!is_positive(mxy[pos],contextptr))
+	    break;
+	}
+	if (pos<mxy.size())
+	  continue;
+	gen add(makevecteur(x,y));
+	if (!equalposcomp(res,add))
+	  res.push_back(add);
+	x=evalf_double(x,1,contextptr);
+	double xd=x._DOUBLE_val;
+	if (xd>xmax)
+	  xmax=xd;
+	if (xd<xmin)
+	  xmin=xd;
+	y=evalf_double(y,1,contextptr);
+	double yd=y._DOUBLE_val;
+	if (yd>ymax)
+	  ymax=yd;
+	if (yd<ymin)
+	  ymin=yd;
+      }
+    }
+    return res;
+  }
+
+  // v should be a union of intersections, as returned by andor2list
+  bool lin_ineq_plot(const vecteur & vsymb,const gen & x,const gen &y,const vecteur & attr_,vecteur & res,GIAC_CONTEXT){
+    vecteur attr(attr_);
+    if (!attr.empty() && attr[0].type==_INT_)
+      attr[0] = attr[0].val | _FILL_POLYGON;
+    double xmin=1e307,ymin=1e307,xmax=-1e307,ymax=-1e307;
+    vecteur v(vsymb.size());
+    for (size_t i=0;i<v.size();++i){
+      matrice vi;
+      if (!and2mat(gen2vecteur(vsymb[i]),x,y,vi,contextptr))
+	return false;
+      v[i]=vi;
+    }
+    matrice inter(vsymb.size()); // one list of intersection points for each element of v
+    for (size_t i=0;i<v.size();++i){
+      inter[i]=lin_ineq_inter(gen2vecteur(v[i]),xmin,xmax,ymin,ymax,contextptr);
+    }
+    if (xmin==1e307) xmin=gnuplot_xmin;
+    if (ymin==1e307) ymin=gnuplot_ymin;
+    if (xmax==-1e307) xmax=gnuplot_xmax;
+    if (ymax==-1e307) ymax=gnuplot_ymax;
+    double dx=gnuplot_xmax-gnuplot_xmin,dy=gnuplot_ymax-gnuplot_ymin;
+    if (xmax>xmin)
+      dx=xmax-xmin;
+    if (dx<1e-300)
+      dx=1e-300;
+    if (ymax>ymin)
+      dy=ymax-ymin;
+    if (dy<1e-300)
+      dy=1e-300;
+    // axes zoomeout factor
+    int z=1.5;
+    xmin -= z*dx; xmax += z*dx;
+    ymin -= z*dy; ymax += z*dy;
+    res.push_back(symb_equal(change_subtype(_GL_X,_INT_PLOT),symb_interval(xmin,xmax)));
+    res.push_back(symb_equal(change_subtype(_GL_Y,_INT_PLOT),symb_interval(ymin,ymax)));
+    // zoomout factor
+    z=6;
+    xmin -= z*dx; xmax += z*dx;
+    ymin -= z*dy; ymax += z*dy;
+    // add border equations, find again intersections (lazy version, should be optimized)
+    for (size_t i=0;i<v.size();++i){
+      vecteur w(gen2vecteur(v[i]));
+      w.push_back(makevecteur(1,0,-xmin)); // x-xmin>=0
+      w.push_back(makevecteur(-1,0,xmax)); // -x+xmax>=0
+      w.push_back(makevecteur(0,1,-ymin)); // y-ymin>=0
+      w.push_back(makevecteur(0,-1,ymax)); // -y+ymax>=0
+      inter[i]=lin_ineq_inter(w,xmin,xmax,ymin,ymax,contextptr);
+    }
+    // compute convexhull for each v[i]
+    for (size_t i=0;i<inter.size();++i){
+      vecteur cur(gen2vecteur(inter[i]));
+      for (size_t j=0;j<cur.size();++j){
+	cur[j]=cur[j][0]+cst_i*cur[j][1];
+      }
+      gen convhull=_convexhull(gen(cur,_SEQ__VECT),contextptr);
+      vecteur argv=gen2vecteur(convhull);
+      argv.push_back(argv.front());
+      convhull=pnt_attrib(gen(argv,_GROUP__VECT),attr,contextptr);
+      res.push_back(convhull);
+    }
+    return true;
+  }
+
   gen expand(const gen & e,GIAC_CONTEXT){
     if (is_equal(e))
       return apply_to_equal(e,expand,contextptr);
+    if (e.type==_SYMB && (e._SYMBptr->sommet==at_and || e._SYMBptr->sommet==at_ou)){
+#if 0 // for testing plot
+      return lin_ineq_plot(andor2list(e,contextptr),x__IDNT_e,y__IDNT_e,vecteur(1,56),contextptr); 
+#else
+      return list2orand(andor2list(e,contextptr));
+#endif
+    }
     gen var,res;
     if (e.type!=_VECT && is_algebraic_program(e,var,res))
       return symbolic(at_program,makesequence(var,0,expand(res,contextptr)));

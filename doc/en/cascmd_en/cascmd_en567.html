@@ -4,98 +4,181 @@
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="generator" content="hevea 2.29+5 of 2017-05-18">
 <link rel="stylesheet" type="text/css" href="cascmd_en.css">
-<title>Implicit differentiation : implicitdiff</title>
+<title>Laplace transform and inverse Laplace transform: laplace ilaplace invlaplace
+
+
+
+</title>
 </head>
 <body >
 <a href="cascmd_en566.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
 <a href="cascmd_en568.html"><img src="next_motif.gif" alt="Next"></a>
 <hr>
-<h3 id="sec696" class="subsection">6.10.3  Implicit differentiation : <span style="font-family:monospace">implicitdiff</span></h3>
-<p>
-<span style="font-family:monospace">implicitdiff</span> is called with one of the following three sets of parameters :
-</p><ol class="enumerate" type=1><li class="li-enumerate">
-<span style="font-family:monospace">expr</span>, <span style="font-family:monospace">constr</span>, <span style="font-family:monospace">depvars</span>, <span style="font-family:monospace">diffvars</span>
-</li><li class="li-enumerate"><span style="font-family:monospace">constr</span>, <span style="font-family:monospace">[depvars]</span>, <span style="font-family:monospace">y</span>, <span style="font-family:monospace">diffvars</span>
-</li><li class="li-enumerate"><span style="font-family:monospace">expr</span>, <span style="font-family:monospace">constr</span>, <span style="font-family:monospace">vars</span>, <span style="font-family:monospace">order_size=k</span>, <span style="font-family:monospace">[pt]</span>
-</li></ol><p>
-Details on parameters :
-</p><ul class="itemize"><li class="li-itemize">
-<span style="font-family:monospace">expr</span> : differentiable expression  <span style="font-style:italic">f</span>(<span style="font-style:italic">x</span><sub>1</sub>,<span style="font-style:italic">x</span><sub>2</sub>,…,<span style="font-style:italic">x</span><sub><span style="font-style:italic">n</span></sub>,<span style="font-style:italic">y</span><sub>1</sub>,<span style="font-style:italic">y</span><sub>2</sub>,…,<span style="font-style:italic">y</span><sub><span style="font-style:italic">m</span></sub>) 
-</li><li class="li-itemize"><span style="font-family:monospace">constr</span> : (list of) equality constraint(s)  <span style="font-style:italic">g</span><sub><span style="font-style:italic">i</span></sub>(<span style="font-style:italic">x</span><sub>1</sub>,…,<span style="font-style:italic">x</span><sub><span style="font-style:italic">n</span></sub>,<span style="font-style:italic">y</span><sub>1</sub>,…,<span style="font-style:italic">y</span><sub><span style="font-style:italic">m</span></sub>)=0  or vanishing expression(s)  <span style="font-style:italic">g</span><sub><span style="font-style:italic">i</span></sub> , where  <span style="font-style:italic">i</span>=1,2,…,<span style="font-style:italic">m</span> 
-</li><li class="li-itemize"><span style="font-family:monospace">depvars</span> : (list of) dependent variable(s)  <span style="font-style:italic">y</span><sub>1</sub>,<span style="font-style:italic">y</span><sub>2</sub>,…,<span style="font-style:italic">y</span><sub><span style="font-style:italic">m</span></sub> , each of which may be entered as a symbol, e.g. <span style="font-family:monospace">yi</span>, or a function of independent variable(s), e.g. <span style="font-family:monospace">yi(x1,x2,..,xn)</span>
-</li><li class="li-itemize"><span style="font-family:monospace">diffvars</span> : sequence of variables  <span style="font-style:italic">x</span><sub><span style="font-style:italic">i</span><sub>1</sub></sub>,<span style="font-style:italic">x</span><sub><span style="font-style:italic">i</span><sub>2</sub></sub>,…,<span style="font-style:italic">x</span><sub><span style="font-style:italic">i</span><sub><span style="font-style:italic">k</span></sub></sub>  with respect to which is <span style="font-family:monospace">expr</span> differentiated
-</li><li class="li-itemize"><span style="font-family:monospace">vars</span> : independent and dependent variables entered as symbols in single list such that dependent variables come last, e.g. <span style="font-family:monospace">[x1,..,xn,y1,..,ym]</span>
-</li><li class="li-itemize"><span style="font-family:monospace">y</span> : (list of) dependent variable(s)  <span style="font-style:italic">y</span><sub><span style="font-style:italic">j</span><sub>1</sub></sub>,<span style="font-style:italic">y</span><sub><span style="font-style:italic">j</span><sub>2</sub></sub>,…,<span style="font-style:italic">y</span><sub><span style="font-style:italic">j</span><sub><span style="font-style:italic">l</span></sub></sub>  that need to be differentiated
-</li></ul><p>
-Dependent variables  <span style="font-style:italic">y</span><sub>1</sub>,<span style="font-style:italic">y</span><sub>2</sub>,…,<span style="font-style:italic">y</span><sub><span style="font-style:italic">m</span></sub>  are implicitly defined with  <span style="font-style:italic">m</span>  constraints in <span style="font-family:monospace">constr</span>. By implicit function theorem, the Jacobian matrix of  <span style="font-weight:bold"><span style="font-style:italic">g</span></span>=(<span style="font-style:italic">g</span><sub>1</sub>,<span style="font-style:italic">g</span><sub>2</sub>,…,<span style="font-style:italic">g</span><sub><span style="font-style:italic">m</span></sub>)  has to be full rank.</p><p>When calling <span style="font-family:monospace">implicitdiff</span>, first two sets of parameters are used when specific partial derivative is needed. In the first case, <span style="font-family:monospace">expr</span> is differentiated with respect to <span style="font-family:monospace">diffvars</span>.</p><p>Input :
-</p><div class="center">
-<span style="font-family:monospace">implicitdiff(x*y,-2x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3+15x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2*y+11y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-24y=0,y(x),x)</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">(2*x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-5*x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2*y+11*y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-8*y)/(5*x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+11*y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2-8)</span>
-</div><p>
-In the second case (elements of) <span style="font-family:monospace">y</span> is differentiated. If <span style="font-family:monospace">y</span> is a list of symbols, a list containing their derivatives will be returned. The following examples compute  <span style="font-style:italic">d</span> <span style="font-style:italic">y</span>/<span style="font-style:italic">d</span> <span style="font-style:italic">x</span> .<br>
-Input :
-</p><div class="center">
-<span style="font-family:monospace">implicitdiff(x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2*y+y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2=1,y,x)</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">-2*x*y/(x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+2*y)</span>
-</div><p>
-Input :
-</p><div class="center">
-<span style="font-family:monospace">implicitdiff([x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+y=z,x+y*z=1],[y(x),z(x)],y,x)</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">(-2*x*y-1)/(y+z)</span>
-</div><p>
-In the next example,  <span style="font-style:italic">d</span> <span style="font-style:italic">y</span>/<span style="font-style:italic">d</span> <span style="font-style:italic">x</span>  and  <span style="font-style:italic">d</span> <span style="font-style:italic">z</span>/<span style="font-style:italic">d</span> <span style="font-style:italic">x</span>  are computed.<br>
-Input :
-</p><div class="center">
-<span style="font-family:monospace">implicitdiff([-2x*z+y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2=1,x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2-exp(x*z)=y],</span><br>
-<span style="font-family:monospace">[y(x),z(x)],[y,z],x)</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">[2*x/(y*exp(x*z)+1),</span><br>
-<span style="font-family:monospace">(2*x*y-y*z*exp(x*z)-z)/(x*y*exp(x*z)+x)]</span>
-</div><p>For the third case of input syntax, all partial derivatives of order equal to <span style="font-family:monospace">order_size</span>, i.e.  <span style="font-style:italic">k</span> , are computed. If  <span style="font-style:italic">k</span>=1  they are returned in a single list, which represents the gradient of <span style="font-family:monospace">expr</span> with respect to independent variables. For  <span style="font-style:italic">k</span>=2  the corresponding hessian matrix is returned. When  <span style="font-style:italic">k</span>&gt;2 , a table with keys in form <span style="font-family:monospace">[k1,k2,..,kn]</span>, where  ∑<sub><span style="font-style:italic">i</span>=1</sub><sup><span style="font-style:italic">n</span></sup><span style="font-style:italic">k</span><sub><span style="font-style:italic">i</span></sub>=<span style="font-style:italic">k</span> , is returned. Such key corresponds to </p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">∂<sup><span style="font-style:italic">k</span></sup> <span style="font-style:italic">f</span></td></tr>
+<h3 id="ssec:lap" class="subsection">6.57.2  Laplace transform and inverse Laplace transform: <span style="font-family:monospace">laplace</span> <span style="font-family:monospace">ilaplace</span> <span style="font-family:monospace">invlaplace</span>
+<a id="hevea_default973"></a>
+<a id="hevea_default974"></a>
+<a id="hevea_default975"></a>
+<a id="ssec:laplace"></a></h3>
+<p>Denoting by <span style="color:red"><span style="font-style:italic">L</span></span> the Laplace transform,
+you get the following:
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:right;white-space:nowrap" ><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>)</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" ><table class="display"><tr style="vertical-align:middle"><td class="dcell"><span style="font-size:xx-large">∫</span></td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:left">+∞</td></tr>
+<tr><td class="dcell" style="text-align:left"><br>
+<br>
+</td></tr>
+<tr><td class="dcell" style="text-align:left">0</td></tr>
+</table></td><td class="dcell"><span style="font-style:italic">e</span><sup>−<span style="font-style:italic">x</span> <span style="font-style:italic">u</span></sup><span style="font-style:italic">y</span>(<span style="font-style:italic">u</span>)<span style="font-style:italic">du</span> </td></tr>
+</table></td></tr>
+<tr><td style="text-align:right;white-space:nowrap" ><span style="color:red"><span style="font-style:italic">L</span></span><sup>−1</sup>(<span style="font-style:italic">g</span>)(<span style="font-style:italic">x</span>)</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" ><table class="display"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
 <tr><td class="hbar"></td></tr>
-<tr><td class="dcell" style="text-align:center">∂ <span style="font-style:italic">x</span><sub>1</sub><sup><span style="font-style:italic">k</span><sub>1</sub></sup> ∂ <span style="font-style:italic">x</span><sub>2</sub><sup><span style="font-style:italic">k</span><sub>2</sub></sup> ⋯ ∂ <span style="font-style:italic">x</span><sub><span style="font-style:italic">n</span></sub><sup><span style="font-style:italic">k</span><sub><span style="font-style:italic">n</span></sub></sup></td></tr>
-</table></td><td class="dcell">. </td></tr>
+<tr><td class="dcell" style="text-align:center">2<span style="font-style:italic">i</span>π</td></tr>
+</table></td><td class="dcell"><span style="font-size:xx-large">∫</span></td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:left">&nbsp;</td></tr>
+<tr><td class="dcell" style="text-align:left"><br>
+<br>
+</td></tr>
+<tr><td class="dcell" style="text-align:left"><span style="font-style:italic">C</span></td></tr>
+</table></td><td class="dcell"> <span style="font-style:italic">e</span><sup><span style="font-style:italic">z</span> <span style="font-style:italic">x</span></sup><span style="font-style:italic">g</span>(<span style="font-style:italic">z</span>)<span style="font-style:italic">dz</span>
+</td></tr>
+</table></td></tr>
+</table></td></tr>
 </table><p>
-Input :
-</p><div class="center">
-<span style="font-family:monospace">f:=x*y*z; g:=-2x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3+15x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2*y+11y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3-24y=0;</span><br>
-<span style="font-family:monospace">implicitdiff(f,g,[x,z,y],order_size=1)</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">[(2*x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3*z-5*x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2*y*z+11*y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">3*z-8*y*z)/(5*x</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2+11*y</span><code><span style="font-family:monospace">^</span></code><span style="font-family:monospace">2-8),</span><br>
-<span style="font-family:monospace">x*y]</span>
-</div><p>
-Input :
-</p><div class="center">
-<span style="font-family:monospace">implicitdiff(f,g,order_size=2,[1,-1,0])</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">[[64/9,-2/3],[-2/3,0]]</span>
-</div><p>
-In the next example, the value of  ∂<sup>4</sup> <span style="font-style:italic">f</span>/∂ <span style="font-style:italic">x</span><sup>4</sup>  is computed at point  (<span style="font-style:italic">x</span>=0,<span style="font-style:italic">y</span>=0,<span style="font-style:italic">z</span>) .<br>
-Input :
-</p><div class="center">
-<span style="font-family:monospace">pd:=implicitdiff(f,g,[x,z,y],order_size=4,[0,z,0]);</span><br>
-<span style="font-family:monospace">pd[4,0]</span>
-</div><p>
-Output :
-</p><div class="center">
-<span style="font-family:monospace">-2*z</span>
+where <span style="font-style:italic">C</span> is a closed contour enclosing the poles of <span style="font-family:monospace">g</span>.</p><p>The <span style="font-family:monospace">laplace</span> command finds the Laplace transform of a function.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">laplace</span> takes one mandatory argument and two optional
+arguments:
+<ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">expr</span>, an expression involving a variable.
+</li><li class="li-itemize">Optionally, <span style="font-style:italic">x</span>, the variable name (by default <span style="font-family:monospace">x</span>).
+</li><li class="li-itemize">Optionally, <span style="font-style:italic">s</span>, a variable for the output (by default <span style="font-style:italic">x</span>).
+</li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">laplace(</span><span style="font-style:italic">expr</span> ⟨ <span style="font-style:italic">x</span>, ⟩<span style="font-family:monospace">)</span>
+returns the Laplace transform of <span style="font-style:italic">expr</span>.
+</li></ul><p><br>
+</p><p><span style="font-weight:bold">Examples.</span>
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">laplace(sin(x))</span>
 </div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">x</span><sup>2</sup>+1</td></tr>
+</table></td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">laplace(sin(t),t)</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">t</span><sup>2</sup>+1</td></tr>
+</table></td></tr>
+</table>
+</li><li class="li-itemize"><span style="font-style:italic">Input:</span>
+<div class="center">
+<span style="font-family:monospace">laplace(sin(t),t,s)</span>
+</div>
+<span style="font-style:italic">Output:</span>
+<table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">s</span><sup>2</sup>+1</td></tr>
+</table></td></tr>
+</table>
+</li></ul><p>The <span style="font-family:monospace">ilaplace</span> command finds the Laplace transform of a
+function.<br>
+<span style="font-family:monospace">invlaplace</span> is a synonym for <span style="font-family:monospace">ilaplace</span>.
+</p><ul class="itemize"><li class="li-itemize">
+<span style="font-family:monospace">ilaplace</span> takes one mandatory argument and two optional
+arguments:
+<ul class="itemize"><li class="li-itemize">
+<span style="font-style:italic">expr</span>, an expression involving a variable.
+</li><li class="li-itemize">Optionally, <span style="font-style:italic">x</span>, the variable name (by default <span style="font-family:monospace">x</span>).
+</li><li class="li-itemize">Optionally, <span style="font-style:italic">s</span>, a variable for the output (by default <span style="font-style:italic">x</span>).
+</li></ul>
+</li><li class="li-itemize"><span style="font-family:monospace">ilaplace(</span><span style="font-style:italic">expr</span> ⟨ <span style="font-style:italic">x</span>, ⟩<span style="font-family:monospace">)</span>
+returns the inverse Laplace transform of <span style="font-style:italic">expr</span>.
+</li></ul><p><br>
+</p><p>The Laplace transform has the following properties:
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:right;white-space:nowrap" ><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>′)(<span style="font-style:italic">x</span>)</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" >−<span style="font-style:italic">y</span>(0)+<span style="font-style:italic">x</span><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>)</td></tr>
+<tr><td style="text-align:right;white-space:nowrap" ><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>″)(<span style="font-style:italic">x</span>)</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" >−<span style="font-style:italic">y</span>′(0)+<span style="font-style:italic">x</span><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>′)(<span style="font-style:italic">x</span>)</td></tr>
+<tr><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" >−<span style="font-style:italic">y</span>′(0)−<span style="font-style:italic">xy</span>(0)+<span style="font-style:italic">x</span><sup>2</sup><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>)
+</td></tr>
+</table></td></tr>
+</table><p>
+These properties make the Laplace transform and inverse Laplace
+transform useful for solving linear differential equations
+with constant coefficients. For example, suppose you have
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell">
+     
+
+</td><td class="dcell"><table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" ><span style="font-style:italic">y</span><sup>′′</sup> +<span style="font-style:italic">p</span> <span style="font-style:italic">y</span><sup>′</sup> +<span style="font-style:italic">q</span> <span style="font-style:italic">y</span> = <span style="font-style:italic">f</span>(<span style="font-style:italic">x</span>)</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td></tr>
+<tr><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" ><span style="font-style:italic">y</span>(0)=<span style="font-style:italic">a</span>,  <span style="font-style:italic">y</span>′(0)=<span style="font-style:italic">b</span>
+</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:left;white-space:nowrap" >&nbsp;</td><td style="text-align:right;white-space:nowrap" >&nbsp;</td></tr>
+</table></td></tr>
+</table><p>
+then
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table style="border-spacing:6px;border-collapse:separate;" class="cellpading0"><tr><td style="text-align:right;white-space:nowrap" ><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">f</span>)(<span style="font-style:italic">x</span>)</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" ><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>″+<span style="font-style:italic">py</span>′+<span style="font-style:italic">qy</span>)(<span style="font-style:italic">x</span>) </td></tr>
+<tr><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" >−<span style="font-style:italic">y</span>′(0)−<span style="font-style:italic">x</span> <span style="font-style:italic">y</span>(0)+<span style="font-style:italic">x</span><sup>2</sup> <span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>)−<span style="font-style:italic">p</span> <span style="font-style:italic">y</span>(0)+<span style="font-style:italic">p</span> <span style="font-style:italic">x</span> <span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>))+<span style="font-style:italic">q</span> <span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>) </td></tr>
+<tr><td style="text-align:right;white-space:nowrap" >&nbsp;</td><td style="text-align:center;white-space:nowrap" >=</td><td style="text-align:left;white-space:nowrap" >(<span style="font-style:italic">x</span><sup>2</sup>+<span style="font-style:italic">p</span> <span style="font-style:italic">x</span>+<span style="font-style:italic">q</span>) <span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>)−<span style="font-style:italic">y</span>′(0)−(<span style="font-style:italic">x</span>+<span style="font-style:italic">p</span>) <span style="font-style:italic">y</span>(0)
+</td></tr>
+</table></td></tr>
+</table><p>
+Therefore, if <span style="font-style:italic">a</span>=<span style="font-style:italic">y</span>(0) and <span style="font-style:italic">b</span>=<span style="font-style:italic">y</span>′(0), you get
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">f</span>)(<span style="font-style:italic">x</span>)=(<span style="font-style:italic">x</span><sup>2</sup>+<span style="font-style:italic">p</span> <span style="font-style:italic">x</span>+<span style="font-style:italic">q</span>)<span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">y</span>)(<span style="font-style:italic">x</span>)−(<span style="font-style:italic">x</span>+<span style="font-style:italic">p</span>) <span style="font-style:italic">a</span>−<span style="font-style:italic">b</span>
+</td></tr>
+</table><p>
+and the solution of the differential equation is:
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><span style="font-style:italic">y</span>(<span style="font-style:italic">x</span>)= <span style="color:red"><span style="font-style:italic">L</span></span><sup>−1</sup>((<span style="color:red"><span style="font-style:italic">L</span></span>(<span style="font-style:italic">f</span>)(<span style="font-style:italic">x</span>)+(<span style="font-style:italic">x</span>+<span style="font-style:italic">p</span>) <span style="font-style:italic">a</span> +<span style="font-style:italic">b</span>)/(<span style="font-style:italic">x</span><sup>2</sup>+<span style="font-style:italic">p</span> <span style="font-style:italic">x</span>+<span style="font-style:italic">q</span>))
+</td></tr>
+</table><p><br>
+</p><p><span style="font-weight:bold">Example.</span><br>
+Solve:
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><span style="font-style:italic">y</span><sup>′′</sup> −6 <span style="font-style:italic">y</span><sup>′</sup>+9 <span style="font-style:italic">y</span>  = <span style="font-style:italic">x</span> <span style="font-style:italic">e</span><sup>3 <span style="font-style:italic">x</span></sup>,
+    <span style="font-style:italic">y</span>(0)=<span style="font-style:italic">c</span>_0,    <span style="font-style:italic">y</span><sup>′</sup>(0)=<span style="font-style:italic">c</span>_1
+</td></tr>
+</table><p>
+Here, <span style="font-style:italic">p</span>=−6, <span style="font-style:italic">q</span>=9.<br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">laplace(x*exp(3*x))</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center"><span style="font-style:italic">x</span><sup>2</sup>−6 <span style="font-style:italic">x</span>+9</td></tr>
+</table></td></tr>
+</table><p>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">ilaplace((1/(x^2-6*x+9)+(x-6)*c_0+c_1)/(x^2-6*x+9))</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center">6</td></tr>
+</table></td><td class="dcell"> </td><td class="dcell">⎛<br>
+⎝</td><td class="dcell"><span style="font-style:italic">x</span><sup>3</sup>−18 <span style="font-style:italic">x</span> <span style="font-style:italic">c</span><sub>0</sub>+6 <span style="font-style:italic">x</span> <span style="font-style:italic">c</span><sub>1</sub>+6 <span style="font-style:italic">c</span><sub>0</sub></td><td class="dcell">⎞<br>
+⎠</td><td class="dcell"><span style="font-style:italic">e</span><sup>3 <span style="font-style:italic">x</span></sup>
+</td></tr>
+</table><p>
+Note that this equation could be solved directly.<br>
+<span style="font-style:italic">Input:</span>
+</p><div class="center">
+<span style="font-family:monospace">desolve(y’’-6*y’+9*y=x*exp(3*x),y)</span>
+</div><p>
+<span style="font-style:italic">Output:</span>
+</p><table class="display dcenter"><tr style="vertical-align:middle"><td class="dcell"><span style="font-style:italic">e</span><sup>3 <span style="font-style:italic">x</span></sup> </td><td class="dcell">⎛<br>
+⎝</td><td class="dcell"><span style="font-style:italic">c</span><sub>0</sub> <span style="font-style:italic">x</span>+<span style="font-style:italic">c</span><sub>1</sub></td><td class="dcell">⎞<br>
+⎠</td><td class="dcell">+</td><td class="dcell"><table class="display"><tr><td class="dcell" style="text-align:center">1</td></tr>
+<tr><td class="hbar"></td></tr>
+<tr><td class="dcell" style="text-align:center">6</td></tr>
+</table></td><td class="dcell"> <span style="font-style:italic">x</span><sup>3</sup> <span style="font-style:italic">e</span><sup>3 <span style="font-style:italic">x</span></sup>
+</td></tr>
+</table><p><br>
+</p><p>You also can use the <span style="font-family:monospace">addtable</span> command 
+Laplacians of unspecified functions (see Section <a href="cascmd_en281.html#ssec%3Acfourier">6.26.2</a>).</p>
 <hr>
 <a href="cascmd_en566.html"><img src="previous_motif.gif" alt="Previous"></a>
 <a href="index.html"><img src="contents_motif.gif" alt="Up"></a>
